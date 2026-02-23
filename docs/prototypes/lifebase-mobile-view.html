@@ -301,23 +301,6 @@
     background: var(--primary-soft);
     color: var(--primary);
   }
-  .year-timeline-table th.day-h,
-  .year-timeline-table td.day-n {
-    position: sticky;
-    left: 0;
-    background: var(--surface);
-    z-index: 2;
-  }
-  .year-timeline-table th.day-h { z-index: 3; }
-  .year-timeline-table td.day-n {
-    width: 24px;
-    min-width: 24px;
-    text-align: center;
-    font-size: 8px;
-    color: var(--text-muted);
-    border-right: 2px solid var(--border);
-  }
-
   .m-yt-cell {
     display: flex;
     align-items: center;
@@ -333,12 +316,14 @@
   .m-yt-cell.empty { background: var(--background); }
 
   .m-yt-label {
-    width: 12px;
+    min-width: 10px;
     font-size: 8px;
     color: var(--text-muted);
     text-align: center;
     flex-shrink: 0;
     z-index: 2;
+    white-space: nowrap;
+    line-height: 1;
   }
   .m-yt-label.sun { color: #ef4444; }
   .m-yt-label.sat { color: #2563eb; }
@@ -1020,7 +1005,7 @@
       html += `<span class="${barCls}"></span>`;
     });
 
-    html += `<span class="m-yt-label${dow === 0 ? ' sun' : ''}${dow === 6 ? ' sat' : ''}">${MOBILE_DOW[dow]}</span>`;
+    html += `<span class="m-yt-label${dow === 0 ? ' sun' : ''}${dow === 6 ? ' sat' : ''}">${day}</span>`;
 
     let hiddenSingles = [];
     let hiddenTodos = [];
@@ -1068,7 +1053,7 @@
     const head = document.getElementById('mobileYearTimelineHead');
     const body = document.getElementById('mobileYearTimelineBody');
 
-    head.innerHTML = '<th class="day-h">일</th>';
+    head.innerHTML = '';
     for (let month = 1; month <= 12; month += 1) {
       head.innerHTML += `<th>${month}월</th>`;
     }
@@ -1076,10 +1061,6 @@
     body.innerHTML = '';
     for (let day = 1; day <= 31; day += 1) {
       const tr = document.createElement('tr');
-      const dayCell = document.createElement('td');
-      dayCell.className = 'day-n';
-      dayCell.textContent = day;
-      tr.appendChild(dayCell);
       for (let month = 1; month <= 12; month += 1) {
         const td = document.createElement('td');
         td.innerHTML = buildMobileTimelineCellHTML(month, day);

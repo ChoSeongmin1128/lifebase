@@ -92,7 +92,7 @@
     margin: 16px auto;
     padding: 0 16px 16px;
     display: grid;
-    grid-template-columns: 238px 1fr;
+    grid-template-columns: 208px 1fr;
     gap: 12px;
   }
 
@@ -105,7 +105,7 @@
   }
 
   .sidebar {
-    padding: 10px;
+    padding: 8px;
     height: calc(100vh - 96px);
     position: sticky;
     top: 80px;
@@ -126,8 +126,8 @@
     color: var(--text-secondary);
     border-radius: var(--radius);
     text-align: left;
-    font-size: 14px;
-    padding: 10px 12px;
+    font-size: 13px;
+    padding: 9px 10px;
     margin-bottom: 3px;
     cursor: pointer;
   }
@@ -292,8 +292,31 @@
   .calendar-view { display: none; }
   .calendar-view.active { display: block; }
   #tab-calendar.timeline-focus .sub { margin-bottom: 6px; }
-  #tab-calendar.timeline-focus .color-legend { display: none; }
   #tab-calendar.timeline-focus .toolbar-row { margin-bottom: 6px; }
+  .calendar-main-tools { margin-bottom: 8px; }
+  .calendar-main-tools .seg { display: inline-flex; flex-wrap: wrap; }
+  .calendar-settings {
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: color-mix(in srgb, var(--primary-soft), white 60%);
+    padding: 6px 8px;
+    margin-bottom: 8px;
+  }
+  .calendar-settings > summary {
+    cursor: pointer;
+    font-size: 12px;
+    color: var(--text-secondary);
+    font-weight: 600;
+  }
+  .calendar-settings[open] > summary { margin-bottom: 6px; }
+  .calendar-settings .settings-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+  #tab-calendar.timeline-focus .calendar-settings { padding: 5px 7px; }
 
   .color-legend {
     display: flex;
@@ -450,15 +473,6 @@
     border-bottom: 2px solid var(--border);
     border-right: 1px solid var(--border);
   }
-  .year-timeline-table th.day-h {
-    width: 32px;
-    color: var(--text-muted);
-    font-size: 10px;
-    position: sticky;
-    left: 0;
-    z-index: 15;
-    background: var(--surface);
-  }
   .year-timeline-table td {
     padding: 0;
     border-bottom: 1px solid var(--border);
@@ -469,19 +483,6 @@
     overflow: visible;
   }
   .year-timeline-table tr:last-child td { border-bottom: none; }
-  .year-timeline-table td.day-n {
-    text-align: center;
-    font-weight: 600;
-    color: var(--text-muted);
-    font-size: 10px;
-    background: var(--surface);
-    position: sticky;
-    left: 0;
-    z-index: 8;
-    width: 32px;
-    border-right: 2px solid var(--border);
-  }
-
   .yt-cell {
     display: flex;
     align-items: center;
@@ -502,12 +503,14 @@
   .yt-label {
     font-size: 9px;
     color: var(--text-muted);
-    width: 16px;
+    min-width: 12px;
     text-align: center;
     flex-shrink: 0;
     position: relative;
     z-index: 2;
     font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+    line-height: 1;
   }
   .yt-label.sun { color: #ef4444; }
   .yt-label.sat { color: #3b82f6; }
@@ -927,36 +930,41 @@
         <h2 class="section-title">Calendar</h2>
         <p class="sub">연간/월간/주간을 공통 규칙으로 렌더링합니다. (연간: lane 최대3, 텍스트 1, +E/+T 분리)</p>
 
-        <div class="toolbar-row">
-          <div class="seg">
-            <button class="control active" data-account="all">전체 계정</button>
-            <button class="control" data-account="personal">personal@gmail.com</button>
-            <button class="control" data-account="work">team.ops@google.com</button>
-          </div>
+        <div class="toolbar-row calendar-main-tools">
           <div class="seg" id="calendarViewSwitch">
             <button class="control active" data-cview="year">Year</button>
             <button class="control" data-cview="month">Month</button>
             <button class="control" data-cview="week">Week</button>
+          </div>
+          <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+            <div class="seg">
+              <button class="control" id="calendarPrev">이전</button>
+              <button class="control" id="calendarToday">오늘</button>
+              <button class="control" id="calendarNext">다음</button>
+            </div>
+            <span class="chip" id="calendarRangeLabel">2026년</span>
+          </div>
+        </div>
+
+        <details class="calendar-settings">
+          <summary>캘린더 설정</summary>
+          <div class="settings-row" style="margin-bottom:6px;">
+            <div class="seg">
+              <button class="control active" data-account="all">전체 계정</button>
+              <button class="control" data-account="personal">personal@gmail.com</button>
+              <button class="control" data-account="work">team.ops@google.com</button>
+            </div>
             <button class="control" id="todoDoneToggle">완료 Todo 숨김</button>
           </div>
-        </div>
 
-        <div class="toolbar-row">
-          <div class="seg">
-            <button class="control" id="calendarPrev">이전</button>
-            <button class="control" id="calendarToday">오늘</button>
-            <button class="control" id="calendarNext">다음</button>
+          <div class="color-legend" style="margin-bottom:0;">
+            <span class="legend-item"><span class="legend-dot" style="background:#1b998b"></span>Personal</span>
+            <span class="legend-item"><span class="legend-dot" style="background:#2563eb"></span>Work</span>
+            <span class="legend-item"><span class="legend-dot" style="background:#dc2626"></span>Critical</span>
+            <span class="legend-item"><span class="legend-dot" style="background:#d97706"></span>Reminder</span>
+            <span class="legend-item"><span class="legend-dot" style="background:#6d6492"></span>Context</span>
           </div>
-          <span class="chip" id="calendarRangeLabel">2026년</span>
-        </div>
-
-        <div class="color-legend">
-          <span class="legend-item"><span class="legend-dot" style="background:#1b998b"></span>Personal</span>
-          <span class="legend-item"><span class="legend-dot" style="background:#2563eb"></span>Work</span>
-          <span class="legend-item"><span class="legend-dot" style="background:#dc2626"></span>Critical</span>
-          <span class="legend-item"><span class="legend-dot" style="background:#d97706"></span>Reminder</span>
-          <span class="legend-item"><span class="legend-dot" style="background:#6d6492"></span>Context</span>
-        </div>
+        </details>
 
         <div class="calendar-view active" id="view-year">
           <div class="toolbar-row" style="margin-top:2px;">
@@ -1432,7 +1440,7 @@
       html += `<div class="${barClass}"></div>`;
     });
 
-    html += `<span class="yt-label${dow === 0 ? ' sun' : ''}${dow === 6 ? ' sat' : ''}">${DOW_KR[dow]}</span>`;
+    html += `<span class="yt-label${dow === 0 ? ' sun' : ''}${dow === 6 ? ' sat' : ''}">${day}</span>`;
 
     let hiddenSingles = [];
     let hiddenTodos = [];
@@ -1482,7 +1490,7 @@
     const head = document.getElementById('yearTimelineHead');
     const body = document.getElementById('yearTimelineBody');
 
-    head.innerHTML = '<th class="day-h">일</th>';
+    head.innerHTML = '';
     for (let month = 1; month <= 12; month += 1) {
       head.innerHTML += `<th>${month}월</th>`;
     }
@@ -1490,11 +1498,6 @@
     body.innerHTML = '';
     for (let day = 1; day <= 31; day += 1) {
       const row = document.createElement('tr');
-      const dayCell = document.createElement('td');
-      dayCell.className = 'day-n';
-      dayCell.textContent = day;
-      row.appendChild(dayCell);
-
       for (let month = 1; month <= 12; month += 1) {
         const td = document.createElement('td');
         td.className = 'month-c';

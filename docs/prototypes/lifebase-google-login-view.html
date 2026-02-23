@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Lifebase Google Login Prototype</title>
+<style>
+  :root {
+    --primary: #1b998b;
+    --primary-soft: #e7f6f4;
+    --surface: #ffffff;
+    --border: #e5e5e5;
+    --text-strong: #111111;
+    --text-secondary: #656176;
+    --radius: 10px;
+    --shadow: 0 14px 30px rgba(83, 77, 86, 0.12);
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    min-height: 100vh;
+    display: grid;
+    place-items: center;
+    font-family: "SUIT Variable", "Pretendard", "Noto Sans KR", sans-serif;
+    background: linear-gradient(160deg, #e7f6f4, #ffffff 55%);
+    color: var(--text-secondary);
+  }
+  .frame {
+    width: min(980px, 95vw);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    overflow: hidden;
+    background: var(--surface);
+    box-shadow: var(--shadow);
+  }
+  .head {
+    padding: 14px 16px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .head h1 { margin: 0; font-size: 18px; color: var(--text-strong); }
+  .chip {
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    font-size: 11px;
+    padding: 5px 9px;
+    color: var(--text-secondary);
+  }
+  .step-tabs {
+    display: flex;
+    gap: 8px;
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--border);
+    background: #fbfefd;
+  }
+  .step-btn {
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    background: var(--surface);
+    color: var(--text-secondary);
+    font-size: 12px;
+    padding: 6px 11px;
+    cursor: pointer;
+  }
+  .step-btn.active {
+    background: var(--primary-soft);
+    color: var(--primary);
+    border-color: var(--primary);
+    font-weight: 700;
+  }
+  .body { padding: 16px; }
+  .step { display: none; }
+  .step.active { display: block; }
+
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+  }
+  .card {
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: var(--surface);
+    padding: 12px;
+  }
+  .title { font-size: 14px; font-weight: 700; color: var(--text-strong); margin-bottom: 8px; }
+  .row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border-bottom: 1px solid var(--border);
+    padding: 8px 0;
+    font-size: 13px;
+  }
+  .row:last-child { border-bottom: 0; }
+  .google-btn {
+    width: 100%;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: #fff;
+    padding: 9px 10px;
+    text-align: left;
+    font-size: 13px;
+    color: #1f2937;
+    cursor: pointer;
+    margin-bottom: 8px;
+  }
+  .google-btn:hover { background: #f9fafb; }
+  .primary {
+    border: 0;
+    background: var(--primary);
+    color: #fff;
+    border-radius: 8px;
+    padding: 9px 12px;
+    font-size: 13px;
+    cursor: pointer;
+  }
+  .outline {
+    border: 1px solid var(--border);
+    background: #fff;
+    color: var(--text-secondary);
+    border-radius: 8px;
+    padding: 9px 12px;
+    font-size: 13px;
+    cursor: pointer;
+  }
+  .actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 12px; }
+
+  .scope {
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 8px;
+    margin-bottom: 6px;
+    font-size: 12px;
+  }
+
+  .done {
+    text-align: center;
+    padding: 28px 12px;
+  }
+  .done h2 { margin: 0 0 8px; color: var(--text-strong); }
+  .done p { margin: 0; }
+
+  @media (max-width: 760px) {
+    .grid { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+  <div class="frame">
+    <div class="head">
+      <h1>Google 로그인 UI 프로토타입</h1>
+      <span class="chip">OAuth 2.0 flow</span>
+    </div>
+
+    <div class="step-tabs">
+      <button class="step-btn active" data-step="account">1. 계정 선택</button>
+      <button class="step-btn" data-step="consent">2. 권한 동의</button>
+      <button class="step-btn" data-step="done">3. 연결 완료</button>
+    </div>
+
+    <div class="body">
+      <section class="step active" id="step-account">
+        <div class="grid">
+          <div class="card">
+            <div class="title">계정 선택</div>
+            <button class="google-btn">G personal@gmail.com</button>
+            <button class="google-btn">G team.ops@google.com</button>
+            <button class="google-btn">+ 다른 Google 계정 사용</button>
+          </div>
+          <div class="card">
+            <div class="title">연결 정책</div>
+            <div class="row"><span>기본 로그인 계정</span><span>1개 필수</span></div>
+            <div class="row"><span>추가 동기화 계정</span><span>선택 가능</span></div>
+            <div class="row"><span>캘린더 전역 필터</span><span>계정별 ON/OFF</span></div>
+          </div>
+        </div>
+        <div class="actions">
+          <button class="outline" disabled>이전</button>
+          <button class="primary" data-next="consent">다음</button>
+        </div>
+      </section>
+
+      <section class="step" id="step-consent">
+        <div class="card">
+          <div class="title">Lifebase가 요청하는 권한</div>
+          <div class="scope">Google Calendar 읽기/쓰기: 일정 조회, 생성, 수정, 삭제</div>
+          <div class="scope">Google Tasks 읽기/쓰기: Todo 조회, 생성, 완료 상태 동기화</div>
+          <div class="scope">기본 프로필/이메일: 연결 계정 식별</div>
+          <div class="row"><span>동의 계정</span><span>team.ops@google.com</span></div>
+        </div>
+        <div class="actions">
+          <button class="outline" data-prev="account">이전</button>
+          <button class="primary" data-next="done">동의하고 계속</button>
+        </div>
+      </section>
+
+      <section class="step" id="step-done">
+        <div class="card done">
+          <h2>연결 완료</h2>
+          <p>Google 계정이 연결되었습니다. 캘린더/할 일 동기화를 시작합니다.</p>
+        </div>
+        <div class="actions">
+          <button class="outline" data-prev="consent">이전</button>
+          <button class="primary">Lifebase로 이동</button>
+        </div>
+      </section>
+    </div>
+  </div>
+
+<script>
+  const buttons = document.querySelectorAll('.step-btn');
+  const steps = document.querySelectorAll('.step');
+
+  function activate(stepId) {
+    buttons.forEach((b) => b.classList.toggle('active', b.dataset.step === stepId));
+    steps.forEach((s) => s.classList.toggle('active', s.id === `step-${stepId}`));
+  }
+
+  buttons.forEach((button) => {
+    button.addEventListener('click', () => activate(button.dataset.step));
+  });
+
+  document.querySelectorAll('[data-next]').forEach((button) => {
+    button.addEventListener('click', () => activate(button.dataset.next));
+  });
+
+  document.querySelectorAll('[data-prev]').forEach((button) => {
+    button.addEventListener('click', () => activate(button.dataset.prev));
+  });
+</script>
+</body>
+</html>
