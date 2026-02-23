@@ -5,7 +5,7 @@
 
 ## 인증 방식
 - Google OAuth 2.0 단일 인증
-- 한 번의 OAuth 인증으로 Lifebase의 모든 기능(클라우드, 캘린더, 할 일, 갤러리, 동기화 등)을 사용할 수 있다
+- 한 번의 OAuth 인증으로 Lifebase의 모든 기능(클라우드, 캘린더, Todo, 갤러리, 동기화 등)을 사용할 수 있다
 - 로컬 비밀번호 로그인은 지원하지 않는다
 
 ## 토큰 구조: OAuth + JWT
@@ -27,7 +27,7 @@
 
 ## Google OAuth Refresh Token 만료 시 처리
 - Google 토큰이 만료되어도 Lifebase 자체 로그인은 유지한다
-- 클라우드/할 일 등 Lifebase 자체 기능은 계속 사용 가능
+- 클라우드/Todo 등 Lifebase 자체 기능은 계속 사용 가능
 - Google Calendar/Tasks 동기화만 일시 중단
 - 처리 흐름:
   1. 서버가 Google API 호출 시 토큰 거부 감지
