@@ -14,3 +14,5 @@ Lifebase용 에이전트 규칙 진입점.
 - 커밋 메시지 규칙: `@.claude/rules/commit-message.md`
 - 스킬 작성/운영 규칙: `@.claude/rules/skills.md`
 - 보안/민감정보 규칙: `@.claude/rules/security.md`
+- DB 컨벤션: `@.claude/rules/database.md`
+- 프론트엔드 라우팅 컨벤션: `@.claude/rules/routing.md`
