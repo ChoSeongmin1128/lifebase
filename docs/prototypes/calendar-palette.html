@@ -1,0 +1,630 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Lifebase - Calendar Palette Comparison</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  :root {
+    --primary: #1b998b;
+    --surface-accent: #f8f1ff;
+    --surface-secondary: #decdf5;
+    --text-secondary: #656176;
+    --text-primary: #534d56;
+    --bg: #ffffff;
+    --surface: #ffffff;
+    --border: #e5e5e5;
+    --text-strong: #111111;
+    --text-muted: #9ca3af;
+    --error: #ef4444;
+    --success: #22c55e;
+    --warning: #f59e0b;
+  }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    background: var(--bg);
+    color: var(--text-primary);
+    min-height: 100vh;
+  }
+
+  /* Palette Switcher */
+  .palette-bar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    z-index: 100;
+    background: #111;
+    padding: 12px 24px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+  }
+  .palette-bar-label {
+    color: #fff;
+    font-size: 13px;
+    font-weight: 600;
+    margin-right: 8px;
+  }
+  .palette-btn {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 16px;
+    border: 2px solid transparent;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 600;
+    color: #fff;
+    background: #222;
+    transition: all 0.2s;
+  }
+  .palette-btn:hover { background: #333; }
+  .palette-btn.active { border-color: #fff; background: #333; }
+  .palette-btn .swatches {
+    display: flex;
+    gap: 3px;
+  }
+  .palette-btn .swatch {
+    width: 14px;
+    height: 14px;
+    border-radius: 3px;
+    border: 1px solid rgba(255,255,255,0.2);
+  }
+
+  .dark-toggle {
+    margin-left: auto;
+    padding: 8px 16px;
+    border: 2px solid #555;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 600;
+    color: #fff;
+    background: #222;
+    transition: all 0.2s;
+  }
+  .dark-toggle:hover { background: #333; }
+
+  /* Layout */
+  .app {
+    display: flex;
+    min-height: 100vh;
+    padding-top: 60px;
+  }
+
+  /* Sidebar */
+  .sidebar {
+    width: 240px;
+    background: var(--surface);
+    border-right: 1px solid var(--border);
+    padding: 20px 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  .sidebar-logo {
+    font-size: 18px;
+    font-weight: 700;
+    color: var(--primary);
+    margin-bottom: 24px;
+    padding: 0 8px;
+  }
+  .sidebar-item {
+    padding: 10px 12px;
+    border-radius: 8px;
+    font-size: 14px;
+    color: var(--text-secondary);
+    cursor: pointer;
+    transition: all 0.15s;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .sidebar-item:hover {
+    background: var(--surface-accent);
+    color: var(--text-primary);
+  }
+  .sidebar-item.active {
+    background: var(--surface-secondary);
+    color: var(--primary);
+    font-weight: 600;
+  }
+  .sidebar-section {
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    color: var(--text-muted);
+    padding: 16px 12px 6px;
+    letter-spacing: 0.5px;
+  }
+  .sidebar-calendar-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    display: inline-block;
+  }
+
+  /* Main */
+  .main {
+    flex: 1;
+    padding: 24px 32px;
+    background: var(--bg);
+  }
+
+  /* Header */
+  .cal-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 24px;
+  }
+  .cal-header-left {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+  }
+  .cal-title {
+    font-size: 22px;
+    font-weight: 700;
+    color: var(--text-strong);
+  }
+  .cal-nav-btn {
+    width: 32px;
+    height: 32px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--surface);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--text-secondary);
+    font-size: 14px;
+    transition: all 0.15s;
+  }
+  .cal-nav-btn:hover {
+    background: var(--surface-accent);
+    color: var(--text-primary);
+  }
+  .cal-header-right {
+    display: flex;
+    gap: 8px;
+  }
+  .cal-view-btn {
+    padding: 6px 14px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--surface);
+    color: var(--text-secondary);
+    font-size: 13px;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .cal-view-btn:hover { background: var(--surface-accent); }
+  .cal-view-btn.active {
+    background: var(--primary);
+    color: #fff;
+    border-color: var(--primary);
+  }
+  .btn-primary {
+    padding: 8px 18px;
+    background: var(--primary);
+    color: #fff;
+    border: none;
+    border-radius: 8px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: opacity 0.15s;
+  }
+  .btn-primary:hover { opacity: 0.9; }
+
+  /* Calendar Grid */
+  .cal-grid {
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    overflow: hidden;
+    background: var(--surface);
+  }
+  .cal-weekdays {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    border-bottom: 1px solid var(--border);
+  }
+  .cal-weekday {
+    padding: 10px;
+    text-align: center;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-muted);
+    text-transform: uppercase;
+  }
+  .cal-days {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+  }
+  .cal-day {
+    min-height: 100px;
+    padding: 6px 8px;
+    border-right: 1px solid var(--border);
+    border-bottom: 1px solid var(--border);
+    cursor: pointer;
+    transition: background 0.1s;
+  }
+  .cal-day:nth-child(7n) { border-right: none; }
+  .cal-days .cal-day:nth-last-child(-n+7) { border-bottom: none; }
+  .cal-day:hover { background: var(--surface-accent); }
+  .cal-day.other-month { opacity: 0.35; }
+  .cal-day.today .cal-day-num {
+    background: var(--primary);
+    color: #fff;
+    border-radius: 50%;
+    width: 28px;
+    height: 28px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .cal-day-num {
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--text-primary);
+    margin-bottom: 4px;
+    width: 28px;
+    height: 28px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .cal-event {
+    font-size: 11px;
+    padding: 2px 6px;
+    border-radius: 4px;
+    margin-bottom: 2px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    cursor: pointer;
+  }
+  .cal-event.teal { background: rgba(27,153,139,0.15); color: #1b998b; }
+  .cal-event.red { background: rgba(239,68,68,0.12); color: #dc2626; }
+  .cal-event.blue { background: rgba(59,130,246,0.12); color: #2563eb; }
+  .cal-event.yellow { background: rgba(245,158,11,0.12); color: #d97706; }
+  .cal-event.green { background: rgba(34,197,94,0.12); color: #16a34a; }
+  .cal-event.lavender { background: var(--surface-secondary); color: var(--text-secondary); }
+
+  /* Todo Sidebar */
+  .todo-panel {
+    width: 300px;
+    border-left: 1px solid var(--border);
+    background: var(--surface);
+    padding: 20px 16px;
+  }
+  .todo-title {
+    font-size: 15px;
+    font-weight: 700;
+    color: var(--text-strong);
+    margin-bottom: 16px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .todo-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 10px 8px;
+    border-radius: 8px;
+    transition: background 0.1s;
+    cursor: pointer;
+  }
+  .todo-item:hover { background: var(--surface-accent); }
+  .todo-check {
+    width: 18px;
+    height: 18px;
+    border: 2px solid var(--border);
+    border-radius: 4px;
+    margin-top: 1px;
+    flex-shrink: 0;
+    transition: all 0.15s;
+  }
+  .todo-check.checked {
+    background: var(--primary);
+    border-color: var(--primary);
+  }
+  .todo-text {
+    font-size: 13px;
+    color: var(--text-primary);
+    line-height: 1.4;
+  }
+  .todo-text .due {
+    font-size: 11px;
+    color: var(--text-muted);
+    display: block;
+    margin-top: 2px;
+  }
+  .todo-text .due.overdue { color: var(--error); }
+  .todo-text.done {
+    text-decoration: line-through;
+    color: var(--text-muted);
+  }
+  .todo-priority {
+    font-size: 10px;
+    padding: 1px 6px;
+    border-radius: 4px;
+    font-weight: 600;
+    margin-left: auto;
+    flex-shrink: 0;
+  }
+  .todo-priority.high { background: rgba(239,68,68,0.12); color: #dc2626; }
+  .todo-priority.medium { background: rgba(245,158,11,0.12); color: #d97706; }
+  .todo-priority.low { background: rgba(34,197,94,0.12); color: #16a34a; }
+
+  /* Badge */
+  .sync-badge {
+    font-size: 11px;
+    padding: 2px 8px;
+    border-radius: 99px;
+    background: rgba(34,197,94,0.12);
+    color: #16a34a;
+    font-weight: 500;
+  }
+
+  /* Dark mode */
+  body.dark {
+    --bg: #0f0f0f;
+    --surface: #1a1a1a;
+    --border: #2a2a2a;
+    --text-strong: #f0f0f0;
+    --text-muted: #666;
+  }
+  body.dark.palette-a {
+    --text-primary: #e0ddd5;
+    --text-secondary: #a09d95;
+    --surface-accent: #1f1d18;
+    --surface-secondary: #2a2720;
+  }
+  body.dark.palette-b {
+    --text-primary: #d4d0d8;
+    --text-secondary: #9e96a8;
+    --surface-accent: #1e1925;
+    --surface-secondary: #2a2233;
+  }
+  body.dark.palette-c {
+    --text-primary: #d6d0cb;
+    --text-secondary: #8a8480;
+    --surface-accent: #1a1f18;
+    --surface-secondary: #222820;
+  }
+</style>
+</head>
+<body>
+  <div class="palette-bar">
+    <span class="palette-bar-label">Palette:</span>
+    <button class="palette-btn" onclick="setPalette('a')" id="btn-a">
+      <div class="swatches">
+        <div class="swatch" style="background:#050505"></div>
+        <div class="swatch" style="background:#1b9aaa"></div>
+        <div class="swatch" style="background:#dddbcb"></div>
+        <div class="swatch" style="background:#f5f1e3"></div>
+        <div class="swatch" style="background:#ffffff"></div>
+      </div>
+      A
+    </button>
+    <button class="palette-btn active" onclick="setPalette('b')" id="btn-b">
+      <div class="swatches">
+        <div class="swatch" style="background:#1b998b"></div>
+        <div class="swatch" style="background:#f8f1ff"></div>
+        <div class="swatch" style="background:#decdf5"></div>
+        <div class="swatch" style="background:#656176"></div>
+        <div class="swatch" style="background:#534d56"></div>
+      </div>
+      B
+    </button>
+    <button class="palette-btn" onclick="setPalette('c')" id="btn-c">
+      <div class="swatches">
+        <div class="swatch" style="background:#c4d6b0"></div>
+        <div class="swatch" style="background:#477998"></div>
+        <div class="swatch" style="background:#291f1e"></div>
+        <div class="swatch" style="background:#f64740"></div>
+        <div class="swatch" style="background:#a3333d"></div>
+      </div>
+      C
+    </button>
+    <button class="dark-toggle" onclick="toggleDark()" id="dark-btn">Dark Mode</button>
+  </div>
+
+  <div class="app">
+    <!-- Sidebar -->
+    <div class="sidebar">
+      <div class="sidebar-logo">Lifebase</div>
+      <div class="sidebar-item"><span>&#128269;</span> Search</div>
+      <div class="sidebar-item"><span>&#128193;</span> Cloud</div>
+      <div class="sidebar-item active"><span>&#128197;</span> Calendar</div>
+      <div class="sidebar-item"><span>&#9745;</span> Tasks</div>
+      <div class="sidebar-item"><span>&#128247;</span> Gallery</div>
+      <div class="sidebar-section">My Calendars</div>
+      <div class="sidebar-item">
+        <span class="sidebar-calendar-dot" style="background:#1b998b"></span> Personal
+      </div>
+      <div class="sidebar-item">
+        <span class="sidebar-calendar-dot" style="background:#3b82f6"></span> Work
+      </div>
+      <div class="sidebar-item">
+        <span class="sidebar-calendar-dot" style="background:#ef4444"></span> Important
+      </div>
+      <div class="sidebar-item">
+        <span class="sidebar-calendar-dot" style="background:#f59e0b"></span> Birthday
+      </div>
+      <div class="sidebar-section">Settings</div>
+      <div class="sidebar-item"><span>&#9881;</span> Settings</div>
+    </div>
+
+    <!-- Main Calendar -->
+    <div class="main">
+      <div class="cal-header">
+        <div class="cal-header-left">
+          <button class="cal-nav-btn">&lt;</button>
+          <span class="cal-title">February 2026</span>
+          <button class="cal-nav-btn">&gt;</button>
+          <span class="sync-badge">Synced</span>
+        </div>
+        <div class="cal-header-right">
+          <button class="cal-view-btn">Year</button>
+          <button class="cal-view-btn active">Month</button>
+          <button class="cal-view-btn">Week</button>
+          <button class="cal-view-btn">Day</button>
+          <button class="btn-primary">+ New Event</button>
+        </div>
+      </div>
+      <div class="cal-grid">
+        <div class="cal-weekdays">
+          <div class="cal-weekday">Sun</div>
+          <div class="cal-weekday">Mon</div>
+          <div class="cal-weekday">Tue</div>
+          <div class="cal-weekday">Wed</div>
+          <div class="cal-weekday">Thu</div>
+          <div class="cal-weekday">Fri</div>
+          <div class="cal-weekday">Sat</div>
+        </div>
+        <div class="cal-days">
+          <div class="cal-day other-month"><div class="cal-day-num">26</div></div>
+          <div class="cal-day other-month"><div class="cal-day-num">27</div></div>
+          <div class="cal-day other-month"><div class="cal-day-num">28</div></div>
+          <div class="cal-day other-month"><div class="cal-day-num">29</div></div>
+          <div class="cal-day other-month"><div class="cal-day-num">30</div></div>
+          <div class="cal-day other-month"><div class="cal-day-num">31</div></div>
+          <div class="cal-day"><div class="cal-day-num">1</div></div>
+
+          <div class="cal-day"><div class="cal-day-num">2</div><div class="cal-event teal">Team standup</div></div>
+          <div class="cal-day"><div class="cal-day-num">3</div></div>
+          <div class="cal-day"><div class="cal-day-num">4</div><div class="cal-event blue">Design review</div></div>
+          <div class="cal-day"><div class="cal-day-num">5</div><div class="cal-event lavender">Lunch meeting</div></div>
+          <div class="cal-day"><div class="cal-day-num">6</div></div>
+          <div class="cal-day"><div class="cal-day-num">7</div><div class="cal-event red">Deadline: Report</div></div>
+          <div class="cal-day"><div class="cal-day-num">8</div></div>
+
+          <div class="cal-day"><div class="cal-day-num">9</div><div class="cal-event teal">Team standup</div></div>
+          <div class="cal-day"><div class="cal-day-num">10</div><div class="cal-event green">Release v1.0</div></div>
+          <div class="cal-day"><div class="cal-day-num">11</div></div>
+          <div class="cal-day"><div class="cal-day-num">12</div><div class="cal-event yellow">Reminder: Review</div><div class="cal-event blue">1:1 with PM</div></div>
+          <div class="cal-day"><div class="cal-day-num">13</div></div>
+          <div class="cal-day"><div class="cal-day-num">14</div><div class="cal-event red">Valentine's Day</div></div>
+          <div class="cal-day"><div class="cal-day-num">15</div></div>
+
+          <div class="cal-day"><div class="cal-day-num">16</div><div class="cal-event teal">Team standup</div></div>
+          <div class="cal-day"><div class="cal-day-num">17</div></div>
+          <div class="cal-day"><div class="cal-day-num">18</div><div class="cal-event lavender">Doc review</div></div>
+          <div class="cal-day"><div class="cal-day-num">19</div></div>
+          <div class="cal-day"><div class="cal-day-num">20</div><div class="cal-event blue">Sprint planning</div></div>
+          <div class="cal-day"><div class="cal-day-num">21</div></div>
+          <div class="cal-day"><div class="cal-day-num">22</div><div class="cal-event green">Deploy</div></div>
+
+          <div class="cal-day"><div class="cal-day-num">23</div><div class="cal-event teal">Team standup</div></div>
+          <div class="cal-day today"><div class="cal-day-num">24</div><div class="cal-event yellow">Today's focus</div></div>
+          <div class="cal-day"><div class="cal-day-num">25</div></div>
+          <div class="cal-day"><div class="cal-day-num">26</div><div class="cal-event lavender">Retrospective</div></div>
+          <div class="cal-day"><div class="cal-day-num">27</div></div>
+          <div class="cal-day"><div class="cal-day-num">28</div><div class="cal-event red">Month-end close</div></div>
+          <div class="cal-day other-month"><div class="cal-day-num">1</div></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Todo Panel -->
+    <div class="todo-panel">
+      <div class="todo-title">
+        Today's Tasks
+        <button class="btn-primary" style="padding:4px 12px;font-size:12px;">+ Add</button>
+      </div>
+      <div class="todo-item">
+        <div class="todo-check"></div>
+        <div class="todo-text">API 엔드포인트 설계서 작성<span class="due">Due today</span></div>
+        <span class="todo-priority high">High</span>
+      </div>
+      <div class="todo-item">
+        <div class="todo-check"></div>
+        <div class="todo-text">캘린더 동기화 테스트<span class="due">Due tomorrow</span></div>
+        <span class="todo-priority medium">Mid</span>
+      </div>
+      <div class="todo-item">
+        <div class="todo-check checked"></div>
+        <div class="todo-text done">디자인 토큰 정리<span class="due">Completed</span></div>
+        <span class="todo-priority low">Low</span>
+      </div>
+      <div class="todo-item">
+        <div class="todo-check"></div>
+        <div class="todo-text">OAuth 리프레시 로직 구현<span class="due overdue">Overdue: Feb 22</span></div>
+        <span class="todo-priority high">High</span>
+      </div>
+      <div class="todo-item">
+        <div class="todo-check"></div>
+        <div class="todo-text">파일 업로드 청크 처리<span class="due">Due Feb 28</span></div>
+        <span class="todo-priority medium">Mid</span>
+      </div>
+      <div class="todo-item">
+        <div class="todo-check checked"></div>
+        <div class="todo-text done">DB 스키마 초안 작성<span class="due">Completed</span></div>
+        <span class="todo-priority low">Low</span>
+      </div>
+    </div>
+  </div>
+
+<script>
+const palettes = {
+  a: {
+    '--primary': '#1b9aaa',
+    '--surface-accent': '#f5f1e3',
+    '--surface-secondary': '#dddbcb',
+    '--text-secondary': '#777570',
+    '--text-primary': '#050505',
+  },
+  b: {
+    '--primary': '#1b998b',
+    '--surface-accent': '#f8f1ff',
+    '--surface-secondary': '#decdf5',
+    '--text-secondary': '#656176',
+    '--text-primary': '#534d56',
+  },
+  c: {
+    '--primary': '#477998',
+    '--surface-accent': '#eef3e8',
+    '--surface-secondary': '#c4d6b0',
+    '--text-secondary': '#5a4a48',
+    '--text-primary': '#291f1e',
+  },
+};
+
+let currentPalette = 'b';
+let isDark = false;
+
+function setPalette(name) {
+  currentPalette = name;
+  const root = document.documentElement;
+  const p = palettes[name];
+  for (const [key, val] of Object.entries(p)) {
+    root.style.setProperty(key, val);
+  }
+  document.querySelectorAll('.palette-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById('btn-' + name).classList.add('active');
+
+  document.body.className = isDark ? 'dark palette-' + name : '';
+}
+
+function toggleDark() {
+  isDark = !isDark;
+  document.getElementById('dark-btn').textContent = isDark ? 'Light Mode' : 'Dark Mode';
+  document.body.className = isDark ? 'dark palette-' + currentPalette : '';
+  setPalette(currentPalette);
+}
+
+setPalette('b');
+</script>
+</body>
+</html>
