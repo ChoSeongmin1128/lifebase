@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>Lifebase Web Prototype</title>
+<title>Lifebase Web Prototype v2</title>
 <style>
   :root {
     --primary: #1b998b;
@@ -12,25 +12,18 @@
     --surface-secondary: #decdf5;
     --text-primary: #534d56;
     --text-secondary: #656176;
-
     --background: #ffffff;
     --surface: #ffffff;
     --border: #e5e5e5;
     --text-strong: #111111;
     --text-muted: #9ca3af;
-
     --error: #ef4444;
     --warning: #f59e0b;
     --success: #22c55e;
     --info: #3b82f6;
-    --caution: #f97316;
-
     --radius: 8px;
-    --space-1: 4px;
-    --space-2: 8px;
-    --space-3: 16px;
-    --space-4: 24px;
-    --shadow: 0 12px 30px rgba(83, 77, 86, 0.08);
+    --shadow: 0 10px 24px rgba(83, 77, 86, 0.08);
+    --year-row-height: 20px;
   }
 
   body[data-theme="dark"] {
@@ -44,7 +37,7 @@
     --text-primary: #d4d0d8;
     --text-secondary: #9e96a8;
     --primary-soft: #163731;
-    --shadow: 0 12px 30px rgba(0, 0, 0, 0.35);
+    --shadow: 0 10px 24px rgba(0, 0, 0, 0.35);
   }
 
   @media (prefers-color-scheme: dark) {
@@ -59,7 +52,7 @@
       --text-primary: #d4d0d8;
       --text-secondary: #9e96a8;
       --primary-soft: #163731;
-      --shadow: 0 12px 30px rgba(0, 0, 0, 0.35);
+      --shadow: 0 10px 24px rgba(0, 0, 0, 0.35);
     }
   }
 
@@ -68,7 +61,7 @@
     margin: 0;
     font-family: "SUIT Variable", "Pretendard", "Noto Sans KR", sans-serif;
     color: var(--text-primary);
-    background: linear-gradient(180deg, var(--primary-soft), var(--background) 30%);
+    background: linear-gradient(180deg, var(--primary-soft), var(--background) 26%);
   }
 
   .topbar {
@@ -78,12 +71,13 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 0 var(--space-3);
+    padding: 0 16px;
     position: sticky;
     top: 0;
     z-index: 20;
   }
   .brand { font-size: 18px; font-weight: 800; color: var(--text-strong); }
+  .topbar-right { display: flex; gap: 8px; align-items: center; }
   .chip {
     border: 1px solid var(--border);
     border-radius: 999px;
@@ -92,15 +86,14 @@
     color: var(--text-secondary);
     background: var(--surface);
   }
-  .topbar-right { display: flex; gap: var(--space-2); align-items: center; }
 
   .layout {
-    max-width: 1540px;
-    margin: var(--space-3) auto;
-    padding: 0 var(--space-3) var(--space-3);
+    max-width: 1520px;
+    margin: 16px auto;
+    padding: 0 16px 16px;
     display: grid;
-    grid-template-columns: 240px 1fr;
-    gap: var(--space-3);
+    grid-template-columns: 238px 1fr;
+    gap: 12px;
   }
 
   .sidebar,
@@ -112,18 +105,18 @@
   }
 
   .sidebar {
-    padding: var(--space-2);
-    height: calc(100vh - 98px);
+    padding: 10px;
+    height: calc(100vh - 96px);
     position: sticky;
     top: 80px;
   }
 
   .sidebar-title {
     font-size: 11px;
-    color: var(--text-secondary);
     letter-spacing: 0.06em;
     text-transform: uppercase;
-    margin: var(--space-2);
+    color: var(--text-secondary);
+    margin: 6px 8px 10px;
   }
 
   .nav-tab {
@@ -135,18 +128,18 @@
     text-align: left;
     font-size: 14px;
     padding: 10px 12px;
-    margin-bottom: var(--space-1);
+    margin-bottom: 3px;
     cursor: pointer;
   }
   .nav-tab:hover { background: var(--primary-soft); }
   .nav-tab.active {
     background: var(--primary);
-    color: #ffffff;
+    color: #fff;
     font-weight: 700;
   }
 
   .content {
-    min-height: calc(100vh - 98px);
+    min-height: calc(100vh - 96px);
     overflow: hidden;
     display: flex;
     flex-direction: column;
@@ -154,47 +147,79 @@
 
   .panel {
     display: none;
-    padding: var(--space-3);
+    padding: 14px;
   }
   .panel.active { display: block; }
 
-  .section-title {
-    margin: 0 0 var(--space-1);
-    color: var(--text-strong);
-    font-size: 22px;
-  }
-  .sub {
-    color: var(--text-secondary);
-    font-size: 13px;
-    margin-bottom: var(--space-3);
+  .section-title { margin: 0 0 4px; color: var(--text-strong); font-size: 22px; }
+  .sub { color: var(--text-secondary); font-size: 13px; margin: 0 0 12px; }
+
+  .toolbar-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+    margin-bottom: 10px;
   }
 
-  .grid { display: grid; gap: var(--space-2); }
-  .grid-12 { grid-template-columns: repeat(12, minmax(0, 1fr)); }
+  .btn,
+  .seg button,
+  .theme-btn,
+  .control {
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: var(--surface);
+    color: var(--text-secondary);
+    font-size: 12px;
+    padding: 6px 10px;
+    cursor: pointer;
+  }
+  .btn.primary {
+    background: var(--primary);
+    color: #fff;
+    border-color: var(--primary);
+  }
+  .btn:hover,
+  .seg button:hover,
+  .theme-btn:hover,
+  .control:hover { background: var(--primary-soft); }
+
+  .seg { display: inline-flex; gap: 6px; }
+  .seg button.active,
+  .theme-btn.active,
+  .control.active {
+    background: var(--primary-soft);
+    color: var(--primary);
+    border-color: var(--primary);
+    font-weight: 700;
+  }
+
+  .theme-switch { display: inline-flex; gap: 6px; }
 
   .card {
     border: 1px solid var(--border);
     border-radius: var(--radius);
     background: var(--surface);
-    padding: 12px;
+    padding: 10px;
   }
-  .card-accent { background: var(--primary-soft); }
-  .card-title { font-size: 13px; font-weight: 700; color: var(--text-primary); margin-bottom: var(--space-2); }
+  .card.soft-secondary { background: color-mix(in srgb, var(--surface-secondary), white 58%); }
+  .card-title {
+    font-size: 13px;
+    font-weight: 700;
+    margin-bottom: 8px;
+    color: var(--text-primary);
+  }
 
-  .stat {
-    display: flex;
-    align-items: baseline;
-    justify-content: space-between;
-  }
-  .stat strong { font-size: 24px; color: var(--text-strong); }
-  .stat span { font-size: 12px; color: var(--text-secondary); }
+  .grid { display: grid; gap: 10px; }
+  .grid-12 { grid-template-columns: repeat(12, minmax(0, 1fr)); }
 
   .row {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    border-bottom: 1px solid var(--border);
     padding: 8px 0;
+    border-bottom: 1px solid var(--border);
     font-size: 13px;
   }
   .row:last-child { border-bottom: 0; }
@@ -202,197 +227,448 @@
   .badge {
     border: 1px solid var(--border);
     border-radius: 999px;
+    padding: 2px 8px;
     font-size: 11px;
-    padding: 3px 8px;
     color: var(--text-secondary);
     background: var(--surface);
   }
-  .badge.ok { color: var(--success); border-color: color-mix(in srgb, var(--success), white 64%); }
-  .badge.warn { color: var(--warning); border-color: color-mix(in srgb, var(--warning), white 65%); }
-  .badge.err { color: var(--error); border-color: color-mix(in srgb, var(--error), white 65%); }
+  .badge.ok { color: #16a34a; }
+  .badge.warn { color: #d97706; }
+  .badge.err { color: #dc2626; }
 
-  .calendar-toolbar {
+  /* Cloud */
+  .cloud-layout {
+    display: grid;
+    grid-template-columns: 240px 1fr;
+    gap: 10px;
+  }
+
+  .folder-item {
+    font-size: 13px;
+    padding: 7px 8px;
+    border-radius: 6px;
+    color: var(--text-secondary);
+    cursor: pointer;
+  }
+  .folder-item.active {
+    background: var(--primary-soft);
+    color: var(--primary);
+    font-weight: 700;
+  }
+
+  .crumb { font-size: 13px; color: var(--text-secondary); }
+
+  table.file-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+  }
+  .file-table th,
+  .file-table td {
+    text-align: left;
+    padding: 9px 8px;
+    border-bottom: 1px solid var(--border);
+  }
+  .file-table th { color: var(--text-secondary); font-size: 12px; }
+
+  .file-name {
     display: flex;
-    justify-content: space-between;
     align-items: center;
-    gap: var(--space-2);
-    flex-wrap: wrap;
-    margin-bottom: var(--space-2);
+    gap: 8px;
+  }
+  .file-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
   }
 
-  .account-filter { display: flex; gap: 6px; flex-wrap: wrap; }
-  .account-pill {
-    border: 1px solid var(--border);
-    border-radius: 999px;
-    padding: 6px 10px;
-    font-size: 12px;
-    color: var(--text-secondary);
-    background: var(--surface);
-  }
-  .account-pill.active {
-    background: var(--primary-soft);
-    color: var(--primary);
-    border-color: var(--primary);
-  }
-
-  .seg {
-    display: inline-flex;
-    border: 1px solid var(--border);
-    border-radius: 999px;
-    overflow: hidden;
-    background: var(--surface);
-  }
-  .seg button {
-    border: 0;
-    background: transparent;
-    color: var(--text-secondary);
-    font-size: 12px;
-    padding: 7px 12px;
+  details.sync-box summary {
     cursor: pointer;
-  }
-  .seg button.active {
-    background: var(--primary-soft);
-    color: var(--primary);
-    font-weight: 700;
-  }
-
-  .theme-switch {
-    display: inline-flex;
-    border: 1px solid var(--border);
-    border-radius: 999px;
-    overflow: hidden;
-    background: var(--surface);
-  }
-  .theme-btn {
-    border: 0;
-    background: transparent;
     color: var(--text-secondary);
     font-size: 12px;
-    padding: 7px 10px;
-    cursor: pointer;
-  }
-  .theme-btn.active {
-    background: var(--primary-soft);
-    color: var(--primary);
-    font-weight: 700;
   }
 
+  /* Calendar */
   .calendar-view { display: none; }
   .calendar-view.active { display: block; }
+  #tab-calendar.timeline-focus .sub { margin-bottom: 6px; }
+  #tab-calendar.timeline-focus .color-legend { display: none; }
+  #tab-calendar.timeline-focus .toolbar-row { margin-bottom: 6px; }
+
+  .color-legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-bottom: 8px;
+  }
+  .legend-item {
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    padding: 4px 8px;
+    font-size: 11px;
+    color: var(--text-secondary);
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+  }
+  .legend-dot { width: 8px; height: 8px; border-radius: 50%; }
 
   .year-grid {
     display: grid;
     grid-template-columns: repeat(4, minmax(0, 1fr));
-    gap: var(--space-2);
+    gap: 8px;
   }
+  .year-mode { display: none; }
+  .year-mode.active { display: block; }
   .month-card {
     border: 1px solid var(--border);
     border-radius: var(--radius);
-    overflow: hidden;
     background: var(--surface);
+    overflow: hidden;
   }
   .month-head {
-    background: var(--primary-soft);
-    color: var(--text-primary);
+    padding: 7px 8px;
     border-bottom: 1px solid var(--border);
     font-size: 12px;
     font-weight: 700;
-    padding: 7px 8px;
+    color: var(--primary);
+    background: var(--primary-soft);
   }
-  .month-mini {
+  .mini-week {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    border-bottom: 1px solid var(--border);
+  }
+  .mini-week span {
+    text-align: center;
+    font-size: 9px;
+    color: var(--text-muted);
+    padding: 3px 0;
+  }
+  .mini-days {
     display: grid;
     grid-template-columns: repeat(7, 1fr);
   }
-  .month-mini span {
-    min-height: 20px;
+  .mini-day {
+    min-height: 34px;
     border-right: 1px solid var(--border);
     border-bottom: 1px solid var(--border);
-    font-size: 10px;
-    color: var(--text-secondary);
-    display: flex;
-    align-items: center;
-    justify-content: center;
     position: relative;
+    padding: 2px;
+    overflow: hidden;
   }
-  .month-mini span:nth-child(7n) { border-right: 0; }
-  .dot-event::after,
-  .dot-todo::after {
-    content: "";
+  .mini-day:nth-child(7n) { border-right: 0; }
+  .mini-day.empty { background: color-mix(in srgb, var(--surface), #000 2%); }
+  .mini-day.secondary-focus { background: color-mix(in srgb, var(--surface-secondary), white 58%); }
+  .mini-num {
+    position: absolute;
+    top: 1px;
+    right: 2px;
+    font-size: 9px;
+    color: var(--text-muted);
+  }
+  .mini-bars {
+    position: absolute;
+    left: 2px;
+    top: 2px;
+    display: flex;
+    gap: 2px;
+  }
+  .mini-bar {
     width: 5px;
     height: 5px;
     border-radius: 50%;
-    position: absolute;
-    right: 2px;
-    bottom: 2px;
   }
-  .dot-event::after { background: var(--primary); }
-  .dot-todo::after { background: #7b61ff; }
+  .bar-teal { background: #1b998b; }
+  .bar-blue { background: #2563eb; }
+  .bar-red { background: #dc2626; }
+  .bar-yellow { background: #d97706; }
+  .bar-green { background: #16a34a; }
+  .bar-lavender { background: #8b7ab8; }
+  .bar-todo { background: #6d28d9; }
+
+  .mini-text {
+    position: absolute;
+    left: 14px;
+    right: 2px;
+    top: 2px;
+    font-size: 9px;
+    color: var(--text-secondary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .mini-text.c-teal { color: #1b998b; }
+  .mini-text.c-blue { color: #2563eb; }
+  .mini-text.c-red { color: #dc2626; }
+  .mini-text.c-yellow { color: #d97706; }
+  .mini-text.c-green { color: #16a34a; }
+  .mini-text.c-lavender { color: #6d6492; }
+  .mini-text.c-holiday { color: #dc2626; font-weight: 700; }
+
+  .mini-chips {
+    position: absolute;
+    left: 14px;
+    bottom: 1px;
+    display: flex;
+    gap: 2px;
+  }
+  .tiny-chip {
+    font-size: 8px;
+    border-radius: 999px;
+    padding: 0 4px;
+    line-height: 12px;
+  }
+  .chip-event { background: #f3f4f6; color: #6b7280; }
+  .chip-todo { background: rgba(124, 58, 237, 0.12); color: #6d28d9; }
+
+  .year-timeline-wrap {
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    overflow-x: auto;
+    overflow-y: hidden;
+    height: min(760px, calc(100vh - 220px));
+    background: var(--surface);
+  }
+  .year-timeline-table {
+    width: 100%;
+    min-width: 1080px;
+    border-collapse: collapse;
+    table-layout: fixed;
+    font-size: 12px;
+  }
+  .year-timeline-table th {
+    position: sticky;
+    top: 0;
+    z-index: 12;
+    background: var(--surface);
+    padding: 10px 4px;
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--primary);
+    text-align: center;
+    border-bottom: 2px solid var(--border);
+    border-right: 1px solid var(--border);
+  }
+  .year-timeline-table th.day-h {
+    width: 32px;
+    color: var(--text-muted);
+    font-size: 10px;
+    position: sticky;
+    left: 0;
+    z-index: 15;
+    background: var(--surface);
+  }
+  .year-timeline-table td {
+    padding: 0;
+    border-bottom: 1px solid var(--border);
+    border-right: 1px solid var(--border);
+    height: var(--year-row-height);
+    vertical-align: middle;
+    position: relative;
+    overflow: visible;
+  }
+  .year-timeline-table tr:last-child td { border-bottom: none; }
+  .year-timeline-table td.day-n {
+    text-align: center;
+    font-weight: 600;
+    color: var(--text-muted);
+    font-size: 10px;
+    background: var(--surface);
+    position: sticky;
+    left: 0;
+    z-index: 8;
+    width: 32px;
+    border-right: 2px solid var(--border);
+  }
+
+  .yt-cell {
+    display: flex;
+    align-items: center;
+    height: 100%;
+    padding: 0 2px 0 14px;
+    cursor: pointer;
+    transition: background 0.1s;
+    gap: 0;
+    overflow: visible;
+  }
+  .yt-cell:hover { background: var(--surface-accent); }
+  .yt-cell.weekend { background: color-mix(in srgb, var(--surface-secondary), white 68%); }
+  .yt-cell.weekend:hover { background: var(--surface-accent); }
+  .yt-cell.today { background: rgba(27, 153, 139, 0.08); }
+  .yt-cell.today .yt-label { color: var(--primary); font-weight: 700; }
+  .yt-cell.empty { background: var(--background); cursor: default; }
+
+  .yt-label {
+    font-size: 9px;
+    color: var(--text-muted);
+    width: 16px;
+    text-align: center;
+    flex-shrink: 0;
+    position: relative;
+    z-index: 2;
+    font-variant-numeric: tabular-nums;
+  }
+  .yt-label.sun { color: #ef4444; }
+  .yt-label.sat { color: #3b82f6; }
+
+  .yt-range-bar {
+    position: absolute;
+    left: 1px;
+    top: -1px;
+    bottom: -1px;
+    width: 3px;
+    z-index: 1;
+    pointer-events: none;
+  }
+  .yt-range-bar.start { border-radius: 3px 3px 0 0; top: 1px; }
+  .yt-range-bar.end { border-radius: 0 0 3px 3px; bottom: 1px; }
+  .yt-range-bar.single { border-radius: 3px; top: 2px; bottom: 2px; }
+  .yt-range-bar.lane-0 { left: 1px; }
+  .yt-range-bar.lane-1 { left: 5px; }
+  .yt-range-bar.lane-2 { left: 9px; }
+
+  .yt-event-text {
+    font-size: 10px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    padding-left: 5px;
+    flex: 1;
+    min-width: 0;
+    position: relative;
+    z-index: 2;
+  }
+  .yt-event-text.color-teal { color: #1b998b; }
+  .yt-event-text.color-blue { color: #2563eb; }
+  .yt-event-text.color-red { color: #dc2626; }
+  .yt-event-text.color-yellow { color: #b45309; }
+  .yt-event-text.color-green { color: #15803d; }
+  .yt-event-text.color-lavender { color: #6d6492; }
+  .yt-event-text.color-holiday { color: #ef4444; font-weight: 600; }
+  .yt-event-text.continued { opacity: 0.5; font-style: italic; }
+
+  .yt-todo-pill {
+    font-size: 9px;
+    color: #6d28d9;
+    background: rgba(124, 58, 237, 0.12);
+    border: 1px solid rgba(124, 58, 237, 0.22);
+    border-radius: 999px;
+    padding: 1px 6px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    flex: 1;
+    min-width: 0;
+    position: relative;
+    z-index: 2;
+  }
+  .yt-todo-pill.done {
+    color: #7f8a9b;
+    background: rgba(148, 163, 184, 0.12);
+    border-color: rgba(148, 163, 184, 0.2);
+    text-decoration: line-through;
+  }
+
+  .yt-more-badge {
+    font-size: 9px;
+    padding-left: 4px;
+    cursor: pointer;
+    position: relative;
+    z-index: 2;
+    font-weight: 600;
+  }
+  .yt-more-badge.more-event { color: var(--text-muted); }
+  .yt-more-badge.more-event:hover { color: var(--primary); }
+  .yt-more-badge.more-todo { color: #6d28d9; }
+  .yt-more-badge.more-todo:hover { color: #5b21b6; }
 
   .month-grid {
     border: 1px solid var(--border);
     border-radius: var(--radius);
     overflow: hidden;
-    background: var(--surface);
   }
   .week-head,
-  .month-days { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); }
+  .month-days {
+    display: grid;
+    grid-template-columns: repeat(7, minmax(0, 1fr));
+  }
   .week-head div {
     text-align: center;
-    background: var(--primary-soft);
-    border-bottom: 1px solid var(--border);
     font-size: 11px;
     color: var(--text-secondary);
     padding: 7px 0;
+    border-bottom: 1px solid var(--border);
+    background: var(--primary-soft);
   }
   .day-cell {
-    min-height: 98px;
+    min-height: 104px;
+    padding: 6px;
     border-right: 1px solid var(--border);
     border-bottom: 1px solid var(--border);
-    padding: 6px;
     font-size: 12px;
   }
+  .day-cell.secondary-focus { background: color-mix(in srgb, var(--surface-secondary), white 58%); }
   .day-cell:nth-child(7n) { border-right: 0; }
-  .dnum { font-size: 11px; color: var(--text-secondary); margin-bottom: 4px; }
-  .ev {
+  .day-num { font-size: 11px; color: var(--text-secondary); margin-bottom: 4px; }
+  .event-pill,
+  .todo-pill {
     font-size: 11px;
-    background: color-mix(in srgb, var(--primary), white 80%);
-    color: color-mix(in srgb, var(--primary), black 20%);
     border-radius: 6px;
     padding: 2px 6px;
     margin-bottom: 4px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
-  .td {
-    font-size: 11px;
-    background: color-mix(in srgb, #7b61ff, white 84%);
-    color: #5f4ab0;
+  .event-pill.teal { background: rgba(27,153,139,0.15); color: #1b998b; }
+  .event-pill.blue { background: rgba(59,130,246,0.12); color: #2563eb; }
+  .event-pill.red { background: rgba(239,68,68,0.12); color: #dc2626; }
+  .event-pill.yellow { background: rgba(245,158,11,0.12); color: #d97706; }
+  .event-pill.green { background: rgba(34,197,94,0.12); color: #16a34a; }
+  .event-pill.lavender { background: color-mix(in srgb, var(--surface-secondary), white 30%); color: #6d6492; }
+  .todo-pill {
     border-radius: 999px;
-    padding: 2px 6px;
+    background: rgba(124,58,237,0.12);
+    color: #6d28d9;
   }
 
-  .week-table {
+  .week-board {
     border: 1px solid var(--border);
     border-radius: var(--radius);
     overflow: hidden;
-    background: var(--surface);
   }
   .week-cols,
-  .slots {
+  .week-slots {
     display: grid;
-    grid-template-columns: 62px repeat(7, minmax(0, 1fr));
+    grid-template-columns: 70px repeat(7, minmax(0, 1fr));
   }
   .week-cols {
     border-bottom: 1px solid var(--border);
-    background: var(--surface-accent);
+    background: var(--primary-soft);
   }
   .week-cols div {
+    text-align: center;
     font-size: 11px;
     color: var(--text-secondary);
-    text-align: center;
     padding: 8px 2px;
   }
-  .time,
+  .week-cols .day-head {
+    display: grid;
+    gap: 2px;
+    place-items: center;
+  }
+  .week-cols .day-head strong {
+    color: var(--text-strong);
+    font-size: 11px;
+  }
+  .week-cols .day-head span {
+    font-size: 10px;
+    color: var(--text-secondary);
+  }
+  .time-cell,
   .slot {
-    min-height: 52px;
+    min-height: 56px;
     border-right: 1px solid var(--border);
     border-bottom: 1px solid var(--border);
     font-size: 11px;
@@ -400,64 +676,169 @@
     padding: 4px;
     position: relative;
   }
-  .time { text-align: center; background: var(--primary-soft); }
-  .slots > div:nth-child(8n) { border-right: 0; }
+  .time-cell { text-align: center; background: var(--primary-soft); }
+  .week-slots > div:nth-child(8n) { border-right: 0; }
+
+  .slot-stack {
+    display: grid;
+    gap: 3px;
+  }
+
   .wk-event,
   .wk-todo {
-    position: absolute;
-    left: 4px;
-    right: 4px;
+    display: block;
     font-size: 10px;
     padding: 2px 5px;
     border-radius: 6px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
-  .wk-event {
-    top: 4px;
-    background: color-mix(in srgb, var(--primary), white 82%);
-    color: color-mix(in srgb, var(--primary), black 20%);
-  }
+  .wk-event.teal { background: rgba(27,153,139,0.15); color: #1b998b; }
+  .wk-event.blue { background: rgba(59,130,246,0.12); color: #2563eb; }
+  .wk-event.yellow { background: rgba(245,158,11,0.12); color: #d97706; }
+  .wk-event.red { background: rgba(239,68,68,0.12); color: #dc2626; }
+  .wk-event.green { background: rgba(34,197,94,0.12); color: #16a34a; }
+  .wk-event.lavender { background: color-mix(in srgb, var(--surface-secondary), white 30%); color: #6d6492; }
   .wk-todo {
-    bottom: 4px;
     border-radius: 999px;
-    background: color-mix(in srgb, #7b61ff, white 84%);
-    color: #5f4ab0;
+    background: rgba(124,58,237,0.12);
+    color: #6d28d9;
   }
 
+  /* Todo (Google Tasks-like) */
   .todo-layout {
     display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: var(--space-2);
+    grid-template-columns: 260px 1fr;
+    gap: 10px;
   }
-  .todo-col {
+  .task-list-item {
+    padding: 8px;
+    border-radius: 6px;
+    font-size: 13px;
+    color: var(--text-secondary);
+    cursor: pointer;
+  }
+  .task-list-item.active {
+    background: var(--primary-soft);
+    color: var(--primary);
+    font-weight: 700;
+  }
+
+  .task-toolbar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin-bottom: 8px;
+  }
+
+  .task-input {
+    width: 100%;
     border: 1px solid var(--border);
     border-radius: var(--radius);
-    background: var(--surface);
-    padding: 10px;
-  }
-  .todo-col h4 {
-    margin: 0 0 var(--space-2);
-    color: var(--text-primary);
+    padding: 8px 10px;
     font-size: 13px;
+    color: var(--text-primary);
+    background: var(--surface);
+    margin-bottom: 8px;
   }
-  .todo-item {
+
+  .task-item {
     border: 1px solid var(--border);
     border-radius: var(--radius);
     padding: 8px;
-    margin-bottom: var(--space-2);
+    margin-bottom: 8px;
     background: var(--surface);
+  }
+  .task-row {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+  }
+  .check {
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    border: 2px solid var(--border);
+    margin-top: 1px;
+    flex-shrink: 0;
+  }
+  .check.done {
+    border-color: var(--primary);
+    background: var(--primary);
+  }
+  .task-title {
+    font-size: 13px;
+    color: var(--text-primary);
+  }
+  .task-title.done {
+    color: var(--text-muted);
+    text-decoration: line-through;
+  }
+  .task-meta {
+    font-size: 11px;
+    color: var(--text-secondary);
+    margin-top: 4px;
+  }
+
+  /* Gallery */
+  .gallery-controls {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin-bottom: 10px;
+  }
+  .gallery-grid {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 8px;
+  }
+  .media-card {
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: var(--surface);
+    overflow: hidden;
+  }
+  .thumb {
+    height: 120px;
+    background: linear-gradient(130deg, var(--primary-soft), var(--surface-accent));
+    border-bottom: 1px solid var(--border);
+  }
+  .media-meta {
+    padding: 8px;
     font-size: 12px;
+    color: var(--text-secondary);
   }
-  .todo-item .meta { font-size: 11px; color: var(--text-secondary); margin-top: 5px; }
+  .media-type {
+    display: inline-block;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    padding: 1px 6px;
+    font-size: 10px;
+    margin-bottom: 4px;
+  }
 
-  @media (max-width: 1120px) {
+  @media (max-width: 1180px) {
     .layout { grid-template-columns: 1fr; }
-    .sidebar { height: auto; position: static; }
-    .year-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .sidebar { position: static; height: auto; }
+    .cloud-layout,
     .todo-layout { grid-template-columns: 1fr; }
+    .year-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .gallery-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   }
 
-  @media (max-width: 720px) {
+  @media (max-width: 760px) {
     .year-grid { grid-template-columns: 1fr; }
+    .week-cols,
+    .week-slots { grid-template-columns: 44px repeat(3, minmax(0, 1fr)); }
+    .week-cols div:nth-child(n+6),
+    .week-slots > div:nth-child(8n+6),
+    .week-slots > div:nth-child(8n+7),
+    .week-slots > div:nth-child(8n+8) { display: none; }
   }
 </style>
 </head>
@@ -465,8 +846,7 @@
   <header class="topbar">
     <div class="brand">Lifebase Web</div>
     <div class="topbar-right">
-      <span class="chip">계정 필터: 전체</span>
-      <span class="chip">완료 Todo: 숨김</span>
+      <span class="chip" id="globalAccountChip">계정: 전체</span>
       <span class="chip" id="webThemeStatus">테마: 시스템</span>
     </div>
   </header>
@@ -483,118 +863,199 @@
 
     <main class="content">
       <section class="panel active" id="tab-cloud">
-        <h2 class="section-title">Cloud UI</h2>
-        <div class="sub">Nextcloud 스타일 동기화 정보, 폴더 매핑, 파일 상태를 한 화면에서 확인합니다.</div>
-        <div class="grid grid-12">
-          <div class="card card-accent" style="grid-column: span 3;"><div class="card-title">총 사용량</div><div class="stat"><strong>2.8 TB</strong><span>/ 4.0 TB</span></div></div>
-          <div class="card card-accent" style="grid-column: span 3;"><div class="card-title">동기화 큐</div><div class="stat"><strong>12</strong><span>pending jobs</span></div></div>
-          <div class="card card-accent" style="grid-column: span 3;"><div class="card-title">충돌 파일</div><div class="stat"><strong>2</strong><span>needs resolve</span></div></div>
-          <div class="card card-accent" style="grid-column: span 3;"><div class="card-title">연결 계정</div><div class="stat"><strong>2</strong><span>google accounts</span></div></div>
+        <h2 class="section-title">Cloud Storage</h2>
+        <p class="sub">메인은 파일 탐색/관리입니다. 폴더 동기화 설정은 보조 기능으로 접어서 제공합니다.</p>
 
-          <div class="card" style="grid-column: span 8;">
-            <div class="card-title">파일 상태</div>
-            <div class="row"><span>/Projects/Lifebase/spec-v4.md</span><span class="badge ok">동기화됨</span></div>
-            <div class="row"><span>/Photos/2026/launch-day.jpg</span><span class="badge">업로드중</span></div>
-            <div class="row"><span>/Docs/meeting/notes.md</span><span class="badge warn">대기중</span></div>
-            <div class="row"><span>/Archive/legacy.zip</span><span class="badge err">충돌</span></div>
+        <div class="toolbar-row">
+          <span class="crumb">내 파일 / Projects / Lifebase</span>
+          <div class="seg">
+            <button class="active">리스트</button>
+            <button>그리드</button>
+            <button>공유 항목</button>
+          </div>
+        </div>
+
+        <div class="cloud-layout">
+          <div class="card">
+            <div class="card-title">폴더</div>
+            <div class="folder-item active">내 파일</div>
+            <div class="folder-item">최근 파일</div>
+            <div class="folder-item">공유됨</div>
+            <div class="folder-item">중요 표시</div>
+            <div class="folder-item">휴지통</div>
+            <div style="height:8px"></div>
+            <div class="card-title" style="margin-top:2px;">빠른 접근</div>
+            <div class="folder-item">/Projects</div>
+            <div class="folder-item">/Photos/2026</div>
+            <div class="folder-item">/Documents/Finance</div>
           </div>
 
-          <div class="card" style="grid-column: span 4;">
-            <div class="card-title">동기화 폴더 매핑</div>
-            <div class="row"><span>~/Workspace/docs</span><span class="badge ok">양방향</span></div>
-            <div class="row"><span>~/Pictures/Camera</span><span class="badge">업로드 전용</span></div>
-            <div class="row"><span>~/Archive</span><span class="badge warn">선택 동기화</span></div>
-            <div class="row"><span>~/Finance/Backup</span><span class="badge err">충돌 2건</span></div>
+          <div class="card">
+            <div class="toolbar-row" style="margin-bottom:8px;">
+              <input class="task-input" style="margin:0; max-width:320px;" placeholder="파일/폴더 검색" />
+              <div class="seg">
+                <button class="btn primary">업로드</button>
+                <button class="btn">새 폴더</button>
+                <button class="btn">정렬</button>
+              </div>
+            </div>
+
+            <table class="file-table">
+              <thead>
+                <tr><th>이름</th><th>유형</th><th>크기</th><th>수정한 날짜</th></tr>
+              </thead>
+              <tbody>
+                <tr><td class="file-name"><span class="file-dot" style="background:#1b998b"></span>spec-v5.md</td><td>문서</td><td>182 KB</td><td>2026-02-23 14:01</td></tr>
+                <tr><td class="file-name"><span class="file-dot" style="background:#2563eb"></span>wireframes</td><td>폴더</td><td>-</td><td>2026-02-23 12:42</td></tr>
+                <tr><td class="file-name"><span class="file-dot" style="background:#16a34a"></span>launch-day.jpg</td><td>이미지</td><td>4.2 MB</td><td>2026-02-22 21:12</td></tr>
+                <tr><td class="file-name"><span class="file-dot" style="background:#d97706"></span>meeting-notes.md</td><td>문서</td><td>64 KB</td><td>2026-02-22 18:30</td></tr>
+                <tr><td class="file-name"><span class="file-dot" style="background:#dc2626"></span>budget-2026.xlsx</td><td>스프레드시트</td><td>1.4 MB</td><td>2026-02-20 09:44</td></tr>
+              </tbody>
+            </table>
+
+            <details class="sync-box" style="margin-top:10px;">
+              <summary>고급: 특정 폴더 동기화 설정</summary>
+              <div class="row"><span>~/Workspace/lifebase-docs ↔ /Cloud/Docs</span><span class="badge ok">양방향</span></div>
+              <div class="row"><span>~/Pictures/Camera → /Cloud/Photos</span><span class="badge">업로드 전용</span></div>
+              <div class="row"><span>~/Archive (선택 동기화)</span><span class="badge warn">수동</span></div>
+            </details>
           </div>
         </div>
       </section>
 
       <section class="panel" id="tab-calendar">
-        <h2 class="section-title">Calendar UI (Year / Month / Week)</h2>
-        <div class="sub">이벤트(바/텍스트)와 Todo(칩)를 시각적으로 분리하고, 계정 필터를 전역으로 적용합니다.</div>
+        <h2 class="section-title">Calendar</h2>
+        <p class="sub">연간/월간/주간을 공통 규칙으로 렌더링합니다. (연간: lane 최대3, 텍스트 1, +E/+T 분리)</p>
 
-        <div class="calendar-toolbar">
-          <div class="account-filter">
-            <span class="account-pill active">전체 계정</span>
-            <span class="account-pill">personal@gmail.com</span>
-            <span class="account-pill">team.ops@google.com</span>
+        <div class="toolbar-row">
+          <div class="seg">
+            <button class="control active" data-account="all">전체 계정</button>
+            <button class="control" data-account="personal">personal@gmail.com</button>
+            <button class="control" data-account="work">team.ops@google.com</button>
           </div>
           <div class="seg" id="calendarViewSwitch">
-            <button class="active" data-cview="year">Year</button>
-            <button data-cview="month">Month</button>
-            <button data-cview="week">Week</button>
+            <button class="control active" data-cview="year">Year</button>
+            <button class="control" data-cview="month">Month</button>
+            <button class="control" data-cview="week">Week</button>
+            <button class="control" id="todoDoneToggle">완료 Todo 숨김</button>
           </div>
         </div>
 
+        <div class="toolbar-row">
+          <div class="seg">
+            <button class="control" id="calendarPrev">이전</button>
+            <button class="control" id="calendarToday">오늘</button>
+            <button class="control" id="calendarNext">다음</button>
+          </div>
+          <span class="chip" id="calendarRangeLabel">2026년</span>
+        </div>
+
+        <div class="color-legend">
+          <span class="legend-item"><span class="legend-dot" style="background:#1b998b"></span>Personal</span>
+          <span class="legend-item"><span class="legend-dot" style="background:#2563eb"></span>Work</span>
+          <span class="legend-item"><span class="legend-dot" style="background:#dc2626"></span>Critical</span>
+          <span class="legend-item"><span class="legend-dot" style="background:#d97706"></span>Reminder</span>
+          <span class="legend-item"><span class="legend-dot" style="background:#6d6492"></span>Context</span>
+        </div>
+
         <div class="calendar-view active" id="view-year">
-          <div class="year-grid" id="webYearGrid"></div>
+          <div class="toolbar-row" style="margin-top:2px;">
+            <div class="seg" id="yearModeSwitch">
+              <button class="control active" data-ymode="compact">Year Compact</button>
+              <button class="control" data-ymode="timeline">Year Timeline</button>
+            </div>
+          </div>
+          <div class="year-mode active" id="year-mode-compact">
+            <div class="year-grid" id="yearGrid"></div>
+          </div>
+          <div class="year-mode" id="year-mode-timeline">
+            <div class="year-timeline-wrap">
+              <table class="year-timeline-table" id="yearTimelineTable">
+                <thead>
+                  <tr id="yearTimelineHead"></tr>
+                </thead>
+                <tbody id="yearTimelineBody"></tbody>
+              </table>
+            </div>
+          </div>
         </div>
 
         <div class="calendar-view" id="view-month">
           <div class="month-grid">
             <div class="week-head"><div>Sun</div><div>Mon</div><div>Tue</div><div>Wed</div><div>Thu</div><div>Fri</div><div>Sat</div></div>
-            <div class="month-days">
-              <div class="day-cell"><div class="dnum">18</div><div class="ev">릴리즈 안정화</div><div class="td">세금 신고 자료</div></div>
-              <div class="day-cell"><div class="dnum">19</div><div class="ev">워크숍</div></div>
-              <div class="day-cell"><div class="dnum">20</div><div class="td">회의 노트 정리</div></div>
-              <div class="day-cell"><div class="dnum">21</div><div class="ev">출장</div></div>
-              <div class="day-cell"><div class="dnum">22</div></div>
-              <div class="day-cell"><div class="dnum">23</div><div class="ev">장애 대응</div></div>
-              <div class="day-cell"><div class="dnum">24</div><div class="td">월간 회고 작성</div></div>
-            </div>
+            <div class="month-days" id="monthDays"></div>
           </div>
         </div>
 
         <div class="calendar-view" id="view-week">
-          <div class="week-table">
-            <div class="week-cols"><div></div><div>Mon</div><div>Tue</div><div>Wed</div><div>Thu</div><div>Fri</div><div>Sat</div><div>Sun</div></div>
-            <div class="slots">
-              <div class="time">09:00</div><div class="slot"><span class="wk-event">스프린트 점검</span></div><div class="slot"></div><div class="slot"></div><div class="slot"><span class="wk-event">디자인 리뷰</span></div><div class="slot"></div><div class="slot"></div><div class="slot"></div>
-              <div class="time">13:00</div><div class="slot"></div><div class="slot"><span class="wk-todo">세금 신고 자료</span></div><div class="slot"></div><div class="slot"></div><div class="slot"><span class="wk-event">워크숍</span></div><div class="slot"></div><div class="slot"></div>
-              <div class="time">18:00</div><div class="slot"></div><div class="slot"></div><div class="slot"><span class="wk-todo">월간 회고 작성</span></div><div class="slot"></div><div class="slot"></div><div class="slot"></div><div class="slot"></div>
-            </div>
+          <div class="week-board">
+            <div class="week-cols" id="weekCols"></div>
+            <div class="week-slots" id="weekRows"></div>
           </div>
         </div>
       </section>
 
       <section class="panel" id="tab-todo">
-        <h2 class="section-title">Todo UI</h2>
-        <div class="sub">Google Tasks due 중심 기본 구조 + Lifebase 확장 필드(우선순위, 반복, 프로젝트)를 같이 표시합니다.</div>
+        <h2 class="section-title">Todo (Google Tasks Style)</h2>
+        <p class="sub">리스트 중심, 간단 체크, due 중심 정렬의 Google Tasks 패턴을 따릅니다.</p>
+
         <div class="todo-layout">
-          <div class="todo-col">
-            <h4>Todo</h4>
-            <div class="todo-item">OAuth 토큰 점검<div class="meta">Due 03/15 · High · personal@gmail.com</div></div>
-            <div class="todo-item">분기 목표 초안 작성<div class="meta">Due 03/22 · Mid · team.ops@google.com</div></div>
+          <div class="card">
+            <div class="card-title">목록</div>
+            <div class="task-list-item active">내 할 일</div>
+            <div class="task-list-item">업무</div>
+            <div class="task-list-item">개인</div>
+            <div class="task-list-item">대기중</div>
           </div>
-          <div class="todo-col">
-            <h4>In Progress</h4>
-            <div class="todo-item">릴리즈 체크리스트 점검<div class="meta">Due 02/18 · High · Ops</div></div>
-            <div class="todo-item">백업 점검 체크리스트<div class="meta">Due 11/07 · Low · Infra</div></div>
-          </div>
-          <div class="todo-col">
-            <h4>Done</h4>
-            <div class="todo-item">회의 노트 정리<div class="meta">Completed · Google Tasks Sync</div></div>
+
+          <div class="card">
+            <div class="task-toolbar">
+              <div class="card-title" style="margin:0;">내 할 일</div>
+              <div class="seg">
+                <button class="btn">내 순서</button>
+                <button class="btn">마감일</button>
+              </div>
+            </div>
+            <input class="task-input" placeholder="새 작업 추가" />
+            <div id="todoListItems"></div>
           </div>
         </div>
       </section>
 
       <section class="panel" id="tab-gallery">
-        <h2 class="section-title">Gallery UI</h2>
-        <div class="sub">썸네일/메타데이터 밀도 검증용 프로토타입입니다.</div>
-        <div class="grid grid-12">
-          <div class="card" style="grid-column: span 4; height: 140px;">Media Preview 1</div>
-          <div class="card" style="grid-column: span 4; height: 140px;">Media Preview 2</div>
-          <div class="card" style="grid-column: span 4; height: 140px;">Media Preview 3</div>
+        <h2 class="section-title">Gallery</h2>
+        <p class="sub">전체/이미지/비디오 필터와 정렬 조건(생성일/수정일, 오름/내림차순)을 지원합니다.</p>
+
+        <div class="gallery-controls">
+          <div class="seg" id="galleryTypeSwitch">
+            <button class="control active" data-gtype="all">전체</button>
+            <button class="control" data-gtype="image">이미지</button>
+            <button class="control" data-gtype="video">비디오</button>
+          </div>
+
+          <div class="seg">
+            <select id="gallerySortBy" class="control">
+              <option value="modified">수정한 날짜</option>
+              <option value="created">생성한 날짜</option>
+            </select>
+            <select id="gallerySortDir" class="control">
+              <option value="desc">내림차순</option>
+              <option value="asc">오름차순</option>
+            </select>
+          </div>
         </div>
+
+        <div class="gallery-grid" id="galleryGrid"></div>
       </section>
 
       <section class="panel" id="tab-settings">
         <h2 class="section-title">Settings</h2>
-        <div class="sub">전역 설정: 계정 필터, 완료 Todo 표시, 테마 모드.</div>
-        <div class="card">
+        <p class="sub">계정 연결, 전역 필터, 테마 설정, 폴더 동기화 정책을 관리합니다.</p>
+
+        <div class="card" style="margin-bottom:10px;">
           <div class="row"><span>Google 계정 연결</span><span class="badge ok">2개 활성</span></div>
           <div class="row"><span>캘린더 전역 계정 필터</span><span class="badge">전체 계정</span></div>
-          <div class="row"><span>완료 Todo 표시</span><span class="badge">숨김</span></div>
+          <div class="row"><span>완료 Todo 기본값</span><span class="badge">숨김</span></div>
           <div class="row">
             <span>테마 모드</span>
             <span class="theme-switch">
@@ -604,24 +1065,30 @@
             </span>
           </div>
         </div>
+
+        <div class="card">
+          <div class="card-title">Google 로그인 UI 프로토타입</div>
+          <p class="sub" style="margin-bottom:8px;">OAuth 계정 선택/권한 동의/연결 완료 화면</p>
+          <a class="btn primary" href="./lifebase-google-login-view.html" target="_blank" style="text-decoration:none; display:inline-block;">로그인 프로토타입 열기</a>
+        </div>
       </section>
     </main>
   </div>
 
 <script>
-  const mainTabs = document.querySelectorAll('.nav-tab');
+  const tabs = document.querySelectorAll('.nav-tab');
   const panels = document.querySelectorAll('.panel');
 
-  mainTabs.forEach((button) => {
+  tabs.forEach((button) => {
     button.addEventListener('click', () => {
-      mainTabs.forEach((b) => b.classList.remove('active'));
+      tabs.forEach((b) => b.classList.remove('active'));
       panels.forEach((p) => p.classList.remove('active'));
       button.classList.add('active');
       document.getElementById(`tab-${button.dataset.tab}`).classList.add('active');
     });
   });
 
-  const cviewButtons = document.querySelectorAll('#calendarViewSwitch button');
+  const cviewButtons = document.querySelectorAll('#calendarViewSwitch button[data-cview]');
   const cviews = document.querySelectorAll('.calendar-view');
 
   cviewButtons.forEach((button) => {
@@ -631,36 +1098,6 @@
       button.classList.add('active');
       document.getElementById(`view-${button.dataset.cview}`).classList.add('active');
     });
-  });
-
-  const monthNames = ['1월', '2월', '3월', '4월', '5월', '6월', '7월', '8월', '9월', '10월', '11월', '12월'];
-  const eventMarks = new Set(['1-3', '2-4', '3-10', '5-2', '7-3', '9-3', '10-5', '12-5']);
-  const todoMarks = new Set(['2-11', '3-5', '4-8', '6-5', '8-5', '11-7']);
-
-  const webYearGrid = document.getElementById('webYearGrid');
-  monthNames.forEach((name, monthIndex) => {
-    const card = document.createElement('div');
-    card.className = 'month-card';
-
-    const head = document.createElement('div');
-    head.className = 'month-head';
-    head.textContent = name;
-
-    const mini = document.createElement('div');
-    mini.className = 'month-mini';
-
-    for (let day = 1; day <= 14; day += 1) {
-      const cell = document.createElement('span');
-      const key = `${monthIndex + 1}-${day}`;
-      if (eventMarks.has(key)) cell.classList.add('dot-event');
-      if (todoMarks.has(key)) cell.classList.add('dot-todo');
-      cell.textContent = day;
-      mini.appendChild(cell);
-    }
-
-    card.appendChild(head);
-    card.appendChild(mini);
-    webYearGrid.appendChild(card);
   });
 
   const webThemeStatus = document.getElementById('webThemeStatus');
@@ -693,6 +1130,693 @@
       applyTheme(mode);
     });
   });
+
+  // ===== Calendar/Todo data =====
+  const YEAR = 2026;
+  const DOW_KR = ['일', '월', '화', '수', '목', '금', '토'];
+  const demoToday = new Date(YEAR, 1, 21);
+  const accountLabel = {
+    all: '전체',
+    personal: 'personal@gmail.com',
+    work: 'team.ops@google.com'
+  };
+
+  let activeAccount = 'all';
+  let showCompletedTodos = false;
+  let activeCalendarView = 'year';
+  let activeYearMode = 'compact';
+  let currentMonth = demoToday.getMonth();
+  let weekStart = startOfWeek(demoToday);
+
+  const holidays = {
+    '2026-01-01': '신정',
+    '2026-03-01': '삼일절',
+    '2026-05-05': '어린이날',
+    '2026-06-06': '현충일',
+    '2026-08-15': '광복절',
+    '2026-10-03': '개천절',
+    '2026-10-09': '한글날',
+    '2026-12-25': '성탄절'
+  };
+
+  const rangeEvents = [
+    { start: '2026-02-18', end: '2026-02-21', title: '릴리즈 안정화', color: 'red', account: 'work' },
+    { start: '2026-02-17', end: '2026-02-23', title: '장애 대응', color: 'yellow', account: 'work' },
+    { start: '2026-02-15', end: '2026-02-20', title: '출장', color: 'lavender', account: 'personal' },
+    { start: '2026-03-22', end: '2026-03-26', title: '해외 컨퍼런스', color: 'blue', account: 'work' },
+    { start: '2026-06-28', end: '2026-07-03', title: '프로젝트 마감', color: 'green', account: 'personal' }
+  ];
+
+  const singleEvents = [
+    { date: '2026-02-18', title: '스프린트 점검', color: 'teal', account: 'work' },
+    { date: '2026-02-19', title: '워크숍', color: 'blue', account: 'work' },
+    { date: '2026-02-23', title: '긴급 미팅', color: 'red', account: 'work' },
+    { date: '2026-03-10', title: '고객 리뷰', color: 'yellow', account: 'work' },
+    { date: '2026-05-11', title: '어머니날', color: 'lavender', account: 'personal' }
+  ];
+
+  const timedEvents = [
+    { date: '2026-02-16', time: '09:00', title: '스프린트 점검', color: 'teal', account: 'work' },
+    { date: '2026-02-18', time: '13:00', title: '디자인 리뷰', color: 'blue', account: 'work' },
+    { date: '2026-02-19', time: '13:00', title: '워크숍', color: 'yellow', account: 'work' },
+    { date: '2026-02-22', time: '18:00', title: '장애 대응 회의', color: 'red', account: 'work' },
+    { date: '2026-02-20', time: '09:00', title: '가족 일정', color: 'green', account: 'personal' }
+  ];
+
+  const todoItems = [
+    { id: 1, date: '2026-02-18', title: '릴리즈 체크리스트 점검', done: false, account: 'work' },
+    { id: 2, date: '2026-02-20', title: '회의 노트 정리', done: true, account: 'work' },
+    { id: 3, date: '2026-02-24', title: '월간 회고 작성', done: false, account: 'work' },
+    { id: 4, date: '2026-03-15', title: 'OAuth 토큰 점검', done: false, account: 'work' },
+    { id: 5, date: '2026-04-18', title: '세금 신고 자료 업로드', done: false, account: 'personal' }
+  ];
+
+  function dateKey(y, m, d) {
+    const mm = String(m).padStart(2, '0');
+    const dd = String(d).padStart(2, '0');
+    return `${y}-${mm}-${dd}`;
+  }
+
+  function parseDate(key) {
+    const [y, m, d] = key.split('-').map(Number);
+    return new Date(y, m - 1, d);
+  }
+
+  function toIndex(dateStr) {
+    const date = parseDate(dateStr);
+    const start = new Date(YEAR, 0, 1);
+    return Math.floor((date - start) / 86400000) + 1;
+  }
+
+  function startOfWeek(date) {
+    const d = new Date(date);
+    const day = d.getDay();
+    const diff = day === 0 ? -6 : 1 - day;
+    d.setDate(d.getDate() + diff);
+    d.setHours(0, 0, 0, 0);
+    return d;
+  }
+
+  function addDays(date, days) {
+    const d = new Date(date);
+    d.setDate(d.getDate() + days);
+    return d;
+  }
+
+  function isSameDay(a, b) {
+    return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
+  }
+
+  function monthLabel(monthIndex) {
+    return `${monthIndex + 1}월`;
+  }
+
+  function passAccount(item) {
+    return activeAccount === 'all' || item.account === activeAccount;
+  }
+
+  function filteredRangeEvents() {
+    return rangeEvents.filter(passAccount);
+  }
+
+  function filteredSinglesForDate(key) {
+    return singleEvents.filter((event) => event.date === key && passAccount(event));
+  }
+
+  function todosForDate(key) {
+    return todoItems.filter((todo) => todo.date === key && passAccount(todo) && (showCompletedTodos || !todo.done));
+  }
+
+  function assignLanes(events) {
+    const sorted = [...events].sort((a, b) => {
+      const startDiff = toIndex(a.start) - toIndex(b.start);
+      if (startDiff !== 0) return startDiff;
+      return toIndex(b.end) - toIndex(a.end);
+    });
+
+    const lanes = new Map();
+    const active = [];
+    sorted.forEach((event) => {
+      const start = toIndex(event.start);
+      const end = toIndex(event.end);
+
+      for (let i = active.length - 1; i >= 0; i -= 1) {
+        if (active[i].end < start) active.splice(i, 1);
+      }
+
+      const used = new Set(active.map((entry) => entry.lane));
+      let lane = 0;
+      while (used.has(lane)) lane += 1;
+      lanes.set(event, lane);
+      active.push({ lane, end });
+    });
+
+    return lanes;
+  }
+
+  function rangesForDate(key, events, laneMap) {
+    const idx = toIndex(key);
+    return events
+      .filter((event) => idx >= toIndex(event.start) && idx <= toIndex(event.end))
+      .sort((a, b) => (laneMap.get(a) || 0) - (laneMap.get(b) || 0));
+  }
+
+  function renderYearCompact(events, laneMap) {
+    const container = document.getElementById('yearGrid');
+    container.innerHTML = '';
+
+    for (let month = 1; month <= 12; month += 1) {
+      const card = document.createElement('div');
+      card.className = 'month-card';
+
+      const head = document.createElement('div');
+      head.className = 'month-head';
+      head.textContent = `${month}월`;
+
+      const week = document.createElement('div');
+      week.className = 'mini-week';
+      ['일', '월', '화', '수', '목', '금', '토'].forEach((w) => {
+        const s = document.createElement('span');
+        s.textContent = w;
+        week.appendChild(s);
+      });
+
+      const days = document.createElement('div');
+      days.className = 'mini-days';
+
+      const firstDow = new Date(YEAR, month - 1, 1).getDay();
+      const maxDay = new Date(YEAR, month, 0).getDate();
+
+      for (let i = 0; i < firstDow; i += 1) {
+        const empty = document.createElement('div');
+        empty.className = 'mini-day empty';
+        days.appendChild(empty);
+      }
+
+      for (let day = 1; day <= maxDay; day += 1) {
+        const key = dateKey(YEAR, month, day);
+        const cell = document.createElement('div');
+        cell.className = 'mini-day';
+        if (isSameDay(parseDate(key), demoToday)) cell.classList.add('secondary-focus');
+
+        const num = document.createElement('span');
+        num.className = 'mini-num';
+        num.textContent = day;
+        cell.appendChild(num);
+
+        const ranges = rangesForDate(key, events, laneMap);
+        const visibleRanges = ranges.filter((event) => (laneMap.get(event) || 0) < 3);
+        const hiddenRanges = ranges.length - visibleRanges.length;
+        const singles = filteredSinglesForDate(key);
+        const todos = todosForDate(key);
+
+        let shownSingles = 0;
+        let shownTodos = 0;
+        const markerColors = visibleRanges.map((range) => range.color);
+        if (markerColors.length < 3 && singles.length > 0) {
+          markerColors.push(singles[0].color);
+          shownSingles = 1;
+        }
+        if (markerColors.length < 3 && todos.length > 0) {
+          markerColors.push('todo');
+          shownTodos = 1;
+        }
+
+        if (markerColors.length > 0) {
+          const bars = document.createElement('div');
+          bars.className = 'mini-bars';
+          markerColors.forEach((color) => {
+            const bar = document.createElement('span');
+            bar.className = `mini-bar bar-${color}`;
+            bars.appendChild(bar);
+          });
+          cell.appendChild(bars);
+        }
+
+        const hiddenEvents = hiddenRanges + Math.max(0, singles.length - shownSingles);
+        const hiddenTodos = Math.max(0, todos.length - shownTodos);
+        if (hiddenEvents > 0 || hiddenTodos > 0) {
+          const chips = document.createElement('div');
+          chips.className = 'mini-chips';
+          if (hiddenEvents > 0) {
+            const eventChip = document.createElement('span');
+            eventChip.className = 'tiny-chip chip-event';
+            eventChip.textContent = `+E${hiddenEvents}`;
+            chips.appendChild(eventChip);
+          }
+          if (hiddenTodos > 0) {
+            const todoChip = document.createElement('span');
+            todoChip.className = 'tiny-chip chip-todo';
+            todoChip.textContent = `+T${hiddenTodos}`;
+            chips.appendChild(todoChip);
+          }
+          cell.appendChild(chips);
+        }
+
+        days.appendChild(cell);
+      }
+
+      const total = firstDow + maxDay;
+      const extra = (7 - (total % 7)) % 7;
+      for (let i = 0; i < extra; i += 1) {
+        const empty = document.createElement('div');
+        empty.className = 'mini-day empty';
+        days.appendChild(empty);
+      }
+
+      card.appendChild(head);
+      card.appendChild(week);
+      card.appendChild(days);
+      container.appendChild(card);
+    }
+  }
+
+  function getRangePosition(range, key, month, day) {
+    if (range.start === key && range.end === key) return 'single';
+    if (range.start === key) return 'start';
+    if (range.end === key) return 'end';
+    const rangeStart = parseDate(range.start);
+    if (day === 1 && rangeStart.getMonth() + 1 < month) return 'start';
+    return 'mid';
+  }
+
+  function buildYearTimelineCellHTML(month, day, events, laneMap) {
+    const maxDays = new Date(YEAR, month, 0).getDate();
+    if (day > maxDays) return '<div class="yt-cell empty"></div>';
+
+    const key = dateKey(YEAR, month, day);
+    const dow = new Date(YEAR, month - 1, day).getDay();
+    const weekend = dow === 0 || dow === 6;
+    const isToday = isSameDay(parseDate(key), demoToday);
+    const holiday = holidays[key];
+    const singles = filteredSinglesForDate(key);
+    const todos = todosForDate(key);
+
+    const allRanges = rangesForDate(key, events, laneMap);
+    const visibleRanges = allRanges.filter((event) => (laneMap.get(event) || 0) < 3);
+    const hiddenRanges = allRanges.filter((event) => (laneMap.get(event) || 0) >= 3);
+
+    let cls = 'yt-cell';
+    if (weekend) cls += ' weekend';
+    if (isToday) cls += ' today';
+
+    let html = `<div class="${cls}" title="${month}월 ${day}일 (${DOW_KR[dow]})">`;
+
+    visibleRanges.forEach((range) => {
+      const position = getRangePosition(range, key, month, day);
+      const lane = laneMap.get(range) || 0;
+      let barClass = `yt-range-bar bar-${range.color} lane-${lane}`;
+      if (position === 'start') barClass += ' start';
+      else if (position === 'end') barClass += ' end';
+      else if (position === 'single') barClass += ' single';
+      html += `<div class="${barClass}"></div>`;
+    });
+
+    html += `<span class="yt-label${dow === 0 ? ' sun' : ''}${dow === 6 ? ' sat' : ''}">${DOW_KR[dow]}</span>`;
+
+    let hiddenSingles = [];
+    let hiddenTodos = [];
+    if (holiday) {
+      html += `<span class="yt-event-text color-holiday">${holiday}</span>`;
+      hiddenSingles = singles;
+      hiddenTodos = todos;
+    } else if (visibleRanges.length > 0) {
+      const startRange = visibleRanges.find((range) => {
+        const position = getRangePosition(range, key, month, day);
+        return position === 'start' || position === 'single';
+      });
+
+      if (startRange) {
+        html += `<span class="yt-event-text color-${startRange.color}">${startRange.title}</span>`;
+        hiddenSingles = singles;
+        hiddenTodos = todos;
+      } else if (singles.length > 0) {
+        html += `<span class="yt-event-text color-${singles[0].color}">${singles[0].title}</span>`;
+        hiddenSingles = singles.slice(1);
+        hiddenTodos = todos;
+      } else if (todos.length > 0) {
+        html += `<span class="yt-todo-pill${todos[0].done ? ' done' : ''}">${todos[0].title}</span>`;
+        hiddenTodos = todos.slice(1);
+      } else if (day === 1) {
+        html += `<span class="yt-event-text color-${visibleRanges[0].color} continued">← ${visibleRanges[0].title}</span>`;
+      }
+    } else if (singles.length > 0) {
+      html += `<span class="yt-event-text color-${singles[0].color}">${singles[0].title}</span>`;
+      hiddenSingles = singles.slice(1);
+      hiddenTodos = todos;
+    } else if (todos.length > 0) {
+      html += `<span class="yt-todo-pill${todos[0].done ? ' done' : ''}">${todos[0].title}</span>`;
+      hiddenTodos = todos.slice(1);
+    }
+
+    const hiddenEventCount = hiddenRanges.length + hiddenSingles.length;
+    const hiddenTodoCount = hiddenTodos.length;
+    if (hiddenEventCount > 0) html += `<span class="yt-more-badge more-event">+E${hiddenEventCount}</span>`;
+    if (hiddenTodoCount > 0) html += `<span class="yt-more-badge more-todo">+T${hiddenTodoCount}</span>`;
+
+    html += '</div>';
+    return html;
+  }
+
+  function renderYearTimeline(events, laneMap) {
+    const head = document.getElementById('yearTimelineHead');
+    const body = document.getElementById('yearTimelineBody');
+
+    head.innerHTML = '<th class="day-h">일</th>';
+    for (let month = 1; month <= 12; month += 1) {
+      head.innerHTML += `<th>${month}월</th>`;
+    }
+
+    body.innerHTML = '';
+    for (let day = 1; day <= 31; day += 1) {
+      const row = document.createElement('tr');
+      const dayCell = document.createElement('td');
+      dayCell.className = 'day-n';
+      dayCell.textContent = day;
+      row.appendChild(dayCell);
+
+      for (let month = 1; month <= 12; month += 1) {
+        const td = document.createElement('td');
+        td.className = 'month-c';
+        td.innerHTML = buildYearTimelineCellHTML(month, day, events, laneMap);
+        row.appendChild(td);
+      }
+      body.appendChild(row);
+    }
+  }
+
+  function renderMonthView(events, laneMap) {
+    const monthDays = document.getElementById('monthDays');
+    monthDays.innerHTML = '';
+
+    const firstDow = new Date(YEAR, currentMonth, 1).getDay();
+    const maxDay = new Date(YEAR, currentMonth + 1, 0).getDate();
+
+    const prevMonthMax = new Date(YEAR, currentMonth, 0).getDate();
+    for (let i = firstDow - 1; i >= 0; i -= 1) {
+      const d = prevMonthMax - i;
+      const cell = document.createElement('div');
+      cell.className = 'day-cell';
+      cell.style.opacity = '0.35';
+      cell.innerHTML = `<div class="day-num">${d}</div>`;
+      monthDays.appendChild(cell);
+    }
+
+    for (let day = 1; day <= maxDay; day += 1) {
+      const key = dateKey(YEAR, currentMonth + 1, day);
+      const cell = document.createElement('div');
+      cell.className = 'day-cell';
+      if (isSameDay(parseDate(key), demoToday)) cell.classList.add('secondary-focus');
+
+      const ranges = rangesForDate(key, events, laneMap).slice(0, 2);
+      const singles = filteredSinglesForDate(key);
+      const todos = todosForDate(key);
+
+      const items = [];
+      ranges.forEach((range) => items.push({ type: 'event', color: range.color, title: range.title }));
+      singles.forEach((single) => items.push({ type: 'event', color: single.color, title: single.title }));
+      todos.forEach((todo) => items.push({ type: 'todo', title: todo.title }));
+
+      let html = `<div class="day-num">${day}</div>`;
+      items.slice(0, 3).forEach((item) => {
+        if (item.type === 'todo') {
+          html += `<div class="todo-pill">${item.title}</div>`;
+        } else {
+          html += `<div class="event-pill ${item.color}">${item.title}</div>`;
+        }
+      });
+
+      const hidden = Math.max(0, items.length - 3);
+      if (hidden > 0) html += `<div class="badge">+${hidden}</div>`;
+
+      cell.innerHTML = html;
+      monthDays.appendChild(cell);
+    }
+
+    while (monthDays.children.length < 42) {
+      const cell = document.createElement('div');
+      cell.className = 'day-cell';
+      cell.style.opacity = '0.35';
+      cell.innerHTML = `<div class="day-num">${monthDays.children.length - (firstDow + maxDay) + 1}</div>`;
+      monthDays.appendChild(cell);
+    }
+  }
+
+  function renderWeekView() {
+    const weekCols = document.getElementById('weekCols');
+    const weekRows = document.getElementById('weekRows');
+    const dayLabels = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+    const slotTimes = ['09:00', '13:00', '18:00'];
+
+    weekCols.innerHTML = '<div></div>';
+    const weekDates = [];
+    for (let i = 0; i < 7; i += 1) {
+      const date = addDays(weekStart, i);
+      weekDates.push(date);
+      const col = document.createElement('div');
+      col.className = 'day-head';
+      col.innerHTML = `<strong>${dayLabels[i]}</strong><span>${date.getMonth() + 1}/${date.getDate()}</span>`;
+      weekCols.appendChild(col);
+    }
+
+    weekRows.innerHTML = '';
+    slotTimes.forEach((time) => {
+      const timeCell = document.createElement('div');
+      timeCell.className = 'time-cell';
+      timeCell.textContent = time;
+      weekRows.appendChild(timeCell);
+
+      weekDates.forEach((date) => {
+        const key = dateKey(date.getFullYear(), date.getMonth() + 1, date.getDate());
+        const slot = document.createElement('div');
+        slot.className = 'slot';
+
+        const stack = document.createElement('div');
+        stack.className = 'slot-stack';
+
+        timedEvents
+          .filter((event) => passAccount(event) && event.date === key && event.time === time)
+          .forEach((event) => {
+            const chip = document.createElement('span');
+            chip.className = `wk-event ${event.color}`;
+            chip.textContent = event.title;
+            stack.appendChild(chip);
+          });
+
+        if (time === '18:00') {
+          todoItems
+            .filter((todo) => todo.date === key && passAccount(todo) && (showCompletedTodos || !todo.done))
+            .forEach((todo) => {
+              const chip = document.createElement('span');
+              chip.className = 'wk-todo';
+              chip.textContent = todo.title;
+              stack.appendChild(chip);
+            });
+        }
+
+        slot.appendChild(stack);
+        weekRows.appendChild(slot);
+      });
+    });
+  }
+
+  function renderTodoPanel() {
+    const container = document.getElementById('todoListItems');
+    const todos = [...todoItems]
+      .filter((todo) => passAccount(todo) && (showCompletedTodos || !todo.done))
+      .sort((a, b) => a.date.localeCompare(b.date));
+
+    container.innerHTML = '';
+    if (todos.length === 0) {
+      container.innerHTML = '<div class="task-meta">표시할 Todo가 없습니다.</div>';
+      return;
+    }
+
+    todos.forEach((todo) => {
+      const item = document.createElement('div');
+      item.className = `task-item${todo.done ? ' soft-secondary' : ''}`;
+      item.innerHTML = `
+        <div class="task-row">
+          <span class="check${todo.done ? ' done' : ''}"></span>
+          <div>
+            <div class="task-title${todo.done ? ' done' : ''}">${todo.title}</div>
+            <div class="task-meta">Due ${todo.date} · ${accountLabel[todo.account]}</div>
+          </div>
+        </div>
+      `;
+      container.appendChild(item);
+    });
+  }
+
+  function renderCalendar() {
+    const events = filteredRangeEvents();
+    const laneMap = assignLanes(events);
+    renderYearCompact(events, laneMap);
+    renderYearTimeline(events, laneMap);
+    renderMonthView(events, laneMap);
+    renderWeekView();
+    renderTodoPanel();
+    updateCalendarRangeLabel();
+    requestAnimationFrame(syncYearTimelineRowHeight);
+  }
+
+  function syncYearTimelineRowHeight() {
+    const wrapper = document.querySelector('#year-mode-timeline .year-timeline-wrap');
+    const table = document.getElementById('yearTimelineTable');
+    if (!wrapper || !table) return;
+
+    const headerCell = table.querySelector('thead th');
+    const headerHeight = headerCell ? headerCell.getBoundingClientRect().height : 36;
+    const available = wrapper.clientHeight - headerHeight - 2;
+    const rowHeight = available / 31;
+    const clamped = Math.max(12, rowHeight);
+    document.documentElement.style.setProperty('--year-row-height', `${clamped.toFixed(2)}px`);
+  }
+
+  function updateCalendarRangeLabel() {
+    const label = document.getElementById('calendarRangeLabel');
+    if (activeCalendarView === 'month') {
+      label.textContent = `${YEAR}년 ${monthLabel(currentMonth)}`;
+      return;
+    }
+    if (activeCalendarView === 'week') {
+      const end = addDays(weekStart, 6);
+      label.textContent = `${weekStart.getMonth() + 1}/${weekStart.getDate()} - ${end.getMonth() + 1}/${end.getDate()}`;
+      return;
+    }
+    label.textContent = `${YEAR}년 · ${activeYearMode === 'compact' ? 'Compact' : 'Timeline'}`;
+  }
+
+  function syncTodoToggleText() {
+    const toggle = document.getElementById('todoDoneToggle');
+    toggle.textContent = showCompletedTodos ? '완료 Todo 표시 중' : '완료 Todo 숨김';
+  }
+
+  document.querySelectorAll('button[data-account]').forEach((button) => {
+    button.addEventListener('click', () => {
+      activeAccount = button.dataset.account;
+      document.querySelectorAll('button[data-account]').forEach((btn) => btn.classList.remove('active'));
+      button.classList.add('active');
+      document.getElementById('globalAccountChip').textContent = `계정: ${accountLabel[activeAccount]}`;
+      renderCalendar();
+    });
+  });
+
+  const yearModeButtons = document.querySelectorAll('#yearModeSwitch button');
+  const yearModes = document.querySelectorAll('.year-mode');
+  const calendarPanel = document.getElementById('tab-calendar');
+  function syncTimelineFocusClass() {
+    calendarPanel.classList.toggle('timeline-focus', activeYearMode === 'timeline');
+  }
+  yearModeButtons.forEach((button) => {
+    button.addEventListener('click', () => {
+      activeYearMode = button.dataset.ymode;
+      yearModeButtons.forEach((btn) => btn.classList.remove('active'));
+      button.classList.add('active');
+      yearModes.forEach((mode) => mode.classList.remove('active'));
+      document.getElementById(`year-mode-${activeYearMode}`).classList.add('active');
+      syncTimelineFocusClass();
+      updateCalendarRangeLabel();
+      requestAnimationFrame(syncYearTimelineRowHeight);
+    });
+  });
+
+  cviewButtons.forEach((button) => {
+    button.addEventListener('click', () => {
+      activeCalendarView = button.dataset.cview;
+      updateCalendarRangeLabel();
+    });
+  });
+
+  document.getElementById('todoDoneToggle').addEventListener('click', () => {
+    showCompletedTodos = !showCompletedTodos;
+    syncTodoToggleText();
+    renderCalendar();
+  });
+
+  document.getElementById('calendarPrev').addEventListener('click', () => {
+    if (activeCalendarView === 'month') {
+      currentMonth = (currentMonth + 11) % 12;
+    } else if (activeCalendarView === 'week') {
+      weekStart = addDays(weekStart, -7);
+    }
+    renderCalendar();
+  });
+
+  document.getElementById('calendarNext').addEventListener('click', () => {
+    if (activeCalendarView === 'month') {
+      currentMonth = (currentMonth + 1) % 12;
+    } else if (activeCalendarView === 'week') {
+      weekStart = addDays(weekStart, 7);
+    }
+    renderCalendar();
+  });
+
+  document.getElementById('calendarToday').addEventListener('click', () => {
+    currentMonth = demoToday.getMonth();
+    weekStart = startOfWeek(demoToday);
+    renderCalendar();
+  });
+
+  syncTodoToggleText();
+  syncTimelineFocusClass();
+  renderCalendar();
+  window.addEventListener('resize', () => requestAnimationFrame(syncYearTimelineRowHeight));
+  window.addEventListener('load', () => requestAnimationFrame(syncYearTimelineRowHeight));
+
+  // ===== Gallery =====
+  const galleryItems = [
+    { id: 1, name: 'launch-day.jpg', type: 'image', created: '2026-02-10', modified: '2026-02-22' },
+    { id: 2, name: 'office-tour.mp4', type: 'video', created: '2026-01-13', modified: '2026-02-21' },
+    { id: 3, name: 'meeting-shot.png', type: 'image', created: '2026-02-01', modified: '2026-02-20' },
+    { id: 4, name: 'demo-record.mov', type: 'video', created: '2025-12-29', modified: '2026-02-18' },
+    { id: 5, name: 'whiteboard.jpg', type: 'image', created: '2026-02-03', modified: '2026-02-16' },
+    { id: 6, name: 'family-trip.mp4', type: 'video', created: '2025-11-04', modified: '2026-01-19' }
+  ];
+
+  let galleryType = 'all';
+
+  function renderGallery() {
+    const sortBy = document.getElementById('gallerySortBy').value;
+    const sortDir = document.getElementById('gallerySortDir').value;
+    const grid = document.getElementById('galleryGrid');
+
+    let list = galleryItems.filter((item) => galleryType === 'all' ? true : item.type === galleryType);
+
+    list.sort((a, b) => {
+      if (sortDir === 'asc') return a[sortBy].localeCompare(b[sortBy]);
+      return b[sortBy].localeCompare(a[sortBy]);
+    });
+
+    grid.innerHTML = '';
+    list.forEach((item) => {
+      const card = document.createElement('div');
+      card.className = 'media-card';
+      card.innerHTML = `
+        <div class="thumb"></div>
+        <div class="media-meta">
+          <div class="media-type">${item.type === 'image' ? '이미지' : '비디오'}</div>
+          <div>${item.name}</div>
+          <div style="margin-top:4px; font-size:11px;">생성 ${item.created} · 수정 ${item.modified}</div>
+        </div>
+      `;
+      grid.appendChild(card);
+    });
+  }
+
+  document.querySelectorAll('#galleryTypeSwitch button').forEach((button) => {
+    button.addEventListener('click', () => {
+      document.querySelectorAll('#galleryTypeSwitch button').forEach((b) => b.classList.remove('active'));
+      button.classList.add('active');
+      galleryType = button.dataset.gtype;
+      renderGallery();
+    });
+  });
+
+  document.getElementById('gallerySortBy').addEventListener('change', renderGallery);
+  document.getElementById('gallerySortDir').addEventListener('change', renderGallery);
+
+  renderGallery();
 </script>
 </body>
 </html>
