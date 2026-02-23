@@ -6,16 +6,55 @@
 <title>Lifebase Mobile Prototype</title>
 <style>
   :root {
-    --bg: #f3f7f5;
+    --primary: #1b998b;
+    --primary-soft: #e7f6f4;
+    --surface-accent: #f8f1ff;
+    --surface-secondary: #decdf5;
+    --text-primary: #534d56;
+    --text-secondary: #656176;
+
+    --background: #ffffff;
     --surface: #ffffff;
-    --surface-2: #f6faf8;
-    --text: #13231d;
-    --muted: #62716b;
-    --line: #dae4df;
-    --primary: #0f8f75;
-    --primary-soft: #d8f2eb;
-    --todo: #5b49b8;
-    --shadow: 0 20px 40px rgba(22, 38, 32, 0.18);
+    --border: #e5e5e5;
+    --text-strong: #111111;
+
+    --error: #ef4444;
+    --warning: #f59e0b;
+    --success: #22c55e;
+
+    --radius: 8px;
+    --space-1: 4px;
+    --space-2: 8px;
+    --space-3: 16px;
+    --shadow: 0 18px 40px rgba(83, 77, 86, 0.20);
+  }
+
+  body[data-theme="dark"] {
+    --background: #121212;
+    --surface: #1e1e1e;
+    --border: #2e2e2e;
+    --text-strong: #f5f5f5;
+    --surface-accent: #2a2035;
+    --surface-secondary: #352a40;
+    --text-primary: #d4d0d8;
+    --text-secondary: #9e96a8;
+    --primary-soft: #163731;
+    --shadow: 0 18px 40px rgba(0, 0, 0, 0.40);
+  }
+
+  @media (prefers-color-scheme: dark) {
+    body:not([data-theme="light"]) {
+      --background: #121212;
+      --surface: #1e1e1e;
+      --border: #2e2e2e;
+      --text-strong: #f5f5f5;
+      --surface-accent: #2a2035;
+      --surface-secondary: #352a40;
+      --text-primary: #d4d0d8;
+      --text-secondary: #9e96a8;
+      --primary-soft: #163731;
+      --shadow: 0 18px 40px rgba(0, 0, 0, 0.40);
+    }
   }
 
   * { box-sizing: border-box; }
@@ -25,156 +64,463 @@
     display: grid;
     place-items: center;
     font-family: "SUIT Variable", "Pretendard", "Noto Sans KR", sans-serif;
-    background: linear-gradient(150deg, #e7f3ee, #e6ecff);
-    color: var(--text);
+    color: var(--text-primary);
+    background: linear-gradient(160deg, var(--primary-soft), var(--background) 44%);
   }
 
   .phone {
-    width: 390px;
-    height: 820px;
-    border: 10px solid #171717;
+    width: min(390px, 100vw);
+    height: min(844px, 100vh);
+    border: 10px solid #1f1f1f;
     border-radius: 34px;
     overflow: hidden;
     background: var(--surface);
     box-shadow: var(--shadow);
     display: grid;
-    grid-template-rows: 34px 56px 1fr 64px;
+    grid-template-rows: 34px 58px 1fr 64px;
   }
 
   .status {
     background: #0f0f0f;
-    color: #e6e6e6;
+    color: #ececec;
     font-size: 12px;
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 0 16px;
+    padding: 0 14px;
   }
 
   .header {
-    border-bottom: 1px solid var(--line);
-    padding: 0 14px;
+    border-bottom: 1px solid var(--border);
+    padding: 0 12px;
+    background: var(--surface);
     display: flex;
     align-items: center;
     justify-content: space-between;
-    background: #fff;
   }
-  .title { font-weight: 800; }
-  .filter { font-size: 11px; color: var(--muted); border: 1px solid var(--line); border-radius: 999px; padding: 5px 9px; }
+  .title { font-size: 17px; font-weight: 800; color: var(--text-strong); }
+  .chip {
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    font-size: 11px;
+    color: var(--text-secondary);
+    padding: 5px 8px;
+    background: var(--surface);
+  }
 
-  .content { overflow: auto; background: var(--bg); }
+  .content {
+    overflow: auto;
+    background: linear-gradient(180deg, var(--primary-soft), var(--background) 24%);
+  }
 
-  .panel { display: none; padding: 12px; }
+  .panel {
+    display: none;
+    padding: 12px;
+  }
   .panel.active { display: block; }
 
   .card {
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
     background: var(--surface);
-    border: 1px solid var(--line);
-    border-radius: 12px;
-    padding: 12px;
-    margin-bottom: 10px;
+    padding: 10px;
+    margin-bottom: 8px;
+  }
+  .card-accent { background: var(--primary-soft); }
+
+  .section-title {
+    margin: 0 0 4px;
+    font-size: 18px;
+    color: var(--text-strong);
+  }
+  .sub {
+    margin: 0 0 10px;
+    font-size: 12px;
+    color: var(--text-secondary);
   }
 
-  .account-row { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 6px; margin-bottom: 8px; }
-  .account-pill {
-    white-space: nowrap;
-    font-size: 11px;
+  .row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border-bottom: 1px solid var(--border);
+    padding: 8px 0;
+    font-size: 12px;
+  }
+  .row:last-child { border-bottom: 0; }
+
+  .badge {
+    border: 1px solid var(--border);
     border-radius: 999px;
-    border: 1px solid var(--line);
-    padding: 6px 10px;
-    background: #fff;
-    color: var(--muted);
+    font-size: 10px;
+    color: var(--text-secondary);
+    padding: 2px 7px;
+    background: var(--surface);
   }
-  .account-pill.active { color: var(--primary); border-color: var(--primary); background: var(--primary-soft); }
+  .badge.ok { color: var(--success); }
+  .badge.warn { color: var(--warning); }
+  .badge.err { color: var(--error); }
 
-  .mini-day { font-size: 12px; color: var(--muted); margin-bottom: 5px; }
-  .event { font-size: 11px; border-radius: 6px; padding: 2px 6px; margin-bottom: 4px; background: #d8f2eb; color: var(--primary); }
-  .todo { font-size: 11px; border-radius: 999px; padding: 2px 6px; background: #ece9ff; color: var(--todo); }
+  .account-row,
+  .calendar-views,
+  .theme-switch {
+    display: flex;
+    gap: 6px;
+    overflow-x: auto;
+    padding-bottom: 4px;
+  }
+
+  .pill,
+  .theme-btn,
+  .view-btn {
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    background: var(--surface);
+    color: var(--text-secondary);
+    font-size: 11px;
+    padding: 6px 10px;
+    white-space: nowrap;
+    cursor: pointer;
+  }
+  .pill.active,
+  .theme-btn.active,
+  .view-btn.active {
+    background: var(--primary-soft);
+    color: var(--primary);
+    border-color: var(--primary);
+    font-weight: 700;
+  }
+
+  .calendar-view { display: none; }
+  .calendar-view.active { display: block; }
+
+  .year-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 6px;
+  }
+  .month-card {
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: var(--surface);
+    overflow: hidden;
+  }
+  .month-head {
+    border-bottom: 1px solid var(--border);
+    background: var(--primary-soft);
+    color: var(--text-primary);
+    font-size: 11px;
+    font-weight: 700;
+    padding: 6px 7px;
+  }
+  .month-mini {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+  }
+  .month-mini span {
+    min-height: 18px;
+    border-right: 1px solid var(--border);
+    border-bottom: 1px solid var(--border);
+    font-size: 9px;
+    color: var(--text-secondary);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    position: relative;
+  }
+  .month-mini span:nth-child(7n) { border-right: 0; }
+  .dot-event::after,
+  .dot-todo::after {
+    content: "";
+    width: 4px;
+    height: 4px;
+    border-radius: 50%;
+    position: absolute;
+    right: 2px;
+    bottom: 2px;
+  }
+  .dot-event::after { background: var(--primary); }
+  .dot-todo::after { background: #7b61ff; }
+
+  .month-grid {
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    overflow: hidden;
+    background: var(--surface);
+  }
+  .week-head,
+  .month-days { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); }
+  .week-head div {
+    text-align: center;
+    font-size: 10px;
+    color: var(--text-secondary);
+    border-bottom: 1px solid var(--border);
+    background: var(--primary-soft);
+    padding: 6px 0;
+  }
+  .day-cell {
+    min-height: 58px;
+    border-right: 1px solid var(--border);
+    border-bottom: 1px solid var(--border);
+    padding: 4px;
+    font-size: 10px;
+  }
+  .day-cell:nth-child(7n) { border-right: 0; }
+  .dnum { color: var(--text-secondary); margin-bottom: 3px; }
+  .ev {
+    font-size: 9px;
+    border-radius: 6px;
+    padding: 2px 4px;
+    margin-bottom: 2px;
+    background: color-mix(in srgb, var(--primary), white 80%);
+    color: color-mix(in srgb, var(--primary), black 20%);
+  }
+  .td {
+    font-size: 9px;
+    border-radius: 999px;
+    padding: 2px 4px;
+    background: color-mix(in srgb, #7b61ff, white 84%);
+    color: #5f4ab0;
+  }
+
+  .week-list .slot {
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: var(--surface);
+    padding: 8px;
+    margin-bottom: 6px;
+    font-size: 12px;
+  }
+  .slot .time { color: var(--text-secondary); font-size: 11px; margin-bottom: 4px; }
+  .slot .event { color: var(--text-primary); margin-bottom: 3px; }
+  .slot .todo { color: var(--text-secondary); }
+
+  .todo-item {
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 8px;
+    margin-bottom: 6px;
+    background: var(--surface);
+    font-size: 12px;
+  }
+  .todo-meta { margin-top: 4px; color: var(--text-secondary); font-size: 11px; }
 
   .tabs {
-    border-top: 1px solid var(--line);
-    background: #fff;
+    border-top: 1px solid var(--border);
+    background: var(--surface);
     display: grid;
-    grid-template-columns: repeat(5, 1fr);
+    grid-template-columns: repeat(5, minmax(0, 1fr));
   }
-  .tab-btn {
+  .mobile-tab {
     border: 0;
     background: transparent;
+    color: var(--text-secondary);
     font-size: 10px;
-    color: var(--muted);
     padding: 6px 0;
     cursor: pointer;
   }
-  .tab-btn.active { color: var(--primary); font-weight: 700; }
-  .tab-icon { display: block; font-size: 16px; line-height: 1.2; }
+  .mobile-tab.active {
+    color: var(--primary);
+    font-weight: 700;
+    background: var(--primary-soft);
+  }
+  .tab-icon { display: block; font-size: 15px; line-height: 1.2; }
 </style>
 </head>
 <body>
   <div class="phone">
     <div class="status"><span>9:41</span><span>5G · 82%</span></div>
-    <div class="header">
+    <header class="header">
       <span class="title">Lifebase</span>
-      <span class="filter">계정: 전체</span>
-    </div>
+      <span class="chip" id="mobileThemeStatus">테마: 시스템</span>
+    </header>
 
     <main class="content">
       <section class="panel active" id="tab-cloud">
+        <h2 class="section-title">Cloud</h2>
+        <p class="sub">모바일에서 동기화 상태와 충돌만 빠르게 확인.</p>
+        <div class="card card-accent">
+          <div class="row"><span>동기화 큐</span><span class="badge">12</span></div>
+          <div class="row"><span>충돌 파일</span><span class="badge err">2</span></div>
+          <div class="row"><span>최근 업로드</span><span class="badge ok">완료</span></div>
+        </div>
         <div class="card">
-          <strong>Cloud</strong>
-          <p style="font-size:12px;color:var(--muted);">최근 변경 파일과 업로드 큐를 확인합니다.</p>
+          <div class="row"><span>/Docs/meeting/notes.md</span><span class="badge warn">대기중</span></div>
+          <div class="row"><span>/Archive/legacy.zip</span><span class="badge err">충돌</span></div>
         </div>
       </section>
 
       <section class="panel" id="tab-calendar">
-        <div class="card">
-          <strong>Calendar</strong>
-          <div class="account-row">
-            <span class="account-pill active">전체</span>
-            <span class="account-pill">personal@gmail.com</span>
-            <span class="account-pill">team.ops@google.com</span>
-          </div>
-          <div class="mini-day">2월 24일 (월)</div>
-          <div class="event">오늘의 포커스</div>
-          <div class="todo">월간 회고 작성</div>
+        <h2 class="section-title">Calendar</h2>
+        <p class="sub">계정 필터 전역 적용, 이벤트/ Todo 분리 표현.</p>
+
+        <div class="account-row">
+          <span class="pill active">전체 계정</span>
+          <span class="pill">personal@gmail.com</span>
+          <span class="pill">team.ops@google.com</span>
         </div>
-        <div class="card">
-          <div class="mini-day">4월 18일 (금)</div>
-          <div class="todo">세금 신고 자료 업로드</div>
+
+        <div class="calendar-views" style="margin-top:4px;">
+          <button class="view-btn active" data-cview="year">Year</button>
+          <button class="view-btn" data-cview="month">Month</button>
+          <button class="view-btn" data-cview="week">Week</button>
+        </div>
+
+        <div class="calendar-view active" id="mobile-view-year" style="margin-top:8px;">
+          <div class="year-grid" id="mobileYearGrid"></div>
+        </div>
+
+        <div class="calendar-view" id="mobile-view-month" style="margin-top:8px;">
+          <div class="month-grid">
+            <div class="week-head"><div>S</div><div>M</div><div>T</div><div>W</div><div>T</div><div>F</div><div>S</div></div>
+            <div class="month-days">
+              <div class="day-cell"><div class="dnum">18</div><div class="ev">릴리즈</div><div class="td">세금</div></div>
+              <div class="day-cell"><div class="dnum">19</div><div class="ev">워크숍</div></div>
+              <div class="day-cell"><div class="dnum">20</div><div class="td">노트</div></div>
+              <div class="day-cell"><div class="dnum">21</div><div class="ev">출장</div></div>
+              <div class="day-cell"><div class="dnum">22</div></div>
+              <div class="day-cell"><div class="dnum">23</div><div class="ev">장애</div></div>
+              <div class="day-cell"><div class="dnum">24</div><div class="td">회고</div></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="calendar-view" id="mobile-view-week" style="margin-top:8px;">
+          <div class="week-list">
+            <div class="slot"><div class="time">Mon 09:00</div><div class="event">스프린트 점검</div><div class="todo">Todo: 세금 신고 자료</div></div>
+            <div class="slot"><div class="time">Thu 10:00</div><div class="event">디자인 리뷰</div><div class="todo">Todo: 월간 회고 작성</div></div>
+            <div class="slot"><div class="time">Fri 13:00</div><div class="event">워크숍</div><div class="todo">Todo: 회의 노트 정리</div></div>
+          </div>
         </div>
       </section>
 
       <section class="panel" id="tab-todo">
-        <div class="card"><strong>Todo</strong><p style="font-size:12px;color:var(--muted);">완료 포함 여부 토글 + 우선순위 필터</p></div>
+        <h2 class="section-title">Todo</h2>
+        <p class="sub">Google Tasks due + 상태별 분리.</p>
+        <div class="card">
+          <div class="todo-item">OAuth 토큰 점검<div class="todo-meta">Due 03/15 · High</div></div>
+          <div class="todo-item">분기 목표 초안 작성<div class="todo-meta">Due 03/22 · Mid</div></div>
+          <div class="todo-item">회의 노트 정리<div class="todo-meta">Completed · 숨김 가능</div></div>
+        </div>
       </section>
 
       <section class="panel" id="tab-gallery">
-        <div class="card"><strong>Gallery</strong><p style="font-size:12px;color:var(--muted);">모바일 썸네일 최적화</p></div>
+        <h2 class="section-title">Gallery</h2>
+        <p class="sub">미디어 탐색/썸네일 큐 확인.</p>
+        <div class="card">Media Preview 1</div>
+        <div class="card">Media Preview 2</div>
       </section>
 
       <section class="panel" id="tab-settings">
-        <div class="card"><strong>Settings</strong><p style="font-size:12px;color:var(--muted);">계정 필터 전역 기본값 설정</p></div>
+        <h2 class="section-title">Settings</h2>
+        <p class="sub">전역 계정 필터/완료 Todo/테마.</p>
+        <div class="card">
+          <div class="row"><span>캘린더 전역 필터</span><span class="badge">전체 계정</span></div>
+          <div class="row"><span>완료 Todo 표시</span><span class="badge">숨김</span></div>
+        </div>
+        <div class="card">
+          <div style="font-size:12px; color:var(--text-secondary); margin-bottom:8px;">테마 모드</div>
+          <div class="theme-switch">
+            <button class="theme-btn" data-theme-set="light">라이트</button>
+            <button class="theme-btn" data-theme-set="dark">다크</button>
+            <button class="theme-btn active" data-theme-set="system">시스템</button>
+          </div>
+        </div>
       </section>
     </main>
 
     <nav class="tabs">
-      <button class="tab-btn active" data-tab="cloud"><span class="tab-icon">☁</span>Cloud</button>
-      <button class="tab-btn" data-tab="calendar"><span class="tab-icon">📅</span>Calendar</button>
-      <button class="tab-btn" data-tab="todo"><span class="tab-icon">☑</span>Todo</button>
-      <button class="tab-btn" data-tab="gallery"><span class="tab-icon">🖼</span>Gallery</button>
-      <button class="tab-btn" data-tab="settings"><span class="tab-icon">⚙</span>Settings</button>
+      <button class="mobile-tab active" data-tab="cloud"><span class="tab-icon">☁</span>Cloud</button>
+      <button class="mobile-tab" data-tab="calendar"><span class="tab-icon">📅</span>Cal</button>
+      <button class="mobile-tab" data-tab="todo"><span class="tab-icon">✓</span>Todo</button>
+      <button class="mobile-tab" data-tab="gallery"><span class="tab-icon">▦</span>Gallery</button>
+      <button class="mobile-tab" data-tab="settings"><span class="tab-icon">⚙</span>Set</button>
     </nav>
   </div>
 
 <script>
-  const tabButtons = document.querySelectorAll('.tab-btn');
+  const mobileTabs = document.querySelectorAll('.mobile-tab');
   const panels = document.querySelectorAll('.panel');
 
-  tabButtons.forEach((button) => {
+  mobileTabs.forEach((button) => {
     button.addEventListener('click', () => {
-      tabButtons.forEach((b) => b.classList.remove('active'));
+      mobileTabs.forEach((b) => b.classList.remove('active'));
       panels.forEach((p) => p.classList.remove('active'));
       button.classList.add('active');
       document.getElementById(`tab-${button.dataset.tab}`).classList.add('active');
+    });
+  });
+
+  const viewButtons = document.querySelectorAll('.view-btn');
+  const calendarViews = document.querySelectorAll('.calendar-view');
+
+  viewButtons.forEach((button) => {
+    button.addEventListener('click', () => {
+      viewButtons.forEach((b) => b.classList.remove('active'));
+      calendarViews.forEach((v) => v.classList.remove('active'));
+      button.classList.add('active');
+      document.getElementById(`mobile-view-${button.dataset.cview}`).classList.add('active');
+    });
+  });
+
+  const monthNames = ['1월', '2월', '3월', '4월', '5월', '6월'];
+  const eventMarks = new Set(['1-3', '2-4', '3-10', '5-2']);
+  const todoMarks = new Set(['2-11', '3-5', '4-8', '6-5']);
+
+  const mobileYearGrid = document.getElementById('mobileYearGrid');
+  monthNames.forEach((name, monthIndex) => {
+    const card = document.createElement('div');
+    card.className = 'month-card';
+
+    const head = document.createElement('div');
+    head.className = 'month-head';
+    head.textContent = name;
+
+    const mini = document.createElement('div');
+    mini.className = 'month-mini';
+
+    for (let day = 1; day <= 14; day += 1) {
+      const cell = document.createElement('span');
+      const key = `${monthIndex + 1}-${day}`;
+      if (eventMarks.has(key)) cell.classList.add('dot-event');
+      if (todoMarks.has(key)) cell.classList.add('dot-todo');
+      cell.textContent = day;
+      mini.appendChild(cell);
+    }
+
+    card.appendChild(head);
+    card.appendChild(mini);
+    mobileYearGrid.appendChild(card);
+  });
+
+  const mobileThemeStatus = document.getElementById('mobileThemeStatus');
+  const themeButtons = document.querySelectorAll('.theme-btn');
+  const savedTheme = localStorage.getItem('lifebase-theme') || 'system';
+
+  function applyTheme(mode) {
+    if (mode === 'dark') {
+      document.body.setAttribute('data-theme', 'dark');
+      mobileThemeStatus.textContent = '테마: 다크';
+    } else if (mode === 'light') {
+      document.body.setAttribute('data-theme', 'light');
+      mobileThemeStatus.textContent = '테마: 라이트';
+    } else {
+      document.body.removeAttribute('data-theme');
+      mobileThemeStatus.textContent = '테마: 시스템';
+    }
+
+    themeButtons.forEach((btn) => {
+      btn.classList.toggle('active', btn.dataset.themeSet === mode);
+    });
+  }
+
+  applyTheme(savedTheme);
+
+  themeButtons.forEach((button) => {
+    button.addEventListener('click', () => {
+      const mode = button.dataset.themeSet;
+      localStorage.setItem('lifebase-theme', mode);
+      applyTheme(mode);
     });
   });
 </script>
