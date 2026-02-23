@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Lifebase Mobile Prototype</title>
+<style>
+  :root {
+    --bg: #f3f7f5;
+    --surface: #ffffff;
+    --surface-2: #f6faf8;
+    --text: #13231d;
+    --muted: #62716b;
+    --line: #dae4df;
+    --primary: #0f8f75;
+    --primary-soft: #d8f2eb;
+    --todo: #5b49b8;
+    --shadow: 0 20px 40px rgba(22, 38, 32, 0.18);
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    min-height: 100vh;
+    display: grid;
+    place-items: center;
+    font-family: "SUIT Variable", "Pretendard", "Noto Sans KR", sans-serif;
+    background: linear-gradient(150deg, #e7f3ee, #e6ecff);
+    color: var(--text);
+  }
+
+  .phone {
+    width: 390px;
+    height: 820px;
+    border: 10px solid #171717;
+    border-radius: 34px;
+    overflow: hidden;
+    background: var(--surface);
+    box-shadow: var(--shadow);
+    display: grid;
+    grid-template-rows: 34px 56px 1fr 64px;
+  }
+
+  .status {
+    background: #0f0f0f;
+    color: #e6e6e6;
+    font-size: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 16px;
+  }
+
+  .header {
+    border-bottom: 1px solid var(--line);
+    padding: 0 14px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    background: #fff;
+  }
+  .title { font-weight: 800; }
+  .filter { font-size: 11px; color: var(--muted); border: 1px solid var(--line); border-radius: 999px; padding: 5px 9px; }
+
+  .content { overflow: auto; background: var(--bg); }
+
+  .panel { display: none; padding: 12px; }
+  .panel.active { display: block; }
+
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    padding: 12px;
+    margin-bottom: 10px;
+  }
+
+  .account-row { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 6px; margin-bottom: 8px; }
+  .account-pill {
+    white-space: nowrap;
+    font-size: 11px;
+    border-radius: 999px;
+    border: 1px solid var(--line);
+    padding: 6px 10px;
+    background: #fff;
+    color: var(--muted);
+  }
+  .account-pill.active { color: var(--primary); border-color: var(--primary); background: var(--primary-soft); }
+
+  .mini-day { font-size: 12px; color: var(--muted); margin-bottom: 5px; }
+  .event { font-size: 11px; border-radius: 6px; padding: 2px 6px; margin-bottom: 4px; background: #d8f2eb; color: var(--primary); }
+  .todo { font-size: 11px; border-radius: 999px; padding: 2px 6px; background: #ece9ff; color: var(--todo); }
+
+  .tabs {
+    border-top: 1px solid var(--line);
+    background: #fff;
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+  }
+  .tab-btn {
+    border: 0;
+    background: transparent;
+    font-size: 10px;
+    color: var(--muted);
+    padding: 6px 0;
+    cursor: pointer;
+  }
+  .tab-btn.active { color: var(--primary); font-weight: 700; }
+  .tab-icon { display: block; font-size: 16px; line-height: 1.2; }
+</style>
+</head>
+<body>
+  <div class="phone">
+    <div class="status"><span>9:41</span><span>5G · 82%</span></div>
+    <div class="header">
+      <span class="title">Lifebase</span>
+      <span class="filter">계정: 전체</span>
+    </div>
+
+    <main class="content">
+      <section class="panel active" id="tab-cloud">
+        <div class="card">
+          <strong>Cloud</strong>
+          <p style="font-size:12px;color:var(--muted);">최근 변경 파일과 업로드 큐를 확인합니다.</p>
+        </div>
+      </section>
+
+      <section class="panel" id="tab-calendar">
+        <div class="card">
+          <strong>Calendar</strong>
+          <div class="account-row">
+            <span class="account-pill active">전체</span>
+            <span class="account-pill">personal@gmail.com</span>
+            <span class="account-pill">team.ops@google.com</span>
+          </div>
+          <div class="mini-day">2월 24일 (월)</div>
+          <div class="event">오늘의 포커스</div>
+          <div class="todo">월간 회고 작성</div>
+        </div>
+        <div class="card">
+          <div class="mini-day">4월 18일 (금)</div>
+          <div class="todo">세금 신고 자료 업로드</div>
+        </div>
+      </section>
+
+      <section class="panel" id="tab-todo">
+        <div class="card"><strong>Todo</strong><p style="font-size:12px;color:var(--muted);">완료 포함 여부 토글 + 우선순위 필터</p></div>
+      </section>
+
+      <section class="panel" id="tab-gallery">
+        <div class="card"><strong>Gallery</strong><p style="font-size:12px;color:var(--muted);">모바일 썸네일 최적화</p></div>
+      </section>
+
+      <section class="panel" id="tab-settings">
+        <div class="card"><strong>Settings</strong><p style="font-size:12px;color:var(--muted);">계정 필터 전역 기본값 설정</p></div>
+      </section>
+    </main>
+
+    <nav class="tabs">
+      <button class="tab-btn active" data-tab="cloud"><span class="tab-icon">☁</span>Cloud</button>
+      <button class="tab-btn" data-tab="calendar"><span class="tab-icon">📅</span>Calendar</button>
+      <button class="tab-btn" data-tab="todo"><span class="tab-icon">☑</span>Todo</button>
+      <button class="tab-btn" data-tab="gallery"><span class="tab-icon">🖼</span>Gallery</button>
+      <button class="tab-btn" data-tab="settings"><span class="tab-icon">⚙</span>Settings</button>
+    </nav>
+  </div>
+
+<script>
+  const tabButtons = document.querySelectorAll('.tab-btn');
+  const panels = document.querySelectorAll('.panel');
+
+  tabButtons.forEach((button) => {
+    button.addEventListener('click', () => {
+      tabButtons.forEach((b) => b.classList.remove('active'));
+      panels.forEach((p) => p.classList.remove('active'));
+      button.classList.add('active');
+      document.getElementById(`tab-${button.dataset.tab}`).classList.add('active');
+    });
+  });
+</script>
+</body>
+</html>

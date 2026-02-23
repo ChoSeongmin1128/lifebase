@@ -1,0 +1,893 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Lifebase - Year View Prototype</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  :root {
+    --primary: #1b998b;
+    --surface-accent: #f8f1ff;
+    --surface-secondary: #decdf5;
+    --text-secondary: #656176;
+    --text-primary: #534d56;
+    --bg: #ffffff;
+    --surface: #ffffff;
+    --border: #e5e5e5;
+    --text-strong: #111111;
+    --text-muted: #9ca3af;
+    --error: #ef4444;
+    --success: #22c55e;
+    --warning: #f59e0b;
+    --info: #3b82f6;
+    --weekend-bg: #f9f7fc;
+    --holiday-color: #ef4444;
+    --year-row-height: 20px;
+  }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    background: var(--bg);
+    color: var(--text-primary);
+    min-height: 100vh;
+  }
+
+  body.dark {
+    --bg: #0f0f0f;
+    --surface: #1a1a1a;
+    --border: #2a2a2a;
+    --text-strong: #f0f0f0;
+    --text-muted: #555;
+    --text-primary: #d4d0d8;
+    --text-secondary: #9e96a8;
+    --surface-accent: #1e1925;
+    --surface-secondary: #2a2233;
+    --weekend-bg: #1a1520;
+    --holiday-color: #f87171;
+  }
+
+  /* Top bar */
+  .top-bar {
+    position: fixed;
+    top: 0; left: 0; right: 0;
+    z-index: 100;
+    background: #111;
+    padding: 10px 16px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+  .top-bar-title {
+    color: var(--primary);
+    font-size: 16px;
+    font-weight: 700;
+    margin-right: 8px;
+  }
+  .top-bar .btn {
+    padding: 6px 12px;
+    border: 1px solid #444;
+    border-radius: 6px;
+    background: #222;
+    color: #fff;
+    font-size: 11px;
+    font-weight: 600;
+    cursor: pointer;
+    white-space: nowrap;
+  }
+  .top-bar .btn:hover { background: #333; }
+  .top-bar .btn.active { border-color: #fff; background: #333; }
+  .top-bar .spacer { flex: 1; }
+  .top-bar .info { color: #666; font-size: 11px; }
+
+  /* Layout */
+  .app { padding-top: 50px; display: flex; min-height: 100vh; }
+
+  /* Sidebar */
+  .sidebar {
+    width: 180px;
+    background: var(--surface);
+    border-right: 1px solid var(--border);
+    padding: 12px 8px;
+    flex-shrink: 0;
+  }
+  .sidebar-item {
+    padding: 7px 8px;
+    border-radius: 6px;
+    font-size: 12px;
+    color: var(--text-secondary);
+    cursor: pointer;
+    margin-bottom: 1px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .sidebar-item:hover { background: var(--surface-accent); }
+  .sidebar-item.active { background: var(--surface-secondary); color: var(--primary); font-weight: 600; }
+  .sidebar-section {
+    font-size: 9px; font-weight: 600; text-transform: uppercase;
+    color: var(--text-muted); padding: 12px 8px 3px; letter-spacing: 0.5px;
+  }
+  .sidebar-dot { width: 7px; height: 7px; border-radius: 50%; display: inline-block; }
+
+  /* Main */
+  .main { flex: 1; padding: 16px; overflow: hidden; display: flex; flex-direction: column; }
+
+  /* Year header */
+  .year-header { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; flex-wrap: wrap; }
+  .year-title { font-size: 22px; font-weight: 700; color: var(--text-strong); }
+  .year-nav {
+    width: 28px; height: 28px;
+    border: 1px solid var(--border); border-radius: 6px;
+    background: var(--surface); color: var(--text-secondary);
+    cursor: pointer; font-size: 12px;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .year-nav:hover { background: var(--surface-accent); }
+
+  /* Year table wrapper */
+  .year-table-wrapper {
+    flex: 1;
+    overflow-x: auto;
+    overflow-y: hidden;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    background: var(--surface);
+    position: relative;
+  }
+
+  .year-table {
+    width: 100%;
+    border-collapse: collapse;
+    table-layout: fixed;
+    min-width: 1100px;
+    font-size: 12px;
+  }
+
+  .year-table thead th {
+    position: sticky;
+    top: 0;
+    z-index: 12;
+    background: var(--surface);
+    padding: 10px 4px;
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--primary);
+    text-align: center;
+    border-bottom: 2px solid var(--border);
+  }
+  .year-table thead th:first-child {
+    width: 32px;
+    color: var(--text-muted);
+    font-size: 10px;
+    position: sticky;
+    left: 0;
+    z-index: 15;
+    background: var(--surface);
+  }
+
+  .year-table td {
+    padding: 0;
+    border-bottom: 1px solid var(--border);
+    border-right: 1px solid var(--border);
+    height: var(--year-row-height);
+    vertical-align: middle;
+    position: relative;
+    overflow: visible;
+  }
+  .year-table td:last-child { border-right: none; }
+  .year-table tr:last-child td { border-bottom: none; }
+
+  .year-table td.day-num {
+    text-align: center;
+    font-weight: 600;
+    color: var(--text-muted);
+    font-size: 10px;
+    background: var(--surface);
+    position: sticky;
+    left: 0;
+    z-index: 8;
+    width: 32px;
+    border-right: 2px solid var(--border);
+  }
+
+  /* Day cell */
+  .day-cell {
+    display: flex;
+    align-items: center;
+    height: 100%;
+    padding: 0 2px 0 14px;
+    cursor: pointer;
+    transition: background 0.1s;
+    gap: 0;
+    overflow: visible;
+  }
+  .day-cell:hover { background: var(--surface-accent); }
+  .day-cell.weekend { background: var(--weekend-bg); }
+  .day-cell.weekend:hover { background: var(--surface-accent); }
+  .day-cell.today { background: rgba(27, 153, 139, 0.08); }
+  .day-cell.today .day-label { color: var(--primary); font-weight: 700; }
+  .day-cell.empty { background: var(--bg); cursor: default; }
+
+  .day-label {
+    font-size: 9px;
+    color: var(--text-muted);
+    width: 16px;
+    text-align: center;
+    flex-shrink: 0;
+    position: relative;
+    z-index: 2;
+    font-variant-numeric: tabular-nums;
+  }
+  .day-label.sun { color: var(--holiday-color); }
+  .day-label.sat { color: var(--info); }
+
+  /* Range bars */
+  .range-bar {
+    position: absolute;
+    left: 1px; top: -1px; bottom: -1px;
+    width: 3px;
+    z-index: 1;
+    pointer-events: none;
+  }
+  .range-bar.start { border-radius: 3px 3px 0 0; top: 1px; }
+  .range-bar.end { border-radius: 0 0 3px 3px; bottom: 1px; }
+  .range-bar.single { border-radius: 3px; top: 2px; bottom: 2px; }
+  .range-bar.bar-teal { background: var(--primary); }
+  .range-bar.bar-blue { background: var(--info); }
+  .range-bar.bar-red { background: var(--error); }
+  .range-bar.bar-yellow { background: var(--warning); }
+  .range-bar.bar-green { background: var(--success); }
+  .range-bar.bar-lavender { background: var(--surface-secondary); }
+  .range-bar.lane-0 { left: 1px; }
+  .range-bar.lane-1 { left: 5px; }
+  .range-bar.lane-2 { left: 9px; }
+
+  /* Event text */
+  .event-text {
+    font-size: 10px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    padding-left: 5px;
+    flex: 1;
+    min-width: 0;
+    position: relative;
+    z-index: 2;
+  }
+  .event-text.color-teal { color: var(--primary); }
+  .event-text.color-blue { color: var(--info); }
+  .event-text.color-red { color: var(--error); }
+  .event-text.color-yellow { color: #b45309; }
+  .event-text.color-green { color: #15803d; }
+  .event-text.color-lavender { color: var(--text-secondary); }
+  .event-text.color-holiday { color: var(--holiday-color); font-weight: 600; }
+  .event-text.continued { opacity: 0.5; font-style: italic; }
+
+  .todo-pill {
+    font-size: 9px;
+    color: #6d28d9;
+    background: rgba(124, 58, 237, 0.12);
+    border: 1px solid rgba(124, 58, 237, 0.22);
+    border-radius: 999px;
+    padding: 1px 6px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    flex: 1;
+    min-width: 0;
+    position: relative;
+    z-index: 2;
+  }
+  .todo-pill.done {
+    color: #7f8a9b;
+    background: rgba(148, 163, 184, 0.12);
+    border-color: rgba(148, 163, 184, 0.2);
+    text-decoration: line-through;
+  }
+
+  .more-badge {
+    font-size: 9px;
+    padding-left: 4px;
+    cursor: pointer;
+    position: relative;
+    z-index: 2;
+    font-weight: 600;
+  }
+  .more-badge.more-event { color: var(--text-muted); }
+  .more-badge.more-event:hover { color: var(--primary); }
+  .more-badge.more-todo { color: #6d28d9; }
+  .more-badge.more-todo:hover { color: #5b21b6; }
+
+  /* Legend */
+  .legend {
+    display: flex; gap: 14px; margin-top: 8px;
+    padding: 6px 8px; font-size: 10px; color: var(--text-secondary);
+    flex-wrap: wrap;
+  }
+  .legend-item { display: flex; align-items: center; gap: 4px; }
+  .legend-bar { width: 3px; height: 12px; border-radius: 2px; }
+  .legend-dot { width: 7px; height: 7px; border-radius: 2px; }
+
+  /* ===== MOBILE ===== */
+  @media (max-width: 768px) {
+    .sidebar { display: none; }
+    .main { padding: 10px; }
+    .year-header { margin-bottom: 8px; }
+    .year-title { font-size: 18px; }
+
+    .year-table {
+      min-width: unset;
+      /* On mobile: day-num col + visible months. User scrolls horizontally. */
+    }
+
+    /* Make columns narrower on mobile for horizontal scroll feel */
+    .year-table thead th { font-size: 11px; padding: 8px 2px; }
+    .year-table td { height: 28px; }
+    .year-table td.day-num { width: 28px; font-size: 9px; }
+    .day-label { font-size: 8px; width: 13px; }
+    .event-text { font-size: 9px; padding-left: 4px; }
+
+    .legend { font-size: 9px; gap: 8px; }
+    .top-bar .info { display: none; }
+  }
+
+  /* ===== MOBILE FRAME ===== */
+  .mobile-frame {
+    display: none;
+    margin-top: 16px;
+    border: 3px solid #333;
+    border-radius: 24px;
+    width: 390px;
+    height: 700px;
+    overflow: hidden;
+    background: var(--bg);
+    flex-direction: column;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.15);
+    flex-shrink: 0;
+  }
+  .mobile-frame.visible { display: flex; }
+
+  .mobile-frame .mobile-status-bar {
+    height: 32px;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text-secondary);
+    flex-shrink: 0;
+  }
+
+  .mobile-frame .mobile-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 12px;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+  }
+  .mobile-frame .mobile-header .m-title {
+    font-size: 17px; font-weight: 700; color: var(--text-strong);
+  }
+  .mobile-frame .mobile-header .m-nav {
+    width: 24px; height: 24px;
+    border: 1px solid var(--border); border-radius: 5px;
+    background: var(--surface); color: var(--text-secondary);
+    font-size: 10px; cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+  }
+
+  .mobile-frame .mobile-table-wrapper {
+    flex: 1;
+    overflow: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .mobile-frame .mobile-table {
+    border-collapse: collapse;
+    font-size: 11px;
+    min-width: 600px;
+  }
+  .mobile-frame .mobile-table thead th {
+    position: sticky; top: 0; z-index: 12;
+    background: var(--surface);
+    padding: 6px 2px;
+    font-size: 10px; font-weight: 700;
+    color: var(--primary);
+    text-align: center;
+    border-bottom: 2px solid var(--border);
+    min-width: 70px;
+  }
+  .mobile-frame .mobile-table thead th:first-child {
+    width: 26px; min-width: 26px;
+    position: sticky; left: 0; z-index: 15;
+    background: var(--surface);
+    color: var(--text-muted); font-size: 9px;
+  }
+  .mobile-frame .mobile-table td {
+    padding: 0;
+    border-bottom: 1px solid var(--border);
+    border-right: 1px solid var(--border);
+    height: 24px;
+    vertical-align: middle;
+    position: relative;
+    overflow: visible;
+  }
+  .mobile-frame .mobile-table td:last-child { border-right: none; }
+  .mobile-frame .mobile-table tr:last-child td { border-bottom: none; }
+  .mobile-frame .mobile-table td.day-num {
+    text-align: center; font-weight: 600;
+    color: var(--text-muted); font-size: 9px;
+    background: var(--surface);
+    position: sticky; left: 0; z-index: 8;
+    width: 26px;
+    border-right: 2px solid var(--border);
+  }
+  .mobile-frame .day-cell { padding: 0 2px 0 10px; }
+  .mobile-frame .day-label { font-size: 8px; width: 12px; }
+  .mobile-frame .event-text { font-size: 9px; padding-left: 3px; }
+  .mobile-frame .range-bar { width: 2px; }
+  .mobile-frame .range-bar.lane-0 { left: 1px; }
+  .mobile-frame .range-bar.lane-1 { left: 4px; }
+  .mobile-frame .range-bar.lane-2 { left: 7px; }
+
+  /* Mobile bottom tab bar */
+  .mobile-frame .mobile-tabs {
+    display: flex;
+    border-top: 1px solid var(--border);
+    background: var(--surface);
+    flex-shrink: 0;
+  }
+  .mobile-frame .mobile-tab {
+    flex: 1;
+    padding: 8px 0;
+    text-align: center;
+    font-size: 9px;
+    color: var(--text-muted);
+    cursor: pointer;
+  }
+  .mobile-frame .mobile-tab.active {
+    color: var(--primary);
+    font-weight: 600;
+  }
+  .mobile-frame .mobile-tab .tab-icon { font-size: 16px; display: block; margin-bottom: 1px; }
+
+  /* Side-by-side layout */
+  .views-container {
+    display: flex;
+    gap: 24px;
+    flex: 1;
+    overflow: hidden;
+    align-items: flex-start;
+  }
+  .desktop-view { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+  .desktop-view .view-label {
+    font-size: 11px; font-weight: 600; color: var(--text-muted);
+    margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.5px;
+  }
+</style>
+</head>
+<body>
+  <div class="top-bar">
+    <span class="top-bar-title">Lifebase</span>
+    <button class="btn active" id="btn-both" onclick="setView('both')">Desktop + Mobile</button>
+    <button class="btn" id="btn-desktop" onclick="setView('desktop')">Desktop Only</button>
+    <button class="btn" id="btn-mobile" onclick="setView('mobile')">Mobile Only</button>
+    <button class="btn" onclick="toggleDark()" id="dark-btn">Dark Mode</button>
+    <button class="btn" onclick="toggleCompletedTodos()" id="todo-filter-btn">Todo: Active Only</button>
+    <span class="spacer"></span>
+    <span class="info">Year View — 기간 바 최대 3개 + 텍스트 1개(Todo 칩) + 숨김 집계 +E/+T / 모바일: 날짜 고정 + 가로 스크롤</span>
+  </div>
+
+  <div class="app">
+    <div class="sidebar">
+      <div class="sidebar-item">&#128269; Search</div>
+      <div class="sidebar-item">&#128193; Cloud</div>
+      <div class="sidebar-item active">&#128197; Calendar</div>
+      <div class="sidebar-item">&#9745; Todo</div>
+      <div class="sidebar-item">&#128247; Gallery</div>
+      <div class="sidebar-section">Calendars</div>
+      <div class="sidebar-item"><span class="sidebar-dot" style="background:#1b998b"></span> Personal</div>
+      <div class="sidebar-item"><span class="sidebar-dot" style="background:#3b82f6"></span> Work</div>
+      <div class="sidebar-item"><span class="sidebar-dot" style="background:#ef4444"></span> Important</div>
+    </div>
+
+    <div class="main">
+      <div class="year-header">
+        <button class="year-nav">&lt;</button>
+        <span class="year-title">2026</span>
+        <button class="year-nav">&gt;</button>
+      </div>
+
+      <div class="views-container">
+        <!-- Desktop View -->
+        <div class="desktop-view" id="desktopView">
+          <div class="view-label">Desktop View</div>
+          <div class="year-table-wrapper">
+            <table class="year-table" id="yearTable">
+              <thead>
+                <tr>
+                  <th></th>
+                  <th>1월</th><th>2월</th><th>3월</th><th>4월</th>
+                  <th>5월</th><th>6월</th><th>7월</th><th>8월</th>
+                  <th>9월</th><th>10월</th><th>11월</th><th>12월</th>
+                </tr>
+              </thead>
+              <tbody id="yearBody"></tbody>
+            </table>
+          </div>
+          <div class="legend">
+            <div class="legend-item"><div class="legend-bar" style="background:var(--primary)"></div> 기간 일정</div>
+            <div class="legend-item"><div class="legend-dot" style="background:var(--weekend-bg);border:1px solid var(--border)"></div> 주말</div>
+            <div class="legend-item"><div class="legend-dot" style="background:rgba(27,153,139,0.08);border:1px solid var(--border)"></div> 오늘</div>
+            <div class="legend-item"><span style="color:var(--holiday-color);font-weight:600;font-size:12px;">●</span> 공휴일</div>
+            <div class="legend-item"><span style="color:#6d28d9;font-weight:700;font-size:11px;">Todo</span> Google Tasks 마감일</div>
+          </div>
+        </div>
+
+        <!-- Mobile View -->
+        <div class="mobile-frame visible" id="mobileView">
+          <div class="mobile-status-bar">9:41</div>
+          <div class="mobile-header">
+            <button class="m-nav">&lt;</button>
+            <span class="m-title">2026</span>
+            <button class="m-nav">&gt;</button>
+          </div>
+          <div class="mobile-table-wrapper">
+            <table class="mobile-table" id="mobileTable">
+              <thead>
+                <tr>
+                  <th></th>
+                  <th>1월</th><th>2월</th><th>3월</th><th>4월</th>
+                  <th>5월</th><th>6월</th><th>7월</th><th>8월</th>
+                  <th>9월</th><th>10월</th><th>11월</th><th>12월</th>
+                </tr>
+              </thead>
+              <tbody id="mobileBody"></tbody>
+            </table>
+          </div>
+          <div class="mobile-tabs">
+            <div class="mobile-tab"><span class="tab-icon">&#128193;</span>Cloud</div>
+            <div class="mobile-tab active"><span class="tab-icon">&#128197;</span>Calendar</div>
+            <div class="mobile-tab"><span class="tab-icon">&#9745;</span>Todo</div>
+            <div class="mobile-tab"><span class="tab-icon">&#128247;</span>Gallery</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+<script>
+const YEAR = 2026;
+const DOW = ['일','월','화','수','목','금','토'];
+const TODAY = { month: 2, day: 24 };
+const MAX_RANGE_BARS = 3;
+let showCompletedTodos = false;
+
+const holidays = {
+  '1-1': '신정', '1-26': '설날', '1-27': '설연휴', '1-28': '설연휴',
+  '3-1': '삼일절',
+  '5-5': '어린이날', '5-24': '부처님오신날',
+  '6-6': '현충일',
+  '8-15': '광복절',
+  '9-24': '추석연휴', '9-25': '추석', '9-26': '추석연휴',
+  '10-3': '개천절', '10-9': '한글날',
+  '12-25': '성탄절'
+};
+
+const singleEvents = {
+  '1-5': [{ text: '신년회', color: 'teal' }],
+  '2-4': [{ text: 'Design review', color: 'blue' }],
+  '2-18': [{ text: '고객 미팅', color: 'yellow' }, { text: 'QA 점검', color: 'green' }],
+  '2-12': [{ text: '1:1 with PM', color: 'blue' }],
+  '2-14': [{ text: "Valentine's Day", color: 'red' }],
+  '2-24': [{ text: "Today's focus", color: 'yellow' }],
+  '3-15': [{ text: '분기 보고', color: 'blue' }],
+  '4-10': [{ text: '워크숍', color: 'teal' }],
+  '5-11': [{ text: '어머니날', color: 'lavender' }],
+  '6-20': [{ text: 'Sprint review', color: 'blue' }],
+  '7-1': [{ text: '하반기 시작', color: 'teal' }],
+  '9-1': [{ text: '킥오프', color: 'teal' }],
+  '10-15': [{ text: '중간 점검', color: 'yellow' }],
+  '11-20': [{ text: '연말 준비', color: 'lavender' }],
+  '12-31': [{ text: '송년회', color: 'teal' }],
+};
+
+const rangeEvents = [
+  { startMonth: 1, startDay: 26, endMonth: 1, endDay: 28, text: '설 연휴', color: 'red' },
+  { startMonth: 2, startDay: 15, endMonth: 2, endDay: 20, text: '출장', color: 'teal' },
+  { startMonth: 2, startDay: 18, endMonth: 2, endDay: 19, text: '워크숍', color: 'blue' },
+  { startMonth: 2, startDay: 17, endMonth: 2, endDay: 23, text: '장애 대응', color: 'yellow' },
+  { startMonth: 2, startDay: 18, endMonth: 2, endDay: 21, text: '릴리즈 안정화', color: 'red' },
+  { startMonth: 3, startDay: 22, endMonth: 3, endDay: 26, text: '해외 컨퍼런스', color: 'blue' },
+  { startMonth: 5, startDay: 1, endMonth: 5, endDay: 5, text: '연휴 여행', color: 'green' },
+  { startMonth: 6, startDay: 28, endMonth: 7, endDay: 3, text: '프로젝트 마감', color: 'yellow' },
+  { startMonth: 8, startDay: 10, endMonth: 8, endDay: 14, text: '여름 휴가', color: 'green' },
+  { startMonth: 9, startDay: 24, endMonth: 9, endDay: 26, text: '추석 연휴', color: 'red' },
+  { startMonth: 12, startDay: 20, endMonth: 12, endDay: 25, text: '연말 정리', color: 'lavender' },
+];
+
+// Google Tasks 기반 Todo(마감일 due) 표시 프로토타입
+const todoItems = [
+  { googleTaskId: 'gt-101', text: '릴리즈 체크리스트 점검', dueMonth: 2, dueDay: 18, status: 'needsAction', list: '업무' },
+  { googleTaskId: 'gt-102', text: '보안 로그 확인', dueMonth: 2, dueDay: 18, status: 'needsAction', list: '운영' },
+  { googleTaskId: 'gt-103', text: '회의 노트 정리', dueMonth: 2, dueDay: 20, status: 'completed', list: '업무' },
+  { googleTaskId: 'gt-104', text: '월간 회고 작성', dueMonth: 2, dueDay: 24, status: 'needsAction', list: '개인' },
+  { googleTaskId: 'gt-105', text: 'OAuth 토큰 점검', dueMonth: 3, dueDay: 15, status: 'needsAction', list: '운영' },
+  { googleTaskId: 'gt-106', text: '분기 목표 초안 작성', dueMonth: 3, dueDay: 22, status: 'needsAction', list: '업무' },
+  { googleTaskId: 'gt-107', text: '세금 신고 자료 업로드', dueMonth: 4, dueDay: 18, status: 'needsAction', list: '개인' },
+  { googleTaskId: 'gt-108', text: '백업 점검 체크리스트', dueMonth: 11, dueDay: 7, status: 'needsAction', list: '운영' }
+];
+
+function getDaysInMonth(y, m) { return new Date(y, m, 0).getDate(); }
+function getDayOfWeek(y, m, d) { return new Date(y, m - 1, d).getDay(); }
+function isWeekend(y, m, d) { const dow = getDayOfWeek(y, m, d); return dow === 0 || dow === 6; }
+function getDayIndex(month, day) {
+  let idx = day;
+  for (let m = 1; m < month; m++) idx += getDaysInMonth(YEAR, m);
+  return idx;
+}
+function getRangeStartIndex(event) { return getDayIndex(event.startMonth, event.startDay); }
+function getRangeEndIndex(event) { return getDayIndex(event.endMonth, event.endDay); }
+
+function buildRangeLaneMap(events) {
+  const sorted = [...events].sort((a, b) => {
+    const aStart = getRangeStartIndex(a);
+    const bStart = getRangeStartIndex(b);
+    if (aStart !== bStart) return aStart - bStart;
+
+    const aEnd = getRangeEndIndex(a);
+    const bEnd = getRangeEndIndex(b);
+    if (aEnd !== bEnd) return bEnd - aEnd;
+
+    return a.text.localeCompare(b.text, 'ko');
+  });
+
+  const laneMap = new Map();
+  const active = [];
+
+  sorted.forEach((event) => {
+    const start = getRangeStartIndex(event);
+    const end = getRangeEndIndex(event);
+
+    for (let i = active.length - 1; i >= 0; i--) {
+      if (active[i].end < start) active.splice(i, 1);
+    }
+
+    const usedLanes = new Set(active.map((item) => item.lane));
+    let lane = 0;
+    while (usedLanes.has(lane)) lane++;
+
+    laneMap.set(event, lane);
+    active.push({ lane, end });
+  });
+
+  return laneMap;
+}
+
+const rangeLaneMap = buildRangeLaneMap(rangeEvents);
+function getRangeLane(event) { return rangeLaneMap.get(event) ?? 0; }
+
+function getRangeEventsForCell(month, day) {
+  const current = getDayIndex(month, day);
+  return rangeEvents
+    .filter((event) => {
+      const start = getRangeStartIndex(event);
+      const end = getRangeEndIndex(event);
+      return current >= start && current <= end;
+    })
+    .sort((a, b) => {
+      const laneDiff = getRangeLane(a) - getRangeLane(b);
+      if (laneDiff !== 0) return laneDiff;
+
+      const aStart = getRangeStartIndex(a);
+      const bStart = getRangeStartIndex(b);
+      if (aStart !== bStart) return aStart - bStart;
+
+      return a.text.localeCompare(b.text, 'ko');
+    });
+}
+
+function getRangePosition(event, month, day) {
+  const isStart = event.startMonth === month && event.startDay === day;
+  const isEnd = event.endMonth === month && event.endDay === day;
+  if (isStart && isEnd) return 'single';
+  if (isStart) return 'start';
+  if (isEnd) return 'end';
+  if (day === 1 && event.startMonth < month) return 'start';
+  return 'mid';
+}
+
+function getTodosForCell(month, day) {
+  return todoItems
+    .filter((todo) => {
+      if (todo.dueMonth !== month || todo.dueDay !== day) return false;
+      if (!showCompletedTodos && todo.status === 'completed') return false;
+      return true;
+    })
+    .sort((a, b) => a.text.localeCompare(b.text, 'ko'));
+}
+
+function getTodoLabel(todo) {
+  return todo.text;
+}
+
+function buildCellHTML(month, day) {
+  const maxDays = getDaysInMonth(YEAR, month);
+  if (day > maxDays) return '<div class="day-cell empty"></div>';
+
+  const dow = getDayOfWeek(YEAR, month, day);
+  const dowLabel = DOW[dow];
+  const weekend = isWeekend(YEAR, month, day);
+  const isToday = month === TODAY.month && day === TODAY.day;
+  const holiday = holidays[`${month}-${day}`];
+  const singles = singleEvents[`${month}-${day}`] || [];
+  const todos = getTodosForCell(month, day);
+  const allRanges = getRangeEventsForCell(month, day);
+  const visibleRanges = allRanges.filter((event) => getRangeLane(event) < MAX_RANGE_BARS);
+  const hiddenRanges = allRanges.filter((event) => getRangeLane(event) >= MAX_RANGE_BARS);
+
+  let cls = 'day-cell';
+  if (weekend) cls += ' weekend';
+  if (isToday) cls += ' today';
+
+  let h = `<div class="${cls}" title="${month}월 ${day}일 (${dowLabel})">`;
+
+  visibleRanges.forEach((re) => {
+    const pos = getRangePosition(re, month, day);
+    const lane = getRangeLane(re);
+    let bc = `range-bar bar-${re.color} lane-${lane}`;
+    if (pos === 'start') bc += ' start';
+    else if (pos === 'end') bc += ' end';
+    else if (pos === 'single') bc += ' single';
+    h += `<div class="${bc}"></div>`;
+  });
+
+  h += `<span class="day-label${dow === 0 ? ' sun' : ''}${dow === 6 ? ' sat' : ''}">${day}</span>`;
+
+  let hiddenSingles = [];
+  let hiddenTodos = [];
+  if (holiday) {
+    h += `<span class="event-text color-holiday">${holiday}</span>`;
+    hiddenSingles = singles;
+    hiddenTodos = todos;
+  } else if (visibleRanges.length > 0) {
+    const first = visibleRanges[0];
+    const startRange = visibleRanges.find((re) => {
+      const pos = getRangePosition(re, month, day);
+      return pos === 'start' || pos === 'single';
+    });
+    if (startRange) {
+      h += `<span class="event-text color-${startRange.color}">${startRange.text}</span>`;
+      hiddenSingles = singles;
+      hiddenTodos = todos;
+    } else if (singles.length > 0) {
+      h += `<span class="event-text color-${singles[0].color}">${singles[0].text}</span>`;
+      hiddenSingles = singles.slice(1);
+      hiddenTodos = todos;
+    } else if (todos.length > 0) {
+      const firstTodo = todos[0];
+      const todoClass = firstTodo.status === 'completed' ? 'todo-pill done' : 'todo-pill';
+      h += `<span class="${todoClass}">${getTodoLabel(firstTodo)}</span>`;
+      hiddenTodos = todos.slice(1);
+    } else if (day === 1 && first.startMonth < month) {
+      h += `<span class="event-text color-${first.color} continued">← ${first.text}</span>`;
+    }
+  } else if (singles.length > 0) {
+    h += `<span class="event-text color-${singles[0].color}">${singles[0].text}</span>`;
+    hiddenSingles = singles.slice(1);
+    hiddenTodos = todos;
+  } else if (todos.length > 0) {
+    const firstTodo = todos[0];
+    const todoClass = firstTodo.status === 'completed' ? 'todo-pill done' : 'todo-pill';
+    h += `<span class="${todoClass}">${getTodoLabel(firstTodo)}</span>`;
+    hiddenTodos = todos.slice(1);
+  }
+
+  const hiddenEventCount = hiddenRanges.length + hiddenSingles.length;
+  const hiddenTodoCount = hiddenTodos.length;
+  if (hiddenEventCount > 0) h += `<span class="more-badge more-event">+E${hiddenEventCount}</span>`;
+  if (hiddenTodoCount > 0) h += `<span class="more-badge more-todo">+T${hiddenTodoCount}</span>`;
+
+  h += '</div>';
+  return h;
+}
+
+function buildTable(tbodyId) {
+  const tbody = document.getElementById(tbodyId);
+  tbody.innerHTML = '';
+  for (let day = 1; day <= 31; day++) {
+    const tr = document.createElement('tr');
+    const tdNum = document.createElement('td');
+    tdNum.className = 'day-num';
+    tdNum.textContent = day;
+    tr.appendChild(tdNum);
+    for (let month = 1; month <= 12; month++) {
+      const td = document.createElement('td');
+      td.innerHTML = buildCellHTML(month, day);
+      tr.appendChild(td);
+    }
+    tbody.appendChild(tr);
+  }
+}
+
+function rerenderTables() {
+  buildTable('yearBody');
+  buildTable('mobileBody');
+}
+
+function updateTodoFilterButton() {
+  const btn = document.getElementById('todo-filter-btn');
+  if (!btn) return;
+  btn.textContent = showCompletedTodos ? 'Todo: Include Done' : 'Todo: Active Only';
+}
+
+function toggleCompletedTodos() {
+  showCompletedTodos = !showCompletedTodos;
+  updateTodoFilterButton();
+  rerenderTables();
+}
+
+function syncDesktopRowHeight() {
+  const wrapper = document.querySelector('.desktop-view .year-table-wrapper');
+  const table = document.getElementById('yearTable');
+  if (!wrapper || !table) return;
+
+  const headerCell = table.querySelector('thead th');
+  const headerHeight = headerCell ? headerCell.getBoundingClientRect().height : 36;
+  const available = wrapper.clientHeight - headerHeight - 2;
+  const rowHeight = available / 31;
+  const clamped = Math.max(12, rowHeight);
+
+  document.documentElement.style.setProperty('--year-row-height', `${clamped.toFixed(2)}px`);
+}
+
+// View switching
+function setView(mode) {
+  const desktop = document.getElementById('desktopView');
+  const mobile = document.getElementById('mobileView');
+  document.querySelectorAll('.top-bar .btn').forEach(b => b.classList.remove('active'));
+
+  if (mode === 'both') {
+    desktop.style.display = 'flex';
+    mobile.style.display = 'flex';
+    mobile.classList.add('visible');
+    document.getElementById('btn-both').classList.add('active');
+  } else if (mode === 'desktop') {
+    desktop.style.display = 'flex';
+    mobile.style.display = 'none';
+    document.getElementById('btn-desktop').classList.add('active');
+  } else {
+    desktop.style.display = 'none';
+    mobile.style.display = 'flex';
+    mobile.classList.add('visible');
+    document.getElementById('btn-mobile').classList.add('active');
+  }
+
+  requestAnimationFrame(syncDesktopRowHeight);
+}
+
+let isDark = false;
+function toggleDark() {
+  isDark = !isDark;
+  document.body.className = isDark ? 'dark' : '';
+  document.getElementById('dark-btn').textContent = isDark ? 'Light Mode' : 'Dark Mode';
+}
+
+buildTable('yearBody');
+buildTable('mobileBody');
+updateTodoFilterButton();
+setView('both');
+requestAnimationFrame(syncDesktopRowHeight);
+
+window.addEventListener('resize', () => requestAnimationFrame(syncDesktopRowHeight));
+window.addEventListener('load', () => requestAnimationFrame(syncDesktopRowHeight));
+</script>
+</body>
+</html>

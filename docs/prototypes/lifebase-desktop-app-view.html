@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Lifebase Desktop App Prototype</title>
+<style>
+  :root {
+    --bg: #eef3f1;
+    --surface: #ffffff;
+    --surface-2: #f6faf8;
+    --text: #14231d;
+    --muted: #607069;
+    --line: #d8e2dd;
+    --primary: #0f8f75;
+    --primary-soft: #d8f2eb;
+    --todo: #5b49b8;
+    --warn: #c98a18;
+    --danger: #d94848;
+    --shadow: 0 18px 40px rgba(20, 41, 33, 0.14);
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    min-height: 100vh;
+    display: grid;
+    place-items: center;
+    font-family: "SUIT Variable", "Pretendard", "Noto Sans KR", sans-serif;
+    background: linear-gradient(145deg, #e4efeb, #eef2ff);
+    color: var(--text);
+  }
+
+  .window {
+    width: min(1440px, 96vw);
+    height: min(860px, 94vh);
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 16px;
+    box-shadow: var(--shadow);
+    overflow: hidden;
+    display: grid;
+    grid-template-rows: 42px 1fr 28px;
+  }
+
+  .titlebar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 12px;
+    background: #f7fbf9;
+    border-bottom: 1px solid var(--line);
+    font-size: 12px;
+    color: var(--muted);
+  }
+  .dots { display: flex; gap: 6px; }
+  .dot { width: 10px; height: 10px; border-radius: 50%; }
+  .dot.red { background: #ff5f57; }
+  .dot.yellow { background: #febb2e; }
+  .dot.green { background: #28c840; }
+
+  .body {
+    display: grid;
+    grid-template-columns: 220px 1fr;
+    min-height: 0;
+  }
+
+  .sidebar {
+    border-right: 1px solid var(--line);
+    background: var(--surface-2);
+    padding: 12px;
+  }
+
+  .tab-btn {
+    width: 100%;
+    border: 0;
+    text-align: left;
+    background: transparent;
+    color: var(--muted);
+    border-radius: 10px;
+    padding: 10px 12px;
+    margin-bottom: 4px;
+    cursor: pointer;
+    font-size: 14px;
+  }
+  .tab-btn.active { background: var(--primary-soft); color: var(--primary); font-weight: 700; }
+
+  .main { min-width: 0; min-height: 0; display: flex; flex-direction: column; }
+
+  .toolbar {
+    height: 56px;
+    border-bottom: 1px solid var(--line);
+    padding: 0 14px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+  }
+  .toolbar-left, .toolbar-right { display: flex; gap: 8px; align-items: center; }
+  .chip {
+    border: 1px solid var(--line);
+    background: #fff;
+    color: var(--muted);
+    border-radius: 999px;
+    padding: 7px 11px;
+    font-size: 12px;
+  }
+
+  .panel { display: none; padding: 14px; overflow: auto; min-height: 0; }
+  .panel.active { display: block; }
+  .panel h2 { margin: 0 0 10px; font-size: 20px; }
+
+  .grid { display: grid; gap: 12px; grid-template-columns: repeat(12, minmax(0,1fr)); }
+  .card {
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    background: #fff;
+    padding: 12px;
+  }
+
+  .sync-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  .sync-table th, .sync-table td { text-align: left; padding: 8px 6px; border-bottom: 1px solid var(--line); }
+  .status { font-size: 11px; padding: 2px 8px; border-radius: 999px; border: 1px solid var(--line); }
+  .status.ok { color: var(--primary); border-color: #b9e7db; background: #ecf9f5; }
+  .status.warn { color: var(--warn); border-color: #efd8ac; background: #fff7e7; }
+  .status.err { color: var(--danger); border-color: #f0c3c3; background: #fff1f1; }
+
+  .calendar-box {
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    overflow: hidden;
+  }
+  .week { display: grid; grid-template-columns: repeat(7,1fr); border-bottom: 1px solid var(--line); }
+  .cell { min-height: 86px; border-right: 1px solid var(--line); padding: 6px; font-size: 12px; }
+  .week .cell:last-child { border-right: 0; }
+  .event { font-size: 11px; margin-top: 4px; padding: 2px 6px; border-radius: 6px; background: #d8f2eb; color: var(--primary); }
+  .todo { font-size: 11px; margin-top: 4px; padding: 2px 6px; border-radius: 999px; background: #ece9ff; color: var(--todo); }
+
+  .statusbar {
+    border-top: 1px solid var(--line);
+    background: #f8fbfa;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 12px;
+    font-size: 11px;
+    color: var(--muted);
+  }
+</style>
+</head>
+<body>
+  <div class="window">
+    <div class="titlebar">
+      <div class="dots"><span class="dot red"></span><span class="dot yellow"></span><span class="dot green"></span></div>
+      <span>Lifebase Desktop</span>
+      <span>v0.2 prototype</span>
+    </div>
+
+    <div class="body">
+      <aside class="sidebar">
+        <button class="tab-btn active" data-tab="cloud">Cloud + Sync</button>
+        <button class="tab-btn" data-tab="calendar">Calendar</button>
+        <button class="tab-btn" data-tab="todo">Todo</button>
+        <button class="tab-btn" data-tab="gallery">Gallery</button>
+        <button class="tab-btn" data-tab="settings">Settings</button>
+      </aside>
+
+      <section class="main">
+        <div class="toolbar">
+          <div class="toolbar-left">
+            <span class="chip">계정 필터: 전체</span>
+            <span class="chip">완료 Todo: 숨김</span>
+          </div>
+          <div class="toolbar-right">
+            <span class="chip">동기화 워커: 정상</span>
+          </div>
+        </div>
+
+        <div class="panel active" id="tab-cloud">
+          <h2>Cloud + Folder Sync</h2>
+          <div class="grid">
+            <div class="card" style="grid-column: span 8;">
+              <strong>동기화 폴더 (Nextcloud 스타일)</strong>
+              <table class="sync-table" style="margin-top:8px;">
+                <thead><tr><th>로컬 경로</th><th>원격 경로</th><th>선택 동기화</th><th>상태</th></tr></thead>
+                <tbody>
+                  <tr><td>~/Workspace/lifebase-docs</td><td>/Cloud/Docs</td><td>전체</td><td><span class="status ok">동기화됨</span></td></tr>
+                  <tr><td>~/Pictures/Camera</td><td>/Cloud/Photos</td><td>images/*</td><td><span class="status warn">스캔중</span></td></tr>
+                  <tr><td>~/Archive/Legacy</td><td>/Cloud/Archive</td><td>zip/*</td><td><span class="status err">충돌 2건</span></td></tr>
+                </tbody>
+              </table>
+            </div>
+            <div class="card" style="grid-column: span 4;">
+              <strong>빠른 작업</strong>
+              <p style="font-size:13px;color:var(--muted);">폴더 추가/일시중지/충돌 해결</p>
+              <div class="status ok" style="display:inline-block;">+ 폴더 추가</div>
+              <div style="height:8px"></div>
+              <div class="status">선택 동기화 편집</div>
+              <div style="height:8px"></div>
+              <div class="status warn">충돌 해결 열기</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="panel" id="tab-calendar">
+          <h2>Calendar</h2>
+          <div class="card">
+            <div style="font-size:13px;color:var(--muted);margin-bottom:8px;">계정 필터는 전체 뷰에 공통 적용</div>
+            <div class="calendar-box">
+              <div class="week">
+                <div class="cell">18<div class="event">릴리즈 안정화</div><div class="todo">세금 신고 자료 업로드</div></div>
+                <div class="cell">19<div class="event">워크숍</div></div>
+                <div class="cell">20<div class="todo">회의 노트 정리</div></div>
+                <div class="cell">21<div class="event">출장</div></div>
+                <div class="cell">22</div>
+                <div class="cell">23<div class="event">장애 대응</div></div>
+                <div class="cell">24<div class="todo">월간 회고 작성</div></div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="panel" id="tab-todo">
+          <h2>Todo</h2>
+          <div class="card">Google Tasks due + Lifebase 확장 필드(반복/우선순위) 병행 표시</div>
+        </div>
+
+        <div class="panel" id="tab-gallery">
+          <h2>Gallery</h2>
+          <div class="card">FFmpeg/libvips 워커 큐 상태와 썸네일 생성 현황</div>
+        </div>
+
+        <div class="panel" id="tab-settings">
+          <h2>Settings</h2>
+          <div class="card">계정 연결, 동기화 정책, 폴더 매핑 정책</div>
+        </div>
+      </section>
+    </div>
+
+    <footer class="statusbar">
+      <span>cloud worker: online · queue: 4</span>
+      <span>last sync: 02:58</span>
+    </footer>
+  </div>
+
+<script>
+  const tabButtons = document.querySelectorAll('.tab-btn');
+  const panels = document.querySelectorAll('.panel');
+
+  tabButtons.forEach((button) => {
+    button.addEventListener('click', () => {
+      tabButtons.forEach((b) => b.classList.remove('active'));
+      panels.forEach((p) => p.classList.remove('active'));
+      button.classList.add('active');
+      document.getElementById(`tab-${button.dataset.tab}`).classList.add('active');
+    });
+  });
+</script>
+</body>
+</html>

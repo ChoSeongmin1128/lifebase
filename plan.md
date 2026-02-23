@@ -23,6 +23,11 @@
 - `docs/520-색상-체계.md`
 - `docs/530-UX-UI-테마.md`
 - `docs/540-플랫폼-통일성.md`
+- `docs/prototypes/calendar-year-view.html` (Year View 프로토타입)
+- `docs/prototypes/calendar-palette.html` (팔레트 비교 프로토타입)
+- `docs/prototypes/lifebase-web-view.html` (Web 탭형 프로토타입)
+- `docs/prototypes/lifebase-desktop-app-view.html` (Desktop App 탭형 프로토타입 + 폴더 동기화)
+- `docs/prototypes/lifebase-mobile-view.html` (Mobile 탭형 프로토타입)
 
 ## 5. 보안
 - `docs/600-인증-OAuth.md`
