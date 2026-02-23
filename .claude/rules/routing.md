@@ -21,7 +21,7 @@
 
 /gallery?view=grid&sort=date
 
-/tasks/{listId}
+/todo/{listId}
 
 /settings/accounts
 ```
