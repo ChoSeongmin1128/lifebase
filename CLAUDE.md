@@ -18,3 +18,4 @@ Lifebase용 에이전트 규칙 진입점.
 - 프론트엔드 라우팅 컨벤션: `@.claude/rules/routing.md`
 - API 아키텍처 규칙: `@.claude/rules/api-architecture.md`
 - Google 연동 규칙: `@.claude/rules/google-api.md`
+- 버전 관리 규칙: `@.claude/rules/versioning.md`
