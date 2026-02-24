@@ -150,12 +150,16 @@
     position: static;
     transition: width 0.2s ease, padding 0.2s ease;
     overflow: hidden;
+    overflow-y: auto;
     width: 208px;
+    display: flex;
+    flex-direction: column;
   }
 
   .sidebar.collapsed {
     width: 52px;
     padding: 8px 4px;
+    align-items: center;
   }
 
   .sidebar-header {
@@ -163,7 +167,10 @@
     align-items: center;
     justify-content: space-between;
     margin: 2px 4px 8px;
+    flex-shrink: 0;
+    width: 100%;
   }
+  .sidebar.collapsed .sidebar-header { justify-content: center; }
 
   .sidebar-title {
     font-size: 11px;
@@ -210,9 +217,9 @@
   }
   .nav-tab .nav-icon { flex-shrink: 0; width: 18px; height: 18px; display: flex; align-items: center; justify-content: center; }
   .nav-tab .nav-icon svg { width: 18px; height: 18px; }
-  .nav-tab .nav-label { transition: opacity 0.15s ease; }
-  .sidebar.collapsed .nav-tab { justify-content: center; padding: 9px 8px; }
-  .sidebar.collapsed .nav-tab .nav-label { opacity: 0; width: 0; overflow: hidden; }
+  .nav-tab .nav-label { transition: opacity 0.15s ease; white-space: nowrap; }
+  .sidebar.collapsed .nav-tab { justify-content: center; padding: 9px 0; width: 100%; }
+  .sidebar.collapsed .nav-tab .nav-label { opacity: 0; width: 0; overflow: hidden; position: absolute; }
   .nav-tab:hover { background: var(--primary-soft); }
   .nav-tab.active {
     background: var(--primary);
@@ -220,6 +227,51 @@
     font-weight: 700;
   }
   .nav-tab.active .nav-icon svg { stroke: #fff; }
+
+  /* Cloud sub-nav in sidebar */
+  .cloud-subnav {
+    display: none;
+    flex-direction: column;
+    padding: 2px 0 4px;
+  }
+  .cloud-subnav.open { display: flex; }
+  .sidebar.collapsed .cloud-subnav { display: none !important; }
+  .cloud-sub-item {
+    width: 100%;
+    border: 0;
+    background: transparent;
+    color: var(--text-secondary);
+    border-radius: 6px;
+    text-align: left;
+    font-size: 12px;
+    padding: 7px 10px 7px 36px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    white-space: nowrap;
+    overflow: hidden;
+  }
+  .cloud-sub-item:hover { background: var(--primary-soft); }
+  .cloud-sub-item.active {
+    background: var(--primary-soft);
+    color: var(--primary);
+    font-weight: 700;
+  }
+  .cloud-sub-item .sub-icon {
+    flex-shrink: 0; width: 15px; height: 15px;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .cloud-sub-item .sub-icon svg {
+    width: 15px; height: 15px; stroke: currentColor; fill: none;
+    stroke-width: 2; stroke-linecap: round; stroke-linejoin: round;
+  }
+  .nav-tab .nav-chevron {
+    margin-left: auto; flex-shrink: 0; width: 14px; height: 14px;
+    transition: transform 0.15s ease;
+  }
+  .nav-tab .nav-chevron svg { width: 14px; height: 14px; }
+  .sidebar.collapsed .nav-chevron { display: none; }
 
   .content {
     overflow: auto;
@@ -319,25 +371,6 @@
   .badge.err { color: #dc2626; }
 
   /* Cloud */
-  .cloud-layout {
-    display: grid;
-    grid-template-columns: 240px 1fr;
-    gap: 10px;
-  }
-
-  .folder-item {
-    font-size: 13px;
-    padding: 7px 8px;
-    border-radius: 6px;
-    color: var(--text-secondary);
-    cursor: pointer;
-  }
-  .folder-item.active {
-    background: var(--primary-soft);
-    color: var(--primary);
-    font-weight: 700;
-  }
-
   .crumb { font-size: 13px; color: var(--text-secondary); }
 
   table.file-table {
@@ -350,25 +383,91 @@
     text-align: left;
     padding: 9px 8px;
     border-bottom: 1px solid var(--border);
+    vertical-align: middle;
   }
   .file-table th { color: var(--text-secondary); font-size: 12px; }
 
   .file-name {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: 6px;
   }
-  .file-dot {
-    width: 8px;
-    height: 8px;
-    border-radius: 50%;
+  .file-icon {
+    width: 16px; height: 16px; flex-shrink: 0;
+    display: inline-flex; align-items: center; justify-content: center;
+  }
+  .file-icon svg {
+    width: 16px; height: 16px; stroke: var(--text-secondary); fill: none;
+    stroke-width: 2; stroke-linecap: round; stroke-linejoin: round;
+  }
+  .file-icon.folder svg { stroke: #d97706; }
+  .file-icon.shared-folder svg { stroke: #d97706; }
+  .file-icon.document svg { stroke: #2563eb; }
+  .file-icon.image svg { stroke: #16a34a; }
+  .file-icon.spreadsheet svg { stroke: #16a34a; }
+  .file-icon.pdf svg { stroke: #dc2626; }
+
+  .share-badge { display: inline-flex; margin-left: 4px; }
+  .share-badge svg {
+    width: 12px; height: 12px; stroke: var(--text-muted); fill: none;
+    stroke-width: 2; stroke-linecap: round; stroke-linejoin: round;
   }
 
-  details.sync-box summary {
-    cursor: pointer;
-    color: var(--text-secondary);
-    font-size: 12px;
+  .bulk-bar {
+    display: none; align-items: center; justify-content: space-between;
+    padding: 8px 10px; margin-bottom: 8px;
+    background: var(--primary-soft); border: 1px solid var(--primary);
+    border-radius: var(--radius); font-size: 13px; color: var(--primary);
   }
+  .bulk-bar.visible { display: flex; }
+  .bulk-bar .seg { gap: 4px; }
+  .bulk-bar .btn { font-size: 12px; display: inline-flex; align-items: center; gap: 4px; }
+  .bulk-count { font-weight: 700; }
+
+  .action-cell { position: relative; }
+  .action-btn {
+    border: none; background: transparent; cursor: pointer;
+    padding: 4px 8px; border-radius: 4px; font-size: 16px;
+    color: var(--text-secondary); line-height: 1;
+  }
+  .action-btn:hover { background: var(--primary-soft); }
+  .action-menu {
+    display: none; position: absolute; right: 0; top: 100%; z-index: 30;
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--radius); box-shadow: var(--shadow);
+    min-width: 140px; padding: 4px 0;
+  }
+  .action-menu.open { display: block; }
+  .action-menu-item {
+    display: flex; align-items: center; gap: 8px; width: 100%;
+    border: none; background: transparent; padding: 8px 12px;
+    font-size: 13px; color: var(--text-primary); cursor: pointer; text-align: left;
+  }
+  .action-menu-item:hover { background: var(--primary-soft); }
+  .action-menu-item svg {
+    width: 14px; height: 14px; stroke: currentColor; fill: none;
+    stroke-width: 2; stroke-linecap: round; stroke-linejoin: round;
+  }
+  .action-menu-item.danger { color: var(--error); }
+
+  .modal-overlay {
+    display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.3);
+    z-index: 100; align-items: center; justify-content: center;
+  }
+  .modal-overlay.open { display: flex; }
+  .modal-box {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--radius); box-shadow: var(--shadow);
+    padding: 20px; min-width: 360px; max-width: 440px;
+  }
+  .modal-box h3 { margin: 0 0 12px; font-size: 16px; color: var(--text-strong); }
+  .modal-box input[type="text"] {
+    width: 100%; padding: 8px 10px; border: 1px solid var(--border);
+    border-radius: var(--radius); font-size: 13px; margin-bottom: 8px;
+    background: var(--surface); color: var(--text-primary);
+  }
+  .modal-box label { font-size: 12px; color: var(--text-secondary); display: block; margin-bottom: 4px; }
+  .modal-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 12px; }
 
   /* Calendar */
   .calendar-view { display: none !important; }
@@ -981,7 +1080,6 @@
     .desktop-shell { width: 100vw; height: 100vh; border-radius: 0; }
     .layout { grid-template-columns: 1fr; }
     .sidebar { position: static; height: auto; }
-    .cloud-layout,
     .todo-layout { grid-template-columns: 1fr; }
     .year-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     .gallery-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -1022,7 +1120,15 @@
         <button class="nav-tab active" data-tab="cloud">
           <span class="nav-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z"/></svg></span>
           <span class="nav-label">Cloud</span>
+          <span class="nav-chevron"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg></span>
         </button>
+        <div class="cloud-subnav open" id="cloudSubnav">
+          <button class="cloud-sub-item active" data-cloud-view="my"><span class="sub-icon"><svg viewBox="0 0 24 24"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg></span>내 파일</button>
+          <button class="cloud-sub-item" data-cloud-view="recent"><span class="sub-icon"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg></span>최근 파일</button>
+          <button class="cloud-sub-item" data-cloud-view="shared"><span class="sub-icon"><svg viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg></span>공유됨</button>
+          <button class="cloud-sub-item" data-cloud-view="starred"><span class="sub-icon"><svg viewBox="0 0 24 24"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg></span>중요 표시</button>
+          <button class="cloud-sub-item" data-cloud-view="trash"><span class="sub-icon"><svg viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg></span>휴지통</button>
+        </div>
         <button class="nav-tab" data-tab="calendar">
           <span class="nav-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg></span>
           <span class="nav-label">Calendar</span>
@@ -1044,7 +1150,6 @@
       <main class="content">
         <section class="panel active" id="tab-cloud">
           <h2 class="section-title">Cloud Storage</h2>
-          <p class="sub">메인은 파일 탐색/관리입니다. 폴더 동기화 설정은 보조 기능으로 접어서 제공합니다.</p>
 
           <div class="toolbar-row">
             <span class="crumb">내 파일 / Projects / Lifebase</span>
@@ -1055,50 +1160,64 @@
             </div>
           </div>
 
-          <div class="cloud-layout">
-            <div class="card">
-              <div class="card-title">폴더</div>
-              <div class="folder-item active">내 파일</div>
-              <div class="folder-item">최근 파일</div>
-              <div class="folder-item">공유됨</div>
-              <div class="folder-item">중요 표시</div>
-              <div class="folder-item">휴지통</div>
-              <div style="height:8px"></div>
-              <div class="card-title" style="margin-top:2px;">빠른 접근</div>
-              <div class="folder-item">/Projects</div>
-              <div class="folder-item">/Photos/2026</div>
-              <div class="folder-item">/Documents/Finance</div>
-            </div>
-
+          <div class="cloud-content">
             <div class="card">
               <div class="toolbar-row" style="margin-bottom:8px;">
                 <input class="task-input" style="margin:0; max-width:320px;" placeholder="파일/폴더 검색" />
                 <div class="seg">
                   <button class="btn primary">업로드</button>
+                  <button class="btn primary" id="newFileBtn">새 파일</button>
                   <button class="btn">새 폴더</button>
                   <button class="btn">정렬</button>
                 </div>
               </div>
 
+              <div class="bulk-bar" id="bulkBar">
+                <span class="bulk-count" id="bulkCount">0개 선택</span>
+                <div class="seg">
+                  <button class="btn"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg> 이동</button>
+                  <button class="btn"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg> 다운로드</button>
+                  <button class="btn" style="color:var(--error);border-color:var(--error);"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg> 삭제</button>
+                </div>
+              </div>
+
               <table class="file-table">
                 <thead>
-                  <tr><th>이름</th><th>유형</th><th>크기</th><th>수정한 날짜</th></tr>
+                  <tr><th style="width:32px;"><input type="checkbox" id="selectAll" /></th><th>이름</th><th>유형</th><th>크기</th><th>수정한 날짜</th><th style="width:48px;">작업</th></tr>
                 </thead>
                 <tbody>
-                  <tr><td class="file-name"><span class="file-dot" style="background:#1b998b"></span>spec-v5.md</td><td>문서</td><td>182 KB</td><td>2026-02-23 14:01</td></tr>
-                  <tr><td class="file-name"><span class="file-dot" style="background:#2563eb"></span>wireframes</td><td>폴더</td><td>-</td><td>2026-02-23 12:42</td></tr>
-                  <tr><td class="file-name"><span class="file-dot" style="background:#16a34a"></span>launch-day.jpg</td><td>이미지</td><td>4.2 MB</td><td>2026-02-22 21:12</td></tr>
-                  <tr><td class="file-name"><span class="file-dot" style="background:#d97706"></span>meeting-notes.md</td><td>문서</td><td>64 KB</td><td>2026-02-22 18:30</td></tr>
-                  <tr><td class="file-name"><span class="file-dot" style="background:#dc2626"></span>budget-2026.xlsx</td><td>스프레드시트</td><td>1.4 MB</td><td>2026-02-20 09:44</td></tr>
+                  <tr>
+                    <td><input type="checkbox" class="file-check" /></td>
+                    <td><div class="file-name"><span class="file-icon document"><svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg></span>spec-v5.md</div></td>
+                    <td>md</td><td>182 KB</td><td>2026-02-23 14:01</td>
+                    <td class="action-cell"><button class="action-btn" data-action-toggle>⋯</button><div class="action-menu"><button class="action-menu-item"><svg viewBox="0 0 24 24"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>이름 변경</button><button class="action-menu-item"><svg viewBox="0 0 24 24"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>이동</button><button class="action-menu-item"><svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>다운로드</button><button class="action-menu-item danger"><svg viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>삭제</button></div></td>
+                  </tr>
+                  <tr>
+                    <td><input type="checkbox" class="file-check" /></td>
+                    <td><div class="file-name"><span class="file-icon shared-folder"><svg viewBox="0 0 24 24"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg></span>wireframes<span class="share-badge"><svg viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/></svg></span></div></td>
+                    <td>폴더</td><td>-</td><td>2026-02-23 12:42</td>
+                    <td class="action-cell"><button class="action-btn" data-action-toggle>⋯</button><div class="action-menu"><button class="action-menu-item"><svg viewBox="0 0 24 24"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>이름 변경</button><button class="action-menu-item"><svg viewBox="0 0 24 24"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>이동</button><button class="action-menu-item"><svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>다운로드</button><button class="action-menu-item danger"><svg viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>삭제</button></div></td>
+                  </tr>
+                  <tr>
+                    <td><input type="checkbox" class="file-check" /></td>
+                    <td><div class="file-name"><span class="file-icon image"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg></span>launch-day.jpg</div></td>
+                    <td>jpg</td><td>4.2 MB</td><td>2026-02-22 21:12</td>
+                    <td class="action-cell"><button class="action-btn" data-action-toggle>⋯</button><div class="action-menu"><button class="action-menu-item"><svg viewBox="0 0 24 24"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>이름 변경</button><button class="action-menu-item"><svg viewBox="0 0 24 24"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>이동</button><button class="action-menu-item"><svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>다운로드</button><button class="action-menu-item danger"><svg viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>삭제</button></div></td>
+                  </tr>
+                  <tr>
+                    <td><input type="checkbox" class="file-check" /></td>
+                    <td><div class="file-name"><span class="file-icon document"><svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg></span>meeting-notes.md</div></td>
+                    <td>md</td><td>64 KB</td><td>2026-02-22 18:30</td>
+                    <td class="action-cell"><button class="action-btn" data-action-toggle>⋯</button><div class="action-menu"><button class="action-menu-item"><svg viewBox="0 0 24 24"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>이름 변경</button><button class="action-menu-item"><svg viewBox="0 0 24 24"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>이동</button><button class="action-menu-item"><svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>다운로드</button><button class="action-menu-item danger"><svg viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>삭제</button></div></td>
+                  </tr>
+                  <tr>
+                    <td><input type="checkbox" class="file-check" /></td>
+                    <td><div class="file-name"><span class="file-icon spreadsheet"><svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="16" y2="17"/><line x1="12" y1="9" x2="12" y2="21"/></svg></span>budget-2026.xlsx</div></td>
+                    <td>xlsx</td><td>1.4 MB</td><td>2026-02-20 09:44</td>
+                    <td class="action-cell"><button class="action-btn" data-action-toggle>⋯</button><div class="action-menu"><button class="action-menu-item"><svg viewBox="0 0 24 24"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>이름 변경</button><button class="action-menu-item"><svg viewBox="0 0 24 24"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>이동</button><button class="action-menu-item"><svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>다운로드</button><button class="action-menu-item danger"><svg viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>삭제</button></div></td>
+                  </tr>
                 </tbody>
               </table>
-
-              <details class="sync-box" style="margin-top:10px;">
-                <summary>고급: 특정 폴더 동기화 설정</summary>
-                <div class="row"><span>~/Workspace/lifebase-docs ↔ /Cloud/Docs</span><span class="badge ok">양방향</span></div>
-                <div class="row"><span>~/Pictures/Camera → /Cloud/Photos</span><span class="badge">업로드 전용</span></div>
-                <div class="row"><span>~/Archive (선택 동기화)</span><span class="badge warn">수동</span></div>
-              </details>
             </div>
           </div>
         </section>
@@ -1282,6 +1401,24 @@
     </footer>
   </div>
 
+  <!-- New File Modal -->
+  <div class="modal-overlay" id="newFileModal">
+    <div class="modal-box">
+      <h3>새 파일 만들기</h3>
+      <label>파일 이름</label>
+      <input type="text" id="newFileName" placeholder="untitled.md" />
+      <label>파일 유형</label>
+      <div class="seg" style="margin-bottom:4px;">
+        <button class="btn active" data-filetype="md">Markdown (.md)</button>
+        <button class="btn" data-filetype="txt">텍스트 (.txt)</button>
+      </div>
+      <div class="modal-actions">
+        <button class="btn" id="newFileCancel">취소</button>
+        <button class="btn primary" id="newFileCreate">만들기</button>
+      </div>
+    </div>
+  </div>
+
 <script>
   // Sidebar toggle
   const sidebar = document.getElementById('sidebar');
@@ -1296,17 +1433,100 @@
 
   const tabs = document.querySelectorAll('.nav-tab');
   const panels = document.querySelectorAll('.panel');
+  const cloudSubnav = document.getElementById('cloudSubnav');
 
   tabs.forEach((button) => {
     button.addEventListener('click', () => {
+      const wasActive = button.classList.contains('active');
+      const isCloud = button.dataset.tab === 'cloud';
+
       tabs.forEach((b) => b.classList.remove('active'));
       panels.forEach((p) => p.classList.remove('active'));
       button.classList.add('active');
       document.getElementById(`tab-${button.dataset.tab}`).classList.add('active');
+
+      if (isCloud) {
+        if (wasActive) { cloudSubnav.classList.toggle('open'); }
+        else { cloudSubnav.classList.add('open'); }
+      } else {
+        cloudSubnav.classList.remove('open');
+      }
+
       if (button.dataset.tab === 'calendar') {
         requestAnimationFrame(syncYearTimelineRowHeight);
       }
     });
+  });
+
+  // Cloud subnav chevron sync
+  const cloudChevron = document.querySelector('[data-tab="cloud"] .nav-chevron');
+  function syncChevron() {
+    cloudChevron.style.transform = cloudSubnav.classList.contains('open') ? 'rotate(90deg)' : '';
+  }
+  syncChevron();
+  new MutationObserver(syncChevron).observe(cloudSubnav, { attributes: true, attributeFilter: ['class'] });
+
+  // Cloud sub-item click
+  document.querySelectorAll('.cloud-sub-item').forEach((item) => {
+    item.addEventListener('click', () => {
+      document.querySelectorAll('.cloud-sub-item').forEach((i) => i.classList.remove('active'));
+      item.classList.add('active');
+    });
+  });
+
+  // Action menu toggle
+  document.addEventListener('click', (e) => {
+    const toggle = e.target.closest('[data-action-toggle]');
+    if (toggle) {
+      e.stopPropagation();
+      const menu = toggle.nextElementSibling;
+      const wasOpen = menu.classList.contains('open');
+      document.querySelectorAll('.action-menu.open').forEach((m) => m.classList.remove('open'));
+      if (!wasOpen) menu.classList.add('open');
+      return;
+    }
+    if (!e.target.closest('.action-menu')) {
+      document.querySelectorAll('.action-menu.open').forEach((m) => m.classList.remove('open'));
+    }
+  });
+
+  // New file modal
+  const newFileModal = document.getElementById('newFileModal');
+  document.getElementById('newFileBtn').addEventListener('click', () => {
+    document.getElementById('newFileName').value = '';
+    newFileModal.classList.add('open');
+  });
+  document.getElementById('newFileCancel').addEventListener('click', () => newFileModal.classList.remove('open'));
+  newFileModal.addEventListener('click', (e) => { if (e.target === newFileModal) newFileModal.classList.remove('open'); });
+  newFileModal.querySelectorAll('[data-filetype]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      newFileModal.querySelectorAll('[data-filetype]').forEach((b) => b.classList.remove('active'));
+      btn.classList.add('active');
+    });
+  });
+  document.getElementById('newFileCreate').addEventListener('click', () => {
+    if (!document.getElementById('newFileName').value.trim()) return;
+    newFileModal.classList.remove('open');
+  });
+
+  // Bulk selection
+  const selectAll = document.getElementById('selectAll');
+  const bulkBar = document.getElementById('bulkBar');
+  const bulkCount = document.getElementById('bulkCount');
+  function updateBulkBar() {
+    const checks = document.querySelectorAll('.file-check');
+    const checked = document.querySelectorAll('.file-check:checked');
+    bulkBar.classList.toggle('visible', checked.length > 0);
+    bulkCount.textContent = `${checked.length}개 선택`;
+    selectAll.checked = checks.length > 0 && checked.length === checks.length;
+    selectAll.indeterminate = checked.length > 0 && checked.length < checks.length;
+  }
+  selectAll.addEventListener('change', () => {
+    document.querySelectorAll('.file-check').forEach((c) => { c.checked = selectAll.checked; });
+    updateBulkBar();
+  });
+  document.querySelector('.file-table tbody').addEventListener('change', (e) => {
+    if (e.target.classList.contains('file-check')) updateBulkBar();
   });
 
   const cviewButtons = document.querySelectorAll('#calendarViewSwitch button[data-cview]');

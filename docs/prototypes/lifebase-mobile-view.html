@@ -178,23 +178,72 @@
     padding: 8px;
     margin-bottom: 6px;
     background: var(--surface);
-  }
-  .file-top {
     display: flex;
     align-items: center;
     gap: 8px;
+  }
+  .file-icon-m {
+    width: 20px; height: 20px; flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .file-icon-m svg {
+    width: 18px; height: 18px; fill: none;
+    stroke-width: 2; stroke-linecap: round; stroke-linejoin: round;
+  }
+  .file-icon-m.document svg { stroke: #2563eb; }
+  .file-icon-m.folder svg { stroke: #d97706; }
+  .file-icon-m.shared-folder svg { stroke: #d97706; }
+  .file-icon-m.image svg { stroke: #16a34a; }
+  .file-icon-m.spreadsheet svg { stroke: #16a34a; }
+  .file-info { flex: 1; min-width: 0; }
+  .file-top {
+    display: flex;
+    align-items: center;
+    gap: 4px;
     font-size: 12px;
     color: var(--text-primary);
-    margin-bottom: 3px;
-  }
-  .file-dot {
-    width: 8px;
-    height: 8px;
-    border-radius: 50%;
+    margin-bottom: 2px;
   }
   .file-meta {
     font-size: 10px;
     color: var(--text-secondary);
+  }
+  .file-action-btn {
+    border: none; background: transparent; cursor: pointer;
+    padding: 4px; font-size: 16px; color: var(--text-secondary);
+    flex-shrink: 0; line-height: 1;
+  }
+  .share-badge-m { display: inline-flex; margin-left: 2px; }
+  .share-badge-m svg {
+    width: 10px; height: 10px; stroke: var(--text-muted); fill: none;
+    stroke-width: 2; stroke-linecap: round; stroke-linejoin: round;
+  }
+
+  .m-action-sheet {
+    display: none; position: fixed; inset: 0; z-index: 100;
+    background: rgba(0,0,0,0.3); align-items: flex-end; justify-content: center;
+  }
+  .m-action-sheet.open { display: flex; }
+  .m-action-sheet-box {
+    background: var(--surface); border-radius: 12px 12px 0 0;
+    width: 100%; max-width: 390px; padding: 8px 0;
+  }
+  .m-action-sheet-item {
+    display: flex; align-items: center; gap: 10px; width: 100%;
+    border: none; background: transparent; padding: 12px 16px;
+    font-size: 14px; color: var(--text-primary); cursor: pointer; text-align: left;
+  }
+  .m-action-sheet-item:hover { background: var(--primary-soft); }
+  .m-action-sheet-item svg {
+    width: 18px; height: 18px; stroke: currentColor; fill: none;
+    stroke-width: 2; stroke-linecap: round; stroke-linejoin: round;
+  }
+  .m-action-sheet-item.danger { color: var(--error); }
+  .m-action-sheet-cancel {
+    display: block; width: calc(100% - 16px); margin: 4px 8px 8px;
+    padding: 12px; border: 1px solid var(--border); border-radius: var(--radius);
+    background: var(--surface); font-size: 14px; color: var(--text-secondary);
+    cursor: pointer; text-align: center;
   }
 
   details summary {
@@ -594,27 +643,44 @@
     <main class="content">
       <section class="panel active" id="tab-cloud">
         <h2 class="section-title">Cloud</h2>
-        <p class="sub">파일 브라우징이 메인입니다. 동기화 설정은 고급 항목으로 분리합니다.</p>
 
         <div class="seg" style="margin-bottom:8px;">
           <button class="active">내 파일</button>
           <button>최근</button>
           <button>공유됨</button>
           <button>중요</button>
+          <button>휴지통</button>
         </div>
 
         <input class="input" placeholder="파일/폴더 검색" />
 
-        <div class="file-item"><div class="file-top"><span class="file-dot" style="background:#1b998b"></span>spec-v5.md</div><div class="file-meta">문서 · 182 KB · 2026-02-23 14:01</div></div>
-        <div class="file-item"><div class="file-top"><span class="file-dot" style="background:#2563eb"></span>wireframes</div><div class="file-meta">폴더 · - · 2026-02-23 12:42</div></div>
-        <div class="file-item"><div class="file-top"><span class="file-dot" style="background:#16a34a"></span>launch-day.jpg</div><div class="file-meta">이미지 · 4.2 MB · 2026-02-22 21:12</div></div>
-
-        <details class="card">
-          <summary>고급: 특정 폴더 동기화 설정</summary>
-          <div class="row"><span>~/Workspace/lifebase-docs</span><span class="badge ok">양방향</span></div>
-          <div class="row"><span>~/Pictures/Camera</span><span class="badge">업로드</span></div>
-        </details>
+        <div class="file-item" data-file-action>
+          <span class="file-icon-m document"><svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg></span>
+          <div class="file-info"><div class="file-top">spec-v5.md</div><div class="file-meta">md · 182 KB · 2026-02-23 14:01</div></div>
+          <button class="file-action-btn" data-m-action>⋯</button>
+        </div>
+        <div class="file-item" data-file-action>
+          <span class="file-icon-m shared-folder"><svg viewBox="0 0 24 24"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg></span>
+          <div class="file-info"><div class="file-top">wireframes<span class="share-badge-m"><svg viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/></svg></span></div><div class="file-meta">폴더 · 2026-02-23 12:42</div></div>
+          <button class="file-action-btn" data-m-action>⋯</button>
+        </div>
+        <div class="file-item" data-file-action>
+          <span class="file-icon-m image"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg></span>
+          <div class="file-info"><div class="file-top">launch-day.jpg</div><div class="file-meta">jpg · 4.2 MB · 2026-02-22 21:12</div></div>
+          <button class="file-action-btn" data-m-action>⋯</button>
+        </div>
       </section>
+
+      <!-- Mobile action sheet -->
+      <div class="m-action-sheet" id="mobileActionSheet">
+        <div class="m-action-sheet-box">
+          <button class="m-action-sheet-item"><svg viewBox="0 0 24 24"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>이름 변경</button>
+          <button class="m-action-sheet-item"><svg viewBox="0 0 24 24"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>이동</button>
+          <button class="m-action-sheet-item"><svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>다운로드</button>
+          <button class="m-action-sheet-item danger"><svg viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>삭제</button>
+          <button class="m-action-sheet-cancel" id="mobileActionCancel">취소</button>
+        </div>
+      </div>
 
       <section class="panel" id="tab-calendar">
         <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:6px;">
@@ -797,6 +863,21 @@
       button.classList.add('active');
       document.getElementById(`tab-${button.dataset.tab}`).classList.add('active');
     });
+  });
+
+  // Mobile action sheet
+  const mobileActionSheet = document.getElementById('mobileActionSheet');
+  document.querySelectorAll('[data-m-action]').forEach((btn) => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      mobileActionSheet.classList.add('open');
+    });
+  });
+  document.getElementById('mobileActionCancel').addEventListener('click', () => {
+    mobileActionSheet.classList.remove('open');
+  });
+  mobileActionSheet.addEventListener('click', (e) => {
+    if (e.target === mobileActionSheet) mobileActionSheet.classList.remove('open');
   });
 
   const mobileThemeStatus = document.getElementById('mobileThemeStatus');
