@@ -75,7 +75,6 @@
   body[data-theme="dark"] .gallery-list-table td { color: var(--text-primary); }
   body[data-theme="dark"] .grid-thumb,
   body[data-theme="dark"] .album-thumb { background: linear-gradient(130deg, var(--primary-soft), var(--surface-accent)); }
-  body[data-theme="dark"] .gallery-controls .control { color: var(--text-primary); }
   body[data-theme="dark"] .gallery-controls select { color: var(--text-primary); background: var(--surface); }
   body[data-theme="dark"] input[type="checkbox"] { accent-color: var(--primary); color-scheme: dark; }
   body[data-theme="dark"] .task-input { background: var(--surface); color: var(--text-primary); border-color: var(--border); }
@@ -99,7 +98,6 @@
     body:not([data-theme="light"]) .gallery-list-table td { color: var(--text-primary); }
     body:not([data-theme="light"]) .grid-thumb,
     body:not([data-theme="light"]) .album-thumb { background: linear-gradient(130deg, var(--primary-soft), var(--surface-accent)); }
-    body:not([data-theme="light"]) .gallery-controls .control { color: var(--text-primary); }
     body:not([data-theme="light"]) .gallery-controls select { color: var(--text-primary); background: var(--surface); }
     body:not([data-theme="light"]) input[type="checkbox"] { accent-color: var(--primary); color-scheme: dark; }
     body:not([data-theme="light"]) .task-input { background: var(--surface); color: var(--text-primary); border-color: var(--border); }
@@ -1549,10 +1547,10 @@
             </div>
 
             <div style="display:flex; gap:6px; align-items:center; flex-wrap:wrap;">
-              <div class="seg" id="galleryTypeSwitch">
-                <button class="control active" data-gtype="all">전체</button>
-                <button class="control" data-gtype="image">이미지</button>
-                <button class="control" data-gtype="video">비디오</button>
+              <div class="view-toggle" id="galleryTypeSwitch">
+                <button class="active" data-gtype="all" data-tooltip="전체"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg></button>
+                <button data-gtype="image" data-tooltip="이미지"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg></button>
+                <button data-gtype="video" data-tooltip="비디오"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="20" height="20" rx="2.18" ry="2.18"/><line x1="7" y1="2" x2="7" y2="22"/><line x1="17" y1="2" x2="17" y2="22"/><line x1="2" y1="12" x2="22" y2="12"/><line x1="2" y1="7" x2="7" y2="7"/><line x1="2" y1="17" x2="7" y2="17"/><line x1="17" y1="7" x2="22" y2="7"/><line x1="17" y1="17" x2="22" y2="17"/></svg></button>
               </div>
               <div class="seg">
                 <select id="gallerySortBy" class="control">
