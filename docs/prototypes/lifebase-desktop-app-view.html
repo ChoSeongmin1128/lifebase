@@ -422,6 +422,55 @@
   .badge.warn { color: #d97706; }
   .badge.err { color: #dc2626; }
 
+  /* Sync folder cards */
+  .sync-card {
+    border: 1px solid var(--border); border-radius: var(--radius);
+    padding: 12px; margin-bottom: 8px; background: var(--surface);
+  }
+  .sync-card.error { border-color: var(--error); }
+  .sync-card-header {
+    display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;
+  }
+  .sync-card-header .folder-name {
+    display: flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 600; color: var(--text-strong);
+  }
+  .sync-card-header .folder-name svg { width: 16px; height: 16px; stroke: #d97706; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+  .sync-card-header .sync-mode {
+    display: flex; align-items: center; gap: 4px; font-size: 11px; font-weight: 500; padding: 2px 8px;
+    border-radius: 999px; border: 1px solid var(--border); color: var(--text-secondary); background: var(--surface);
+  }
+  .sync-card-header .sync-mode svg { width: 12px; height: 12px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+  .sync-card-header .sync-mode.bidirectional { color: var(--primary); border-color: var(--primary-soft); }
+  .sync-card-header .sync-mode.upload { color: var(--info); border-color: color-mix(in srgb, var(--info), transparent 80%); }
+  .sync-card-header .sync-mode.manual { color: var(--text-muted); }
+  .sync-card-header .sync-mode.error-mode { color: var(--error); border-color: color-mix(in srgb, var(--error), transparent 80%); }
+  .sync-card-paths {
+    font-size: 11px; color: var(--text-secondary); margin-bottom: 8px;
+    display: grid; grid-template-columns: auto 1fr; gap: 2px 8px;
+  }
+  .sync-card-paths .path-label { color: var(--text-muted); font-size: 10px; }
+  .sync-card-paths .path-value { font-family: monospace; font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .sync-card-status {
+    font-size: 11px; color: var(--text-muted); padding-top: 8px; border-top: 1px solid var(--border);
+    display: flex; align-items: center; justify-content: space-between;
+  }
+  .sync-card-status .status-error { color: var(--error); display: flex; align-items: center; gap: 4px; }
+  .sync-card-status .status-error svg { width: 12px; height: 12px; stroke: var(--error); fill: none; stroke-width: 2; }
+  .sync-card-actions { display: flex; gap: 6px; }
+  .sync-card-actions button {
+    font-size: 11px; padding: 3px 8px; border: 1px solid var(--border); border-radius: 6px;
+    background: var(--surface); color: var(--text-secondary); cursor: pointer;
+  }
+  .sync-card-actions button:hover { background: var(--primary-soft); color: var(--primary); border-color: var(--primary); }
+  .sync-card-actions button.danger:hover { background: #fef2f2; color: var(--error); border-color: var(--error); }
+  .sync-add-btn {
+    width: 100%; padding: 10px; border: 1px dashed var(--border); border-radius: var(--radius);
+    background: transparent; color: var(--text-muted); font-size: 12px; cursor: pointer;
+    display: flex; align-items: center; justify-content: center; gap: 4px;
+  }
+  .sync-add-btn svg { width: 14px; height: 14px; stroke: currentColor; fill: none; stroke-width: 2; }
+  .sync-add-btn:hover { border-color: var(--primary); color: var(--primary); }
+
   /* Cloud */
   .crumb { font-size: 13px; color: var(--text-secondary); }
 
@@ -488,11 +537,16 @@
   .file-icon.spreadsheet svg { stroke: #16a34a; }
   .file-icon.pdf svg { stroke: #dc2626; }
 
-  .share-badge { display: inline-flex; margin-left: 4px; }
-  .share-badge svg {
+  .share-badge, .sync-badge { display: inline-flex; margin-left: 4px; }
+  .share-badge svg, .sync-badge svg {
     width: 12px; height: 12px; stroke: var(--text-muted); fill: none;
     stroke-width: 2; stroke-linecap: round; stroke-linejoin: round;
   }
+  .sync-badge svg { stroke: var(--primary); }
+  .sync-badge.syncing svg { stroke: var(--info); animation: spin 1.5s linear infinite; }
+  .sync-badge.done svg { stroke: var(--success); }
+  .sync-badge.error svg { stroke: var(--error); }
+  @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
 
   .bulk-bar {
     display: none; align-items: center; justify-content: space-between;
@@ -1597,6 +1651,24 @@
                 <tbody>
                   <tr>
                     <td><input type="checkbox" class="file-check" /></td>
+                    <td data-col="name"><div class="file-name"><span class="file-icon folder"><svg viewBox="0 0 24 24"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg></span>Documents<span class="sync-badge syncing" title="동기화 진행중"><svg viewBox="0 0 24 24"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg></span></div></td>
+                    <td data-col="size">-</td><td data-col="date">2026-02-24 09:15</td>
+                    <td class="action-cell"><button class="action-btn" data-action-toggle>⋯</button><div class="action-menu"><button class="action-menu-item"><svg viewBox="0 0 24 24"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>이름 변경</button><button class="action-menu-item"><svg viewBox="0 0 24 24"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>이동</button><button class="action-menu-item"><svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>다운로드</button><button class="action-menu-item danger"><svg viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>삭제</button></div></td>
+                  </tr>
+                  <tr>
+                    <td><input type="checkbox" class="file-check" /></td>
+                    <td data-col="name"><div class="file-name"><span class="file-icon folder"><svg viewBox="0 0 24 24"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg></span>Photos<span class="sync-badge done" title="동기화 완료"><svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg></span></div></td>
+                    <td data-col="size">-</td><td data-col="date">2026-02-24 08:42</td>
+                    <td class="action-cell"><button class="action-btn" data-action-toggle>⋯</button><div class="action-menu"><button class="action-menu-item"><svg viewBox="0 0 24 24"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>이름 변경</button><button class="action-menu-item"><svg viewBox="0 0 24 24"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>이동</button><button class="action-menu-item"><svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>다운로드</button><button class="action-menu-item danger"><svg viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>삭제</button></div></td>
+                  </tr>
+                  <tr>
+                    <td><input type="checkbox" class="file-check" /></td>
+                    <td data-col="name"><div class="file-name"><span class="file-icon folder"><svg viewBox="0 0 24 24"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg></span>Projects<span class="sync-badge error" title="동기화 오류"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg></span></div></td>
+                    <td data-col="size">-</td><td data-col="date">2026-02-23 22:10</td>
+                    <td class="action-cell"><button class="action-btn" data-action-toggle>⋯</button><div class="action-menu"><button class="action-menu-item"><svg viewBox="0 0 24 24"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>이름 변경</button><button class="action-menu-item"><svg viewBox="0 0 24 24"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>이동</button><button class="action-menu-item"><svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>다운로드</button><button class="action-menu-item danger"><svg viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>삭제</button></div></td>
+                  </tr>
+                  <tr>
+                    <td><input type="checkbox" class="file-check" /></td>
                     <td data-col="name"><div class="file-name"><span class="file-icon document"><svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg></span>spec-v5.md</div></td>
                     <td data-col="size">182 KB</td><td data-col="date">2026-02-23 14:01</td>
                     <td class="action-cell"><button class="action-btn" data-action-toggle>⋯</button><div class="action-menu"><button class="action-menu-item"><svg viewBox="0 0 24 24"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>이름 변경</button><button class="action-menu-item"><svg viewBox="0 0 24 24"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>이동</button><button class="action-menu-item"><svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>다운로드</button><button class="action-menu-item danger"><svg viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>삭제</button></div></td>
@@ -1817,9 +1889,59 @@
 
           <div class="card" style="margin-bottom:10px;">
             <div class="card-title">Cloud</div>
-            <div class="row"><span>~/Workspace/lifebase-docs ↔ /Cloud/Docs</span><span class="badge ok">양방향</span></div>
-            <div class="row"><span>~/Pictures/Camera → /Cloud/Photos</span><span class="badge">업로드 전용</span></div>
-            <div class="row"><span>~/Archive (선택 동기화)</span><span class="badge warn">수동</span></div>
+            <div class="sync-card">
+              <div class="sync-card-header">
+                <div class="folder-name"><svg viewBox="0 0 24 24"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>Docs</div>
+                <div class="sync-mode bidirectional"><svg viewBox="0 0 24 24"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>양방향</div>
+              </div>
+              <div class="sync-card-paths">
+                <span class="path-label">로컬</span><span class="path-value">~/Workspace/lifebase-docs</span>
+                <span class="path-label">클라우드</span><span class="path-value">/Cloud/Docs</span>
+              </div>
+              <div class="sync-card-status">
+                <span>최근 동기화 2분 전 · 142개 파일 · 1.2 GB</span>
+                <div class="sync-card-actions">
+                  <button>경로 변경</button>
+                  <button class="danger">동기화 해제</button>
+                </div>
+              </div>
+            </div>
+            <div class="sync-card">
+              <div class="sync-card-header">
+                <div class="folder-name"><svg viewBox="0 0 24 24"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>Photos</div>
+                <div class="sync-mode upload"><svg viewBox="0 0 24 24"><polyline points="16 16 12 12 8 16"/><line x1="12" y1="12" x2="12" y2="21"/><path d="M20.39 18.39A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.3"/></svg>업로드 전용</div>
+              </div>
+              <div class="sync-card-paths">
+                <span class="path-label">로컬</span><span class="path-value">~/Pictures/Camera</span>
+                <span class="path-label">클라우드</span><span class="path-value">/Cloud/Photos</span>
+              </div>
+              <div class="sync-card-status">
+                <span>최근 동기화 15분 전 · 2,847개 파일 · 18.3 GB</span>
+                <div class="sync-card-actions">
+                  <button>경로 변경</button>
+                  <button class="danger">동기화 해제</button>
+                </div>
+              </div>
+            </div>
+            <div class="sync-card error">
+              <div class="sync-card-header">
+                <div class="folder-name"><svg viewBox="0 0 24 24"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>Projects</div>
+                <div class="sync-mode error-mode"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>오류</div>
+              </div>
+              <div class="sync-card-paths">
+                <span class="path-label">로컬</span><span class="path-value">~/Projects</span>
+                <span class="path-label">클라우드</span><span class="path-value">/Cloud/Projects</span>
+              </div>
+              <div class="sync-card-status">
+                <span class="status-error"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>충돌 3건 · 마지막 시도 1시간 전</span>
+                <div class="sync-card-actions">
+                  <button>충돌 해결</button>
+                  <button>재시도</button>
+                  <button class="danger">동기화 해제</button>
+                </div>
+              </div>
+            </div>
+            <button class="sync-add-btn"><svg viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>폴더 추가</button>
           </div>
 
           <div class="card">

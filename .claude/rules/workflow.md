@@ -24,7 +24,7 @@
 - 변경 사항, 이유, 리스크, 다음 액션을 간결히 보고한다.
 
 ## 용어 규칙
-- Lifebase 내부 용어는 "Todo"로 통일한다 (할 일, 태스크 사용 금지)
+- LifeBase 내부 용어는 "Todo"로 통일한다 (할 일, 태스크 사용 금지)
 - Google API를 지칭할 때만 "Google Tasks"를 사용한다
 - 예: "Todo 생성", "Todo 완료", "Google Tasks 양방향 동기화"
 

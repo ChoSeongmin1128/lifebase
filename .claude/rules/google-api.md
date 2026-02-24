@@ -11,9 +11,9 @@
 - 두 도메인의 동기화 워커를 별도로 설계한다
 
 ## Google Tasks 확장 필드
-- Google Tasks에 없는 기능(우선순위, 시간, 반복, 색상)은 Lifebase DB에만 저장한다
+- Google Tasks에 없는 기능(우선순위, 시간, 반복, 색상)은 LifeBase DB에만 저장한다
 - Google Tasks 동기화 대상: title, notes, due(날짜만), status, parent
-- 확장 필드는 Lifebase → Google 방향으로 동기화하지 않는다
+- 확장 필드는 LifeBase → Google 방향으로 동기화하지 않는다
 
 ## 쿼터
 - Calendar: 일일 1,000,000 쿼리

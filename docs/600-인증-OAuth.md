@@ -1,11 +1,11 @@
 # 인증: OAuth + JWT
 
 ## 목적
-- Lifebase의 인증/인가 구조를 정의한다.
+- LifeBase의 인증/인가 구조를 정의한다.
 
 ## 인증 방식
 - Google OAuth 2.0 단일 인증
-- 한 번의 OAuth 인증으로 Lifebase의 모든 기능(클라우드, 캘린더, Todo, 갤러리, 동기화 등)을 사용할 수 있다
+- 한 번의 OAuth 인증으로 LifeBase의 모든 기능(클라우드, 캘린더, Todo, 갤러리, 동기화 등)을 사용할 수 있다
 - 로컬 비밀번호 로그인은 지원하지 않는다
 
 ## 토큰 구조: OAuth + JWT
@@ -13,7 +13,7 @@
 - 클라이언트는 이후 요청에 JWT Access Token을 사용한다
 - Google OAuth 토큰은 서버에서 Google API 호출(Calendar/Tasks 동기화 등)에 사용한다
 
-## Lifebase Refresh Token 정책
+## LifeBase Refresh Token 정책
 - 유효 기간: 30일
 - 비밀번호 변경(Google 측) 감지 시 즉시 무효화
 - 의심 활동(IP 급변 등) 시 강제 만료
@@ -26,8 +26,8 @@
 4. 클라이언트가 새 토큰으로 원래 요청 재시도
 
 ## Google OAuth Refresh Token 만료 시 처리
-- Google 토큰이 만료되어도 Lifebase 자체 로그인은 유지한다
-- 클라우드/Todo 등 Lifebase 자체 기능은 계속 사용 가능
+- Google 토큰이 만료되어도 LifeBase 자체 로그인은 유지한다
+- 클라우드/Todo 등 LifeBase 자체 기능은 계속 사용 가능
 - Google Calendar/Tasks 동기화만 일시 중단
 - 처리 흐름:
   1. 서버가 Google API 호출 시 토큰 거부 감지
