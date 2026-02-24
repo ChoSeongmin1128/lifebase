@@ -80,6 +80,13 @@
   body[data-theme="dark"] .gallery-controls select { color: var(--text-primary); background: var(--surface); }
   body[data-theme="dark"] input[type="checkbox"] { accent-color: var(--primary); color-scheme: dark; }
   body[data-theme="dark"] .task-input { background: var(--surface); color: var(--text-primary); border-color: var(--border); }
+  /* 다크 모드 캘린더 주말/오늘 색상 보정 */
+  body[data-theme="dark"] .mini-day.secondary-focus { background: color-mix(in srgb, var(--surface-secondary), var(--surface) 60%); }
+  body[data-theme="dark"] .yt-cell.weekend { background: color-mix(in srgb, var(--surface-secondary), var(--surface) 60%); }
+  body[data-theme="dark"] .yt-cell.today { background: rgba(27, 153, 139, 0.15); }
+  body[data-theme="dark"] .day-cell.secondary-focus { background: color-mix(in srgb, var(--surface-secondary), var(--surface) 60%); }
+  body[data-theme="dark"] .week-time-cell.weekend { background: color-mix(in srgb, var(--surface-secondary), var(--surface) 70%); }
+  body[data-theme="dark"] .wk-event-block.lavender { background: rgba(169, 155, 200, 0.18); color: #a99bc8; border-left-color: #a99bc8; }
 
   @media (prefers-color-scheme: dark) {
     body:not([data-theme="light"]) .mini-num,
@@ -103,6 +110,13 @@
     body:not([data-theme="light"]) .gallery-controls select { color: var(--text-primary); background: var(--surface); }
     body:not([data-theme="light"]) input[type="checkbox"] { accent-color: var(--primary); color-scheme: dark; }
     body:not([data-theme="light"]) .task-input { background: var(--surface); color: var(--text-primary); border-color: var(--border); }
+    /* 다크 모드 캘린더 주말/오늘 색상 보정 */
+    body:not([data-theme="light"]) .mini-day.secondary-focus { background: color-mix(in srgb, var(--surface-secondary), var(--surface) 60%); }
+    body:not([data-theme="light"]) .yt-cell.weekend { background: color-mix(in srgb, var(--surface-secondary), var(--surface) 60%); }
+    body:not([data-theme="light"]) .yt-cell.today { background: rgba(27, 153, 139, 0.15); }
+    body:not([data-theme="light"]) .day-cell.secondary-focus { background: color-mix(in srgb, var(--surface-secondary), var(--surface) 60%); }
+    body:not([data-theme="light"]) .week-time-cell.weekend { background: color-mix(in srgb, var(--surface-secondary), var(--surface) 70%); }
+    body:not([data-theme="light"]) .wk-event-block.lavender { background: rgba(169, 155, 200, 0.18); color: #a99bc8; border-left-color: #a99bc8; }
   }
 
   * { box-sizing: border-box; }
@@ -324,7 +338,7 @@
   .sidebar.collapsed .nav-chevron { display: none; }
 
   .content {
-    overflow: auto;
+    overflow: hidden;
     display: flex;
     flex-direction: column;
     min-width: 0;
@@ -335,7 +349,8 @@
     padding: 14px;
     min-width: 0;
   }
-  .panel.active { display: block; }
+  .panel.active { display: flex; flex-direction: column; flex: 1; min-height: 0; overflow: auto; }
+  .panel.active#calendarPanel { overflow: hidden; }
 
   .section-title { margin: 0 0 4px; color: var(--text-strong); font-size: 22px; }
   .sub { color: var(--text-secondary); font-size: 13px; margin: 0 0 12px; }
@@ -632,20 +647,25 @@
   .year-grid {
     display: grid;
     grid-template-columns: repeat(4, minmax(0, 1fr));
+    grid-template-rows: repeat(3, 1fr);
     gap: 8px;
+    flex: 1;
+    min-height: 0;
     min-width: 0;
-    overflow-x: hidden;
+    overflow: hidden;
   }
   .year-mode { display: none; }
-  .year-mode.active { display: block; }
+  .year-mode.active { display: flex; flex-direction: column; flex: 1; min-height: 0; }
   .month-card {
     border: 1px solid var(--border);
     border-radius: var(--radius);
     background: var(--surface);
     overflow: hidden;
+    display: flex;
+    flex-direction: column;
   }
   .month-head {
-    padding: 7px 8px;
+    padding: 5px 8px;
     border-bottom: 1px solid var(--border);
     font-size: 12px;
     font-weight: 700;
@@ -666,9 +686,10 @@
   .mini-days {
     display: grid;
     grid-template-columns: repeat(7, minmax(0, 1fr));
+    grid-template-rows: repeat(6, 1fr);
+    flex: 1;
   }
   .mini-day {
-    min-height: 34px;
     border-right: 1px solid var(--border);
     border-bottom: 1px solid var(--border);
     position: relative;
@@ -991,6 +1012,8 @@
     border-bottom: 1px solid var(--border);
     flex-shrink: 0;
     min-height: 26px;
+    overflow-y: hidden;
+    scrollbar-gutter: stable;
   }
   .week-allday-label {
     font-size: 9px;
@@ -1015,6 +1038,7 @@
     min-height: 0;
     overflow-y: auto;
     overflow-x: hidden;
+    scrollbar-gutter: stable;
   }
   .week-grid {
     display: grid;
@@ -2772,7 +2796,7 @@
         const duration = event.duration || 1;
         if (startHour < HOUR_START || startHour >= HOUR_END) return;
 
-        const top = (startHour - HOUR_START) * HOUR_HEIGHT;
+        const top = (mm / 60) * HOUR_HEIGHT;
         const height = Math.max(duration * HOUR_HEIGHT - 2, 18);
 
         const block = document.createElement('div');
