@@ -4,6 +4,7 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>Lifebase Mobile Prototype v3</title>
+<link rel="icon" type="image/svg+xml" href="../../resources/logo_with_bg.svg">
 <style>
   :root {
     --primary: #1b998b;
@@ -133,7 +134,8 @@
     align-items: center;
     justify-content: space-between;
   }
-  .title { font-size: 17px; font-weight: 800; color: var(--text-strong); }
+  .title { font-size: 17px; font-weight: 800; color: var(--text-strong); display: flex; align-items: center; gap: 6px; }
+  .brand-logo { width: 22px; height: 22px; border-radius: 5px; }
   .chip {
     border: 1px solid var(--border);
     border-radius: 999px;
@@ -882,7 +884,7 @@
   <div class="phone">
     <div class="status"><span>9:41</span><span>5G · 82%</span></div>
     <header class="header">
-      <span class="title">Lifebase</span>
+      <span class="title"><img class="brand-logo" src="../../resources/logo_with_bg.svg" alt="Lifebase">Lifebase</span>
       <span class="chip" id="mobileThemeStatus">테마: 시스템</span>
     </header>
 

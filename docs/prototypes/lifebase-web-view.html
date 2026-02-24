@@ -4,6 +4,7 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>Lifebase Web Prototype v3</title>
+<link rel="icon" type="image/svg+xml" href="../../resources/logo_with_bg.svg">
 <style>
   :root {
     --primary: #1b998b;
@@ -147,7 +148,8 @@
     top: 0;
     z-index: 20;
   }
-  .brand { font-size: 18px; font-weight: 800; color: var(--text-strong); }
+  .brand { font-size: 18px; font-weight: 800; color: var(--text-strong); display: flex; align-items: center; gap: 8px; }
+  .brand-logo { width: 24px; height: 24px; border-radius: 6px; }
   .topbar-right { display: flex; gap: 8px; align-items: center; }
   .chip {
     border: 1px solid var(--border);
@@ -1419,7 +1421,7 @@
 </head>
 <body>
   <header class="topbar">
-    <div class="brand">Lifebase Web</div>
+    <div class="brand"><img class="brand-logo" src="../../resources/logo_with_bg.svg" alt="Lifebase">Lifebase Web</div>
     <div class="topbar-right">
       <span class="chip" id="globalAccountChip">계정: 전체</span>
       <span class="chip" id="webThemeStatus">테마: 시스템</span>
