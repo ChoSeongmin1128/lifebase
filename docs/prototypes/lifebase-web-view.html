@@ -56,6 +56,79 @@
     }
   }
 
+  /* Dark mode overrides for elements with hardcoded colors */
+  body[data-theme="dark"] .mini-num,
+  body[data-theme="dark"] .mini-day { color: var(--text-primary); }
+  body[data-theme="dark"] .mini-day.empty { background: color-mix(in srgb, var(--surface), #fff 3%); }
+  body[data-theme="dark"] .mini-text.c-lavender { color: #a99bc8; }
+  body[data-theme="dark"] .yt-event-text.color-lavender { color: #a99bc8; }
+  body[data-theme="dark"] .yt-event-text.color-yellow { color: #f59e0b; }
+  body[data-theme="dark"] .yt-event-text.color-green { color: #22c55e; }
+  body[data-theme="dark"] .yt-todo-pill { color: #a78bfa; border-color: rgba(167,139,250,0.3); background: rgba(167,139,250,0.12); }
+  body[data-theme="dark"] .yt-todo-pill.done { color: #9ca3af; background: rgba(156,163,175,0.1); border-color: rgba(156,163,175,0.2); }
+  body[data-theme="dark"] .event-pill.lavender { background: rgba(169,155,200,0.15); color: #a99bc8; }
+  body[data-theme="dark"] .chip-more { background: var(--primary-soft); color: var(--text-secondary); }
+  body[data-theme="dark"] .month-head { background: var(--primary-soft); }
+  body[data-theme="dark"] .week-head div { color: var(--text-primary); }
+  body[data-theme="dark"] input[type="checkbox"] {
+    accent-color: var(--primary);
+    color-scheme: dark;
+  }
+  body[data-theme="dark"] .file-table tr:hover { background: color-mix(in srgb, var(--surface), #fff 5%); }
+  body[data-theme="dark"] .action-btn { color: var(--text-primary); }
+  body[data-theme="dark"] .task-input {
+    background: var(--surface);
+    color: var(--text-primary);
+    border-color: var(--border);
+  }
+  body[data-theme="dark"] .modal-box input[type="text"] { color: var(--text-primary); }
+  body[data-theme="dark"] .gallery-list-table .list-thumb { background: linear-gradient(130deg, var(--primary-soft), var(--surface-accent)); }
+  body[data-theme="dark"] .gallery-list-table td { color: var(--text-primary); }
+  body[data-theme="dark"] .grid-thumb,
+  body[data-theme="dark"] .album-thumb { background: linear-gradient(130deg, var(--primary-soft), var(--surface-accent)); }
+  body[data-theme="dark"] .media-meta { color: var(--text-primary); }
+  body[data-theme="dark"] .media-meta div { color: var(--text-primary); }
+  body[data-theme="dark"] .media-type { color: var(--text-secondary); border-color: var(--border); }
+  body[data-theme="dark"] .gallery-controls .control { color: var(--text-primary); }
+  body[data-theme="dark"] .gallery-controls select { color: var(--text-primary); background: var(--surface); }
+
+  @media (prefers-color-scheme: dark) {
+    body:not([data-theme="light"]) .mini-num,
+    body:not([data-theme="light"]) .mini-day { color: var(--text-primary); }
+    body:not([data-theme="light"]) .mini-day.empty { background: color-mix(in srgb, var(--surface), #fff 3%); }
+    body:not([data-theme="light"]) .mini-text.c-lavender { color: #a99bc8; }
+    body:not([data-theme="light"]) .yt-event-text.color-lavender { color: #a99bc8; }
+    body:not([data-theme="light"]) .yt-event-text.color-yellow { color: #f59e0b; }
+    body:not([data-theme="light"]) .yt-event-text.color-green { color: #22c55e; }
+    body:not([data-theme="light"]) .yt-todo-pill { color: #a78bfa; border-color: rgba(167,139,250,0.3); background: rgba(167,139,250,0.12); }
+    body:not([data-theme="light"]) .yt-todo-pill.done { color: #9ca3af; background: rgba(156,163,175,0.1); border-color: rgba(156,163,175,0.2); }
+    body:not([data-theme="light"]) .event-pill.lavender { background: rgba(169,155,200,0.15); color: #a99bc8; }
+    body:not([data-theme="light"]) .chip-more { background: var(--primary-soft); color: var(--text-secondary); }
+    body:not([data-theme="light"]) .month-head { background: var(--primary-soft); }
+    body:not([data-theme="light"]) .week-head div { color: var(--text-primary); }
+    body:not([data-theme="light"]) input[type="checkbox"] {
+      accent-color: var(--primary);
+      color-scheme: dark;
+    }
+    body:not([data-theme="light"]) .file-table tr:hover { background: color-mix(in srgb, var(--surface), #fff 5%); }
+    body:not([data-theme="light"]) .action-btn { color: var(--text-primary); }
+    body:not([data-theme="light"]) .task-input {
+      background: var(--surface);
+      color: var(--text-primary);
+      border-color: var(--border);
+    }
+    body:not([data-theme="light"]) .modal-box input[type="text"] { color: var(--text-primary); }
+    body:not([data-theme="light"]) .gallery-list-table .list-thumb { background: linear-gradient(130deg, var(--primary-soft), var(--surface-accent)); }
+    body:not([data-theme="light"]) .gallery-list-table td { color: var(--text-primary); }
+    body:not([data-theme="light"]) .grid-thumb,
+    body:not([data-theme="light"]) .album-thumb { background: linear-gradient(130deg, var(--primary-soft), var(--surface-accent)); }
+    body:not([data-theme="light"]) .media-meta { color: var(--text-primary); }
+    body:not([data-theme="light"]) .media-meta div { color: var(--text-primary); }
+    body:not([data-theme="light"]) .media-type { color: var(--text-secondary); border-color: var(--border); }
+    body:not([data-theme="light"]) .gallery-controls .control { color: var(--text-primary); }
+    body:not([data-theme="light"]) .gallery-controls select { color: var(--text-primary); background: var(--surface); }
+  }
+
   * { box-sizing: border-box; }
   body {
     margin: 0;
@@ -358,6 +431,7 @@
     width: 100%;
     border-collapse: collapse;
     font-size: 13px;
+    table-layout: fixed;
   }
   .file-table th,
   .file-table td {
@@ -365,8 +439,38 @@
     padding: 9px 8px;
     border-bottom: 1px solid var(--border);
     vertical-align: middle;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
-  .file-table th { color: var(--text-secondary); font-size: 12px; }
+  .file-table th {
+    color: var(--text-secondary);
+    font-size: 12px;
+    position: relative;
+    user-select: none;
+  }
+  .file-table th[draggable="true"] { border-right: 1px solid var(--border); }
+  .file-table th[draggable="true"] { cursor: grab; }
+  .file-table th[draggable="true"]:active { cursor: grabbing; }
+  .file-table th.drag-over {
+    background: var(--primary-soft);
+    box-shadow: inset 2px 0 0 var(--primary);
+  }
+  .col-resize-handle {
+    position: absolute;
+    right: 0;
+    top: 0;
+    bottom: 0;
+    width: 4px;
+    cursor: col-resize;
+    background: transparent;
+    z-index: 5;
+  }
+  .col-resize-handle:hover,
+  .col-resize-handle.active {
+    background: var(--primary);
+    width: 3px;
+  }
 
   .file-name {
     display: flex;
@@ -665,8 +769,7 @@
     padding: 0 4px;
     line-height: 12px;
   }
-  .chip-event { background: #f3f4f6; color: #6b7280; }
-  .chip-todo { background: rgba(124, 58, 237, 0.12); color: #6d28d9; }
+  .chip-more { background: var(--primary-soft); color: var(--text-secondary); }
 
   .year-timeline-wrap {
     border: 1px solid var(--border);
@@ -806,10 +909,8 @@
     z-index: 2;
     font-weight: 600;
   }
-  .yt-more-badge.more-event { color: var(--text-muted); }
-  .yt-more-badge.more-event:hover { color: var(--primary); }
-  .yt-more-badge.more-todo { color: #6d28d9; }
-  .yt-more-badge.more-todo:hover { color: #5b21b6; }
+  .yt-more-badge { color: var(--text-muted); }
+  .yt-more-badge:hover { color: var(--primary); }
 
   .month-grid {
     border: 1px solid var(--border);
@@ -1113,42 +1214,201 @@
     flex-wrap: wrap;
     margin-bottom: 10px;
   }
-  .gallery-grid {
-    display: grid;
-    grid-template-columns: repeat(4, minmax(0, 1fr));
-    gap: 8px;
-  }
-  .media-card {
+  .view-toggle {
+    display: inline-flex;
+    gap: 2px;
+    background: var(--surface);
     border: 1px solid var(--border);
     border-radius: var(--radius);
-    background: var(--surface);
-    overflow: hidden;
+    padding: 2px;
   }
-  .thumb {
-    height: 120px;
+  .view-toggle button {
+    position: relative;
+    border: none;
+    background: transparent;
+    border-radius: 6px;
+    padding: 5px 7px;
+    cursor: pointer;
+    color: var(--text-muted);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 0.15s, color 0.15s;
+  }
+  .view-toggle button:hover { background: var(--primary-soft); color: var(--text-primary); }
+  .view-toggle button.active { background: var(--primary-soft); color: var(--primary); }
+  .view-toggle button svg { width: 16px; height: 16px; }
+  .view-toggle button::after {
+    content: attr(data-tooltip);
+    position: absolute;
+    bottom: calc(100% + 6px);
+    left: 50%;
+    transform: translateX(-50%);
+    background: var(--text-strong);
+    color: var(--background);
+    font-size: 11px;
+    padding: 3px 8px;
+    border-radius: 4px;
+    white-space: nowrap;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.15s;
+  }
+  .view-toggle button:hover::after { opacity: 1; }
+  .gallery-view { display: none; }
+  .gallery-view.active { display: block; }
+
+  /* Grid view (default) */
+  .gallery-thumb-grid {
+    display: grid;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    gap: 6px;
+  }
+  .grid-thumb {
+    aspect-ratio: 1;
+    border-radius: 6px;
     background: linear-gradient(130deg, var(--primary-soft), var(--surface-accent));
+    border: 1px solid var(--border);
+    overflow: hidden;
+    position: relative;
+    cursor: pointer;
+    transition: transform 0.1s ease;
+  }
+  .grid-thumb:hover { transform: scale(1.03); }
+  .grid-thumb .grid-overlay {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    padding: 4px 6px;
+    background: linear-gradient(transparent, rgba(0,0,0,0.5));
+    color: #fff;
+    font-size: 10px;
+    opacity: 0;
+    transition: opacity 0.15s ease;
+  }
+  .grid-thumb:hover .grid-overlay { opacity: 1; }
+  .grid-thumb .grid-type-badge {
+    position: absolute;
+    top: 4px;
+    right: 4px;
+    background: rgba(0,0,0,0.5);
+    color: #fff;
+    font-size: 9px;
+    padding: 1px 5px;
+    border-radius: 999px;
+  }
+  .video-play {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 28px;
+    height: 28px;
+    background: rgba(0,0,0,0.45);
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    pointer-events: none;
+  }
+  .video-play svg { width: 14px; height: 14px; fill: #fff; stroke: none; }
+
+  /* Detail view (date-grouped) */
+  .gallery-album .album-group { margin-bottom: 16px; }
+  .gallery-album .album-date {
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--text-strong);
+    margin-bottom: 8px;
+    padding-bottom: 4px;
     border-bottom: 1px solid var(--border);
   }
-  .media-meta {
-    padding: 8px;
-    font-size: 12px;
+  .gallery-album .album-grid {
+    display: grid;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    gap: 6px;
+  }
+
+  /* List view */
+  .gallery-list-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+  }
+  .gallery-list-table th,
+  .gallery-list-table td {
+    text-align: left;
+    padding: 9px 8px;
+    border-bottom: 1px solid var(--border);
+    vertical-align: middle;
+  }
+  .gallery-list-table th {
     color: var(--text-secondary);
+    font-size: 12px;
   }
-  .media-type {
-    display: inline-block;
+  .gallery-list-table .list-thumb {
+    width: 36px;
+    height: 36px;
+    border-radius: 4px;
+    background: linear-gradient(130deg, var(--primary-soft), var(--surface-accent));
     border: 1px solid var(--border);
-    border-radius: 999px;
-    padding: 1px 6px;
-    font-size: 10px;
-    margin-bottom: 4px;
+    flex-shrink: 0;
+    position: relative;
   }
+  .gallery-list-table .list-thumb .video-play { width: 20px; height: 20px; }
+  .gallery-list-table .list-thumb .video-play svg { width: 10px; height: 10px; }
+  .gallery-list-table .list-name {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  /* Album thumb (shared by detail view) */
+  .album-thumb {
+    aspect-ratio: 1;
+    border-radius: 6px;
+    background: linear-gradient(130deg, var(--primary-soft), var(--surface-accent));
+    border: 1px solid var(--border);
+    overflow: hidden;
+    position: relative;
+    cursor: pointer;
+    transition: transform 0.1s ease;
+  }
+  .album-thumb:hover { transform: scale(1.03); }
+  .album-thumb .album-overlay {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    padding: 4px 6px;
+    background: linear-gradient(transparent, rgba(0,0,0,0.5));
+    color: #fff;
+    font-size: 10px;
+    opacity: 0;
+    transition: opacity 0.15s ease;
+  }
+  .album-thumb:hover .album-overlay { opacity: 1; }
+  .album-thumb .album-type-badge {
+    position: absolute;
+    top: 4px;
+    right: 4px;
+    background: rgba(0,0,0,0.5);
+    color: #fff;
+    font-size: 9px;
+    padding: 1px 5px;
+    border-radius: 999px;
+  }
+  .album-thumb .video-play { width: 28px; height: 28px; }
+  .album-thumb .video-play svg { width: 14px; height: 14px; }
 
   @media (max-width: 1180px) {
     .layout { grid-template-columns: 1fr; }
     .sidebar { position: static; height: auto; }
     .todo-layout { grid-template-columns: 1fr; }
     .year-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-    .gallery-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .gallery-thumb-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    .gallery-album .album-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   }
 
   @media (max-width: 760px) {
@@ -1258,13 +1518,19 @@
 
             <table class="file-table">
               <thead>
-                <tr><th style="width:32px;"><input type="checkbox" id="selectAll" /></th><th>이름</th><th>유형</th><th>크기</th><th>수정한 날짜</th><th style="width:48px;">작업</th></tr>
+                <tr>
+                  <th style="width:32px;"><input type="checkbox" id="selectAll" /></th>
+                  <th draggable="true" data-col="name">이름<span class="col-resize-handle"></span></th>
+                  <th draggable="true" data-col="size" style="width:90px;">크기<span class="col-resize-handle"></span></th>
+                  <th draggable="true" data-col="date" style="width:150px;">수정한 날짜</th>
+                  <th style="width:48px;">작업</th>
+                </tr>
               </thead>
               <tbody>
                 <tr>
                   <td><input type="checkbox" class="file-check" /></td>
-                  <td><div class="file-name"><span class="file-icon document"><svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg></span>spec-v5.md</div></td>
-                  <td>md</td><td>182 KB</td><td>2026-02-23 14:01</td>
+                  <td data-col="name"><div class="file-name"><span class="file-icon document"><svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg></span>spec-v5.md</div></td>
+                  <td data-col="size">182 KB</td><td data-col="date">2026-02-23 14:01</td>
                   <td class="action-cell">
                     <button class="action-btn" data-action-toggle>⋯</button>
                     <div class="action-menu">
@@ -1277,8 +1543,8 @@
                 </tr>
                 <tr>
                   <td><input type="checkbox" class="file-check" /></td>
-                  <td><div class="file-name"><span class="file-icon shared-folder"><svg viewBox="0 0 24 24"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg></span>wireframes<span class="share-badge"><svg viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/></svg></span></div></td>
-                  <td>폴더</td><td>-</td><td>2026-02-23 12:42</td>
+                  <td data-col="name"><div class="file-name"><span class="file-icon shared-folder"><svg viewBox="0 0 24 24"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg></span>wireframes<span class="share-badge"><svg viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/></svg></span></div></td>
+                  <td data-col="size">-</td><td data-col="date">2026-02-23 12:42</td>
                   <td class="action-cell">
                     <button class="action-btn" data-action-toggle>⋯</button>
                     <div class="action-menu">
@@ -1291,8 +1557,8 @@
                 </tr>
                 <tr>
                   <td><input type="checkbox" class="file-check" /></td>
-                  <td><div class="file-name"><span class="file-icon image"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg></span>launch-day.jpg</div></td>
-                  <td>jpg</td><td>4.2 MB</td><td>2026-02-22 21:12</td>
+                  <td data-col="name"><div class="file-name"><span class="file-icon image"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg></span>launch-day.jpg</div></td>
+                  <td data-col="size">4.2 MB</td><td data-col="date">2026-02-22 21:12</td>
                   <td class="action-cell">
                     <button class="action-btn" data-action-toggle>⋯</button>
                     <div class="action-menu">
@@ -1305,8 +1571,8 @@
                 </tr>
                 <tr>
                   <td><input type="checkbox" class="file-check" /></td>
-                  <td><div class="file-name"><span class="file-icon document"><svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg></span>meeting-notes.md</div></td>
-                  <td>md</td><td>64 KB</td><td>2026-02-22 18:30</td>
+                  <td data-col="name"><div class="file-name"><span class="file-icon document"><svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg></span>meeting-notes.md</div></td>
+                  <td data-col="size">64 KB</td><td data-col="date">2026-02-22 18:30</td>
                   <td class="action-cell">
                     <button class="action-btn" data-action-toggle>⋯</button>
                     <div class="action-menu">
@@ -1319,8 +1585,8 @@
                 </tr>
                 <tr>
                   <td><input type="checkbox" class="file-check" /></td>
-                  <td><div class="file-name"><span class="file-icon spreadsheet"><svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="16" y2="17"/><line x1="12" y1="9" x2="12" y2="21"/></svg></span>budget-2026.xlsx</div></td>
-                  <td>xlsx</td><td>1.4 MB</td><td>2026-02-20 09:44</td>
+                  <td data-col="name"><div class="file-name"><span class="file-icon spreadsheet"><svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="16" y2="17"/><line x1="12" y1="9" x2="12" y2="21"/></svg></span>budget-2026.xlsx</div></td>
+                  <td data-col="size">1.4 MB</td><td data-col="date">2026-02-20 09:44</td>
                   <td class="action-cell">
                     <button class="action-btn" data-action-toggle>⋯</button>
                     <div class="action-menu">
@@ -1420,28 +1686,54 @@
 
       <section class="panel" id="tab-gallery">
         <h2 class="section-title">Gallery</h2>
-        <p class="sub">전체/이미지/비디오 필터와 정렬 조건(생성일/수정일, 오름/내림차순)을 지원합니다.</p>
 
         <div class="gallery-controls">
-          <div class="seg" id="galleryTypeSwitch">
-            <button class="control active" data-gtype="all">전체</button>
-            <button class="control" data-gtype="image">이미지</button>
-            <button class="control" data-gtype="video">비디오</button>
+          <div class="view-toggle" id="galleryViewSwitch">
+            <button class="active" data-gview="grid" data-tooltip="격자"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg></button>
+            <button data-gview="list" data-tooltip="리스트"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg></button>
+            <button data-gview="detail" data-tooltip="날짜별"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="9" y1="21" x2="9" y2="9"/></svg></button>
           </div>
 
-          <div class="seg">
-            <select id="gallerySortBy" class="control">
-              <option value="modified">수정한 날짜</option>
-              <option value="created">생성한 날짜</option>
-            </select>
-            <select id="gallerySortDir" class="control">
-              <option value="desc">내림차순</option>
-              <option value="asc">오름차순</option>
-            </select>
+          <div style="display:flex; gap:6px; align-items:center; flex-wrap:wrap;">
+            <div class="seg" id="galleryTypeSwitch">
+              <button class="control active" data-gtype="all">전체</button>
+              <button class="control" data-gtype="image">이미지</button>
+              <button class="control" data-gtype="video">비디오</button>
+            </div>
+            <div class="seg">
+              <select id="gallerySortBy" class="control">
+                <option value="modified">수정한 날짜</option>
+                <option value="created">생성한 날짜</option>
+              </select>
+              <select id="gallerySortDir" class="control">
+                <option value="desc">내림차순</option>
+                <option value="asc">오름차순</option>
+              </select>
+            </div>
           </div>
         </div>
 
-        <div class="gallery-grid" id="galleryGrid"></div>
+        <div class="gallery-view active" id="galleryGridView">
+          <div class="gallery-thumb-grid" id="galleryThumbGrid"></div>
+        </div>
+        <div class="gallery-view" id="galleryListView">
+          <div class="card">
+            <table class="gallery-list-table">
+              <thead>
+                <tr>
+                  <th style="width:52px;"></th>
+                  <th>이름</th>
+                  <th style="width:120px;">생성일</th>
+                  <th style="width:120px;">수정일</th>
+                </tr>
+              </thead>
+              <tbody id="galleryListBody"></tbody>
+            </table>
+          </div>
+        </div>
+        <div class="gallery-view" id="galleryDetailView">
+          <div class="gallery-album" id="galleryAlbum"></div>
+        </div>
       </section>
 
       <section class="panel" id="tab-settings">
@@ -1716,6 +2008,107 @@
     if (e.target.classList.contains('file-check')) updateBulkBar();
   });
 
+  // ===== Column drag reorder & resize =====
+  (function() {
+    const table = document.querySelector('.file-table');
+    if (!table) return;
+    const thead = table.querySelector('thead tr');
+    const tbody = table.querySelector('tbody');
+    const draggableCols = ['name', 'size', 'date'];
+
+    // --- Column drag reorder ---
+    let dragSrcTh = null;
+
+    thead.querySelectorAll('th[draggable="true"]').forEach(th => {
+      th.addEventListener('dragstart', (e) => {
+        if (e.target.classList.contains('col-resize-handle')) { e.preventDefault(); return; }
+        dragSrcTh = th;
+        th.style.opacity = '0.4';
+        e.dataTransfer.effectAllowed = 'move';
+        e.dataTransfer.setData('text/plain', th.dataset.col);
+      });
+      th.addEventListener('dragend', () => {
+        dragSrcTh = null;
+        th.style.opacity = '';
+        thead.querySelectorAll('th').forEach(h => h.classList.remove('drag-over'));
+      });
+      th.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        e.dataTransfer.dropEffect = 'move';
+        if (th !== dragSrcTh && th.hasAttribute('draggable')) th.classList.add('drag-over');
+      });
+      th.addEventListener('dragleave', () => { th.classList.remove('drag-over'); });
+      th.addEventListener('drop', (e) => {
+        e.preventDefault();
+        th.classList.remove('drag-over');
+        if (!dragSrcTh || dragSrcTh === th) return;
+        const allTh = Array.from(thead.children);
+        const srcIdx = allTh.indexOf(dragSrcTh);
+        const dstIdx = allTh.indexOf(th);
+        if (srcIdx < 0 || dstIdx < 0) return;
+        // Swap header cells
+        if (srcIdx < dstIdx) {
+          thead.insertBefore(dragSrcTh, th.nextSibling);
+        } else {
+          thead.insertBefore(dragSrcTh, th);
+        }
+        // Swap body cells in each row
+        tbody.querySelectorAll('tr').forEach(row => {
+          const cells = Array.from(row.children);
+          const srcCell = cells[srcIdx];
+          const dstCell = cells[dstIdx];
+          if (srcIdx < dstIdx) {
+            row.insertBefore(srcCell, dstCell.nextSibling);
+          } else {
+            row.insertBefore(srcCell, dstCell);
+          }
+        });
+      });
+    });
+
+    // --- Column resize (adjacent column compensation) ---
+    thead.querySelectorAll('.col-resize-handle').forEach(handle => {
+      handle.addEventListener('mousedown', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const th = handle.parentElement;
+        // Find next resizable sibling (skip action column)
+        let nextTh = th.nextElementSibling;
+        while (nextTh && !nextTh.hasAttribute('draggable')) {
+          nextTh = nextTh.nextElementSibling;
+        }
+        if (!nextTh) return;
+        th.removeAttribute('draggable');
+        const startX = e.clientX;
+        const startW = th.offsetWidth;
+        const nextStartW = nextTh.offsetWidth;
+        handle.classList.add('active');
+        document.body.style.cursor = 'col-resize';
+        document.body.style.userSelect = 'none';
+
+        const onMove = (ev) => {
+          const diff = ev.clientX - startX;
+          const newW = Math.max(40, startW + diff);
+          const newNextW = Math.max(40, nextStartW - diff);
+          th.style.width = newW + 'px';
+          nextTh.style.width = newNextW + 'px';
+        };
+        const onUp = () => {
+          handle.classList.remove('active');
+          document.body.style.cursor = '';
+          document.body.style.userSelect = '';
+          th.setAttribute('draggable', 'true');
+          document.removeEventListener('mousemove', onMove);
+          document.removeEventListener('mouseup', onUp);
+        };
+        document.addEventListener('mousemove', onMove);
+        document.addEventListener('mouseup', onUp);
+      });
+      // Prevent drag when clicking resize handle
+      handle.addEventListener('dragstart', (e) => e.preventDefault());
+    });
+  })();
+
   // ===== Calendar/Todo data =====
   const YEAR = 2026;
   const DOW_KR = ['일', '월', '화', '수', '목', '금', '토'];
@@ -1945,21 +2338,14 @@
 
         const hiddenEvents = hiddenRanges + Math.max(0, singles.length - shownSingles);
         const hiddenTodos = Math.max(0, todos.length - shownTodos);
-        if (hiddenEvents > 0 || hiddenTodos > 0) {
+        const hiddenTotal = hiddenEvents + hiddenTodos;
+        if (hiddenTotal > 0) {
           const chips = document.createElement('div');
           chips.className = 'mini-chips';
-          if (hiddenEvents > 0) {
-            const eventChip = document.createElement('span');
-            eventChip.className = 'tiny-chip chip-event';
-            eventChip.textContent = `+E${hiddenEvents}`;
-            chips.appendChild(eventChip);
-          }
-          if (hiddenTodos > 0) {
-            const todoChip = document.createElement('span');
-            todoChip.className = 'tiny-chip chip-todo';
-            todoChip.textContent = `+T${hiddenTodos}`;
-            chips.appendChild(todoChip);
-          }
+          const chip = document.createElement('span');
+          chip.className = 'tiny-chip chip-more';
+          chip.textContent = `+${hiddenTotal}`;
+          chips.appendChild(chip);
           cell.appendChild(chips);
         }
 
@@ -2059,10 +2445,8 @@
       hiddenTodos = todos.slice(1);
     }
 
-    const hiddenEventCount = hiddenRanges.length + hiddenSingles.length;
-    const hiddenTodoCount = hiddenTodos.length;
-    if (hiddenEventCount > 0) html += `<span class="yt-more-badge more-event">+E${hiddenEventCount}</span>`;
-    if (hiddenTodoCount > 0) html += `<span class="yt-more-badge more-todo">+T${hiddenTodoCount}</span>`;
+    const hiddenTotal = hiddenRanges.length + hiddenSingles.length + hiddenTodos.length;
+    if (hiddenTotal > 0) html += `<span class="yt-more-badge">+${hiddenTotal}</span>`;
 
     html += '</div>';
     return html;
@@ -2392,44 +2776,120 @@
 
   // ===== Gallery =====
   const galleryItems = [
-    { id: 1, name: 'launch-day.jpg', type: 'image', created: '2026-02-10', modified: '2026-02-22' },
-    { id: 2, name: 'office-tour.mp4', type: 'video', created: '2026-01-13', modified: '2026-02-21' },
-    { id: 3, name: 'meeting-shot.png', type: 'image', created: '2026-02-01', modified: '2026-02-20' },
-    { id: 4, name: 'demo-record.mov', type: 'video', created: '2025-12-29', modified: '2026-02-18' },
-    { id: 5, name: 'whiteboard.jpg', type: 'image', created: '2026-02-03', modified: '2026-02-16' },
-    { id: 6, name: 'family-trip.mp4', type: 'video', created: '2025-11-04', modified: '2026-01-19' }
+    { id: 1, name: 'launch-day.jpg', type: 'image', created: '2026-02-22', modified: '2026-02-22' },
+    { id: 2, name: 'office-tour.mp4', type: 'video', created: '2026-02-21', modified: '2026-02-21' },
+    { id: 3, name: 'meeting-shot.png', type: 'image', created: '2026-02-20', modified: '2026-02-20' },
+    { id: 4, name: 'demo-record.mov', type: 'video', created: '2026-02-18', modified: '2026-02-18' },
+    { id: 5, name: 'whiteboard.jpg', type: 'image', created: '2026-02-16', modified: '2026-02-16' },
+    { id: 6, name: 'family-trip.mp4', type: 'video', created: '2026-01-19', modified: '2026-01-19' },
+    { id: 7, name: 'sunset-walk.jpg', type: 'image', created: '2026-01-19', modified: '2026-01-19' },
+    { id: 8, name: 'team-photo.png', type: 'image', created: '2026-01-15', modified: '2026-01-15' }
   ];
 
   let galleryType = 'all';
+  let galleryView = 'grid';
 
-  function renderGallery() {
+  function getFilteredGallery() {
     const sortBy = document.getElementById('gallerySortBy').value;
     const sortDir = document.getElementById('gallerySortDir').value;
-    const grid = document.getElementById('galleryGrid');
-
     let list = galleryItems.filter((item) => galleryType === 'all' ? true : item.type === galleryType);
-
     list.sort((a, b) => {
       if (sortDir === 'asc') return a[sortBy].localeCompare(b[sortBy]);
       return b[sortBy].localeCompare(a[sortBy]);
     });
+    return list;
+  }
 
-    grid.innerHTML = '';
+  function getExt(name) { return name.split('.').pop().toLowerCase(); }
+  const playIcon = '<span class="video-play"><svg viewBox="0 0 24 24"><polygon points="5,3 19,12 5,21"/></svg></span>';
+
+  function renderGalleryGrid() {
+    const list = getFilteredGallery();
+    const container = document.getElementById('galleryThumbGrid');
+    container.innerHTML = '';
     list.forEach((item) => {
-      const card = document.createElement('div');
-      card.className = 'media-card';
-      card.innerHTML = `
-        <div class="thumb"></div>
-        <div class="media-meta">
-          <div class="media-type">${item.type === 'image' ? '이미지' : '비디오'}</div>
-          <div>${item.name}</div>
-          <div style="margin-top:4px; font-size:11px;">생성 ${item.created} · 수정 ${item.modified}</div>
-        </div>
+      const thumb = document.createElement('div');
+      thumb.className = 'grid-thumb';
+      const ext = getExt(item.name);
+      thumb.innerHTML = `
+        <span class="grid-type-badge">${ext}</span>
+        ${item.type === 'video' ? playIcon : ''}
+        <div class="grid-overlay">${item.name}</div>
       `;
-      grid.appendChild(card);
+      container.appendChild(thumb);
     });
   }
 
+  function renderGalleryList() {
+    const list = getFilteredGallery();
+    const body = document.getElementById('galleryListBody');
+    body.innerHTML = '';
+    list.forEach((item) => {
+      const tr = document.createElement('tr');
+      tr.innerHTML = `
+        <td><div class="list-thumb">${item.type === 'video' ? playIcon : ''}</div></td>
+        <td><div class="list-name">${item.name}</div></td>
+        <td>${item.created}</td>
+        <td>${item.modified}</td>
+      `;
+      body.appendChild(tr);
+    });
+  }
+
+  function renderGalleryDetail() {
+    const list = getFilteredGallery();
+    const album = document.getElementById('galleryAlbum');
+    album.innerHTML = '';
+
+    const groups = {};
+    list.forEach((item) => {
+      const date = item.modified;
+      if (!groups[date]) groups[date] = [];
+      groups[date].push(item);
+    });
+
+    Object.keys(groups).forEach((date) => {
+      const group = document.createElement('div');
+      group.className = 'album-group';
+      group.innerHTML = `<div class="album-date">${date}</div><div class="album-grid"></div>`;
+      const grid = group.querySelector('.album-grid');
+      groups[date].forEach((item) => {
+        const thumb = document.createElement('div');
+        thumb.className = 'album-thumb';
+        const ext = getExt(item.name);
+        thumb.innerHTML = `
+          <span class="album-type-badge">${ext}</span>
+          ${item.type === 'video' ? playIcon : ''}
+          <div class="album-overlay">${item.name}</div>
+        `;
+        grid.appendChild(thumb);
+      });
+      album.appendChild(group);
+    });
+  }
+
+  function renderGallery() {
+    if (galleryView === 'grid') renderGalleryGrid();
+    else if (galleryView === 'list') renderGalleryList();
+    else renderGalleryDetail();
+  }
+
+  // View switch
+  document.querySelectorAll('#galleryViewSwitch button').forEach((button) => {
+    button.addEventListener('click', () => {
+      document.querySelectorAll('#galleryViewSwitch button').forEach((b) => b.classList.remove('active'));
+      button.classList.add('active');
+      galleryView = button.dataset.gview;
+      document.querySelectorAll('.gallery-view').forEach((v) => v.classList.remove('active'));
+      document.getElementById(
+        galleryView === 'grid' ? 'galleryGridView' :
+        galleryView === 'list' ? 'galleryListView' : 'galleryDetailView'
+      ).classList.add('active');
+      renderGallery();
+    });
+  });
+
+  // Type filter
   document.querySelectorAll('#galleryTypeSwitch button').forEach((button) => {
     button.addEventListener('click', () => {
       document.querySelectorAll('#galleryTypeSwitch button').forEach((b) => b.classList.remove('active'));
