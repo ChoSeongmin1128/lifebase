@@ -54,7 +54,7 @@ type StorageConfig struct {
 func Load() (*Config, error) {
 	_ = godotenv.Load()
 
-	port, _ := strconv.Atoi(getEnv("SERVER_PORT", "8080"))
+	port, _ := strconv.Atoi(getEnv("SERVER_PORT", "38117"))
 	accessExpiry, _ := time.ParseDuration(getEnv("JWT_ACCESS_EXPIRY", "15m"))
 	refreshExpiry, _ := time.ParseDuration(getEnv("JWT_REFRESH_EXPIRY", "720h"))
 
@@ -62,7 +62,7 @@ func Load() (*Config, error) {
 		Server: ServerConfig{
 			Port:      port,
 			Env:       getEnv("SERVER_ENV", "development"),
-			WebOrigin: getEnv("WEB_URL", "http://localhost:3000"),
+			WebOrigin: getEnv("WEB_URL", "http://localhost:39001"),
 		},
 		Database: DatabaseConfig{
 			URL: getEnv("DATABASE_URL", "postgres://seongmin@localhost:5432/lifebase?sslmode=disable"),

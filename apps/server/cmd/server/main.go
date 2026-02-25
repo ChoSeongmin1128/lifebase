@@ -15,6 +15,9 @@ import (
 	"github.com/go-chi/cors"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	authhttp "lifebase/internal/auth/adapter/in/http"
+	authpg "lifebase/internal/auth/adapter/out/postgres"
+	"lifebase/internal/auth/usecase"
 	"lifebase/internal/shared/config"
 	"lifebase/internal/shared/middleware"
 	"lifebase/internal/shared/response"
@@ -41,6 +44,17 @@ func main() {
 	}
 	slog.Info("database connected")
 
+	// Repositories
+	userRepo := authpg.NewUserRepo(dbpool)
+	googleAccountRepo := authpg.NewGoogleAccountRepo(dbpool)
+	refreshTokenRepo := authpg.NewRefreshTokenRepo(dbpool)
+
+	// Use Cases
+	authUC := usecase.NewAuthUseCase(cfg, userRepo, googleAccountRepo, refreshTokenRepo)
+
+	// Handlers
+	authHandler := authhttp.NewAuthHandler(authUC)
+
 	// Router
 	r := chi.NewRouter()
 
@@ -65,6 +79,27 @@ func main() {
 			response.JSON(w, http.StatusOK, map[string]string{
 				"status": "ok",
 				"time":   time.Now().UTC().Format(time.RFC3339),
+			})
+		})
+
+		// Auth (public)
+		r.Route("/auth", func(r chi.Router) {
+			r.Get("/url", authHandler.GetAuthURL)
+			r.Post("/callback", authHandler.HandleCallback)
+			r.Post("/refresh", authHandler.RefreshToken)
+		})
+
+		// Protected routes
+		r.Group(func(r chi.Router) {
+			r.Use(middleware.Auth(cfg.JWT.Secret))
+
+			r.Post("/auth/logout", authHandler.Logout)
+
+			r.Get("/me", func(w http.ResponseWriter, r *http.Request) {
+				userID := middleware.GetUserID(r.Context())
+				response.JSON(w, http.StatusOK, map[string]string{
+					"user_id": userID,
+				})
 			})
 		})
 	})

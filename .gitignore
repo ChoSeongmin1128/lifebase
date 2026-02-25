@@ -10,10 +10,11 @@ node_modules/
 
 # Next.js
 .next/
-out/
+/apps/web/out/
 
 # Go
 apps/server/tmp/
+apps/server/server
 
 # Environment
 .env

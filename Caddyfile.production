@@ -1,9 +1,9 @@
 # 프로덕션 환경
 
 api.lifebase.cc {
-	reverse_proxy localhost:8080
+	reverse_proxy localhost:38117
 }
 
 web.lifebase.cc {
-	reverse_proxy localhost:3000
+	reverse_proxy localhost:39001
 }
