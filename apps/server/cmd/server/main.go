@@ -25,6 +25,9 @@ import (
 	galleryhttp "lifebase/internal/gallery/adapter/in/http"
 	gallerypg "lifebase/internal/gallery/adapter/out/postgres"
 	galleryusecase "lifebase/internal/gallery/usecase"
+	sharinghttp "lifebase/internal/sharing/adapter/in/http"
+	sharingpg "lifebase/internal/sharing/adapter/out/postgres"
+	sharingusecase "lifebase/internal/sharing/usecase"
 	"lifebase/internal/shared/config"
 	"lifebase/internal/shared/middleware"
 	"lifebase/internal/shared/response"
@@ -75,15 +78,21 @@ func main() {
 	// Gallery repos
 	mediaRepo := gallerypg.NewMediaRepo(dbpool)
 
+	// Sharing repos
+	shareRepo := sharingpg.NewShareRepo(dbpool)
+	inviteRepo := sharingpg.NewInviteRepo(dbpool)
+
 	// Use Cases
 	authUC := authusecase.NewAuthUseCase(cfg, userRepo, googleAccountRepo, refreshTokenRepo)
 	cloudUC := cloudusecase.NewCloudUseCase(folderRepo, fileRepo, storage, asynqClient)
 	galleryUC := galleryusecase.NewGalleryUseCase(mediaRepo)
+	sharingUC := sharingusecase.NewSharingUseCase(shareRepo, inviteRepo)
 
 	// Handlers
 	authHandler := authhttp.NewAuthHandler(authUC)
 	cloudHandler := cloudhttp.NewCloudHandler(cloudUC)
 	galleryHandler := galleryhttp.NewGalleryHandler(galleryUC, cfg.Storage.ThumbPath)
+	sharingHandler := sharinghttp.NewSharingHandler(sharingUC)
 
 	// Router
 	r := chi.NewRouter()
@@ -163,6 +172,15 @@ func main() {
 			r.Route("/gallery", func(r chi.Router) {
 				r.Get("/", galleryHandler.ListMedia)
 				r.Get("/thumbnails/{fileID}/{size}", galleryHandler.GetThumbnail)
+			})
+
+			// Sharing
+			r.Route("/shares", func(r chi.Router) {
+				r.Post("/invite", sharingHandler.CreateInvite)
+				r.Post("/accept", sharingHandler.AcceptInvite)
+				r.Get("/", sharingHandler.ListShares)
+				r.Get("/shared-with-me", sharingHandler.ListSharedWithMe)
+				r.Delete("/{shareID}", sharingHandler.RemoveShare)
 			})
 		})
 	})
