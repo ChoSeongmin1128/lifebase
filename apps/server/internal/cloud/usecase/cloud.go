@@ -3,30 +3,36 @@ package usecase
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/hibiken/asynq"
 
 	"lifebase/internal/cloud/domain"
 	portin "lifebase/internal/cloud/port/in"
 	portout "lifebase/internal/cloud/port/out"
+	"lifebase/internal/worker"
 )
 
 type cloudUseCase struct {
 	folders portout.FolderRepository
 	files   portout.FileRepository
 	storage portout.FileStorage
+	queue   *asynq.Client
 }
 
 func NewCloudUseCase(
 	folders portout.FolderRepository,
 	files portout.FileRepository,
 	storage portout.FileStorage,
+	queue *asynq.Client,
 ) portin.CloudUseCase {
 	return &cloudUseCase{
 		folders: folders,
 		files:   files,
 		storage: storage,
+		queue:   queue,
 	}
 }
 
@@ -153,6 +159,16 @@ func (uc *cloudUseCase) UploadFile(ctx context.Context, userID string, folderID 
 
 	if err := uc.files.UpdateStorageUsed(ctx, userID, size); err != nil {
 		return nil, fmt.Errorf("update storage used: %w", err)
+	}
+
+	// Enqueue thumbnail generation
+	if uc.queue != nil {
+		task, err := worker.NewThumbnailTask(fileID, userID, storagePath, mimeType)
+		if err == nil {
+			if _, err := uc.queue.Enqueue(task, asynq.Queue("thumbnails")); err != nil {
+				slog.Warn("failed to enqueue thumbnail task", "file_id", fileID, "error", err)
+			}
+		}
 	}
 
 	return file, nil

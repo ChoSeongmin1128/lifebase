@@ -22,9 +22,13 @@ import (
 	"lifebase/internal/cloud/adapter/out/filesystem"
 	cloudpg "lifebase/internal/cloud/adapter/out/postgres"
 	cloudusecase "lifebase/internal/cloud/usecase"
+	galleryhttp "lifebase/internal/gallery/adapter/in/http"
+	gallerypg "lifebase/internal/gallery/adapter/out/postgres"
+	galleryusecase "lifebase/internal/gallery/usecase"
 	"lifebase/internal/shared/config"
 	"lifebase/internal/shared/middleware"
 	"lifebase/internal/shared/response"
+	"lifebase/internal/worker"
 )
 
 func main() {
@@ -58,13 +62,28 @@ func main() {
 	// Storage
 	storage := filesystem.NewLocalStorage(cfg.Storage.DataPath)
 
+	// Asynq
+	asynqClient := worker.NewAsynqClient(cfg.Redis.URL)
+	if asynqClient != nil {
+		defer asynqClient.Close()
+	}
+
+	// Worker server
+	workerSrv := worker.StartWorkerServer(cfg.Redis.URL, dbpool, cfg.Storage.DataPath, cfg.Storage.ThumbPath)
+	_ = workerSrv
+
+	// Gallery repos
+	mediaRepo := gallerypg.NewMediaRepo(dbpool)
+
 	// Use Cases
 	authUC := authusecase.NewAuthUseCase(cfg, userRepo, googleAccountRepo, refreshTokenRepo)
-	cloudUC := cloudusecase.NewCloudUseCase(folderRepo, fileRepo, storage)
+	cloudUC := cloudusecase.NewCloudUseCase(folderRepo, fileRepo, storage, asynqClient)
+	galleryUC := galleryusecase.NewGalleryUseCase(mediaRepo)
 
 	// Handlers
 	authHandler := authhttp.NewAuthHandler(authUC)
 	cloudHandler := cloudhttp.NewCloudHandler(cloudUC)
+	galleryHandler := galleryhttp.NewGalleryHandler(galleryUC, cfg.Storage.ThumbPath)
 
 	// Router
 	r := chi.NewRouter()
@@ -138,6 +157,12 @@ func main() {
 
 				// Search
 				r.Get("/search", cloudHandler.SearchFiles)
+			})
+
+			// Gallery
+			r.Route("/gallery", func(r chi.Router) {
+				r.Get("/", galleryHandler.ListMedia)
+				r.Get("/thumbnails/{fileID}/{size}", galleryHandler.GetThumbnail)
 			})
 		})
 	})
