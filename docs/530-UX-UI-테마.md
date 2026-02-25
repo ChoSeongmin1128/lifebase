@@ -41,5 +41,5 @@
 
 ## 열린 질문
 - ~~아이콘 라이브러리 선택~~ → Feather Icons 스타일 인라인 SVG로 확정
-- 폰트 (시스템 폰트 스택 vs 웹폰트)
-- 컴포넌트 라이브러리 (shadcn/ui, Radix 등)
+- ~~폰트~~ → Pretendard Variable (CDN dynamic subset) 확정
+- ~~컴포넌트 라이브러리~~ → shadcn/ui (Radix 기반 + Tailwind CSS) 확정
