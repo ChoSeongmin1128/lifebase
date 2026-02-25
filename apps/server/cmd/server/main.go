@@ -31,6 +31,9 @@ import (
 	sharinghttp "lifebase/internal/sharing/adapter/in/http"
 	sharingpg "lifebase/internal/sharing/adapter/out/postgres"
 	sharingusecase "lifebase/internal/sharing/usecase"
+	todohttp "lifebase/internal/todo/adapter/in/http"
+	todopg "lifebase/internal/todo/adapter/out/postgres"
+	todousecase "lifebase/internal/todo/usecase"
 	"lifebase/internal/shared/config"
 	"lifebase/internal/shared/middleware"
 	"lifebase/internal/shared/response"
@@ -86,6 +89,10 @@ func main() {
 	eventRepo := calendarpg.NewEventRepo(dbpool)
 	reminderRepo := calendarpg.NewReminderRepo(dbpool)
 
+	// Todo repos
+	todoListRepo := todopg.NewListRepo(dbpool)
+	todoItemRepo := todopg.NewTodoRepo(dbpool)
+
 	// Sharing repos
 	shareRepo := sharingpg.NewShareRepo(dbpool)
 	inviteRepo := sharingpg.NewInviteRepo(dbpool)
@@ -95,6 +102,7 @@ func main() {
 	cloudUC := cloudusecase.NewCloudUseCase(folderRepo, fileRepo, storage, asynqClient)
 	galleryUC := galleryusecase.NewGalleryUseCase(mediaRepo)
 	calendarUC := calendarusecase.NewCalendarUseCase(calendarRepo, eventRepo, reminderRepo)
+	todoUC := todousecase.NewTodoUseCase(todoListRepo, todoItemRepo)
 	sharingUC := sharingusecase.NewSharingUseCase(shareRepo, inviteRepo)
 
 	// Handlers
@@ -102,6 +110,7 @@ func main() {
 	cloudHandler := cloudhttp.NewCloudHandler(cloudUC)
 	galleryHandler := galleryhttp.NewGalleryHandler(galleryUC, cfg.Storage.ThumbPath)
 	calendarHandler := calendarhttp.NewCalendarHandler(calendarUC)
+	todoHandler := todohttp.NewTodoHandler(todoUC)
 	sharingHandler := sharinghttp.NewSharingHandler(sharingUC)
 
 	// Router
@@ -197,6 +206,20 @@ func main() {
 				r.Get("/{eventID}", calendarHandler.GetEvent)
 				r.Patch("/{eventID}", calendarHandler.UpdateEvent)
 				r.Delete("/{eventID}", calendarHandler.DeleteEvent)
+			})
+
+			// Todo
+			r.Route("/todo", func(r chi.Router) {
+				r.Post("/lists", todoHandler.CreateList)
+				r.Get("/lists", todoHandler.ListLists)
+				r.Patch("/lists/{listID}", todoHandler.UpdateList)
+				r.Delete("/lists/{listID}", todoHandler.DeleteList)
+
+				r.Post("/", todoHandler.CreateTodo)
+				r.Get("/", todoHandler.ListTodos)
+				r.Get("/{todoID}", todoHandler.GetTodo)
+				r.Patch("/{todoID}", todoHandler.UpdateTodo)
+				r.Delete("/{todoID}", todoHandler.DeleteTodo)
 			})
 
 			// Sharing
