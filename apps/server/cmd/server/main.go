@@ -28,6 +28,8 @@ import (
 	galleryhttp "lifebase/internal/gallery/adapter/in/http"
 	gallerypg "lifebase/internal/gallery/adapter/out/postgres"
 	galleryusecase "lifebase/internal/gallery/usecase"
+	settingshttp "lifebase/internal/settings/adapter/in/http"
+	settingspg "lifebase/internal/settings/adapter/out/postgres"
 	sharinghttp "lifebase/internal/sharing/adapter/in/http"
 	sharingpg "lifebase/internal/sharing/adapter/out/postgres"
 	sharingusecase "lifebase/internal/sharing/usecase"
@@ -110,6 +112,8 @@ func main() {
 	cloudHandler := cloudhttp.NewCloudHandler(cloudUC)
 	galleryHandler := galleryhttp.NewGalleryHandler(galleryUC, cfg.Storage.ThumbPath)
 	calendarHandler := calendarhttp.NewCalendarHandler(calendarUC)
+	settingsRepoInst := settingspg.NewSettingsRepo(dbpool)
+	settingsHandler := settingshttp.NewSettingsHandler(settingsRepoInst)
 	todoHandler := todohttp.NewTodoHandler(todoUC)
 	sharingHandler := sharinghttp.NewSharingHandler(sharingUC)
 
@@ -220,6 +224,12 @@ func main() {
 				r.Get("/{todoID}", todoHandler.GetTodo)
 				r.Patch("/{todoID}", todoHandler.UpdateTodo)
 				r.Delete("/{todoID}", todoHandler.DeleteTodo)
+			})
+
+			// Settings
+			r.Route("/settings", func(r chi.Router) {
+				r.Get("/", settingsHandler.GetAll)
+				r.Patch("/", settingsHandler.Update)
 			})
 
 			// Sharing
