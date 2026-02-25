@@ -51,6 +51,7 @@
 - `profile` — 사용자 이름/프로필 사진
 - `https://www.googleapis.com/auth/calendar` — Google Calendar 읽기/쓰기
 - `https://www.googleapis.com/auth/tasks` — Google Tasks 읽기/쓰기
+- Google Drive 스코프는 사용하지 않음 (자체 파일 스토리지 사용)
 
 ## 사용자 격리 원칙
 - 사용자 간 정보가 완전히 격리되어야 한다
