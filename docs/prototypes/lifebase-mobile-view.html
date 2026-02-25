@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>LifeBase Mobile Prototype v5</title>
+<title>LifeBase Mobile Prototype v6</title>
 <link rel="icon" type="image/svg+xml" href="../../resources/logo_with_bg.svg">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css">
 <link rel="stylesheet" href="shared/common.css">
@@ -1137,45 +1137,36 @@
 
       <section class="panel" id="tab-todo">
         <h2 class="section-title">Todo</h2>
-        <p class="sub">Google Tasks와 유사한 리스트 중심 UI</p>
 
-        <div class="seg" style="margin-bottom:8px;">
-          <button class="active">내 할 일</button>
-          <button>업무</button>
-          <button>개인</button>
+        <div class="seg" style="margin-bottom:8px;" id="mobileTodoListChips">
+          <button class="active" data-list="list-1">내 할 일</button>
+          <button data-list="list-2">업무</button>
+          <button data-list="list-3">개인</button>
+          <button data-list="list-4">대기중</button>
         </div>
 
-        <input class="input" placeholder="작업 추가" />
-
-        <div class="task-item">
-          <div class="task-row">
-            <span class="check"></span>
-            <div>
-              <div class="task-title">릴리즈 체크리스트 점검</div>
-              <div class="task-meta">Due 2026-02-18</div>
-            </div>
+        <div style="display:flex; align-items:center; gap:6px; margin-bottom:8px;">
+          <button class="btn-icon" id="mobileTodoSortBtn" style="border:1px solid var(--border);border-radius:8px;padding:6px 8px;background:var(--surface);cursor:pointer;">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="6" x2="20" y2="6"/><line x1="4" y1="12" x2="14" y2="12"/><line x1="4" y1="18" x2="9" y2="18"/></svg>
+          </button>
+          <div class="sort-menu todo-sort-menu" id="mobileTodoSortMenu" style="display:none;position:absolute;z-index:30;background:var(--surface);border:1px solid var(--border);border-radius:8px;box-shadow:var(--shadow);min-width:140px;padding:4px 0;margin-top:4px;">
+            <button class="sort-menu-item active" data-todo-sort="due">마감일순</button>
+            <button class="sort-menu-item" data-todo-sort="priority">우선순위순</button>
+            <button class="sort-menu-item" data-todo-sort="created">생성일순</button>
+            <button class="sort-menu-item" data-todo-sort="manual">수동 정렬</button>
+          </div>
+          <div class="todo-filter-chips" id="mobileTodoFilterChips" style="margin-bottom:0;">
+            <span class="chip" data-todo-filter="today">오늘</span>
+            <span class="chip" data-todo-filter="week">이번 주</span>
+            <span class="chip" data-todo-filter="overdue">마감 지남</span>
           </div>
         </div>
 
-        <div class="task-item">
-          <div class="task-row">
-            <span class="check"></span>
-            <div>
-              <div class="task-title">세금 신고 자료 업로드</div>
-              <div class="task-meta">Due 2026-04-18</div>
-            </div>
-          </div>
-        </div>
+        <input class="input" placeholder="새 Todo 추가" />
 
-        <div class="task-item soft-secondary">
-          <div class="task-row">
-            <span class="check done"></span>
-            <div>
-              <div class="task-title done">회의 노트 정리</div>
-              <div class="task-meta">Completed</div>
-            </div>
-          </div>
-        </div>
+        <div id="mobileTodoPinnedGroup"></div>
+        <div id="mobileTodoListItems"></div>
+        <div id="mobileTodoDoneSection"></div>
       </section>
 
       <section class="panel" id="tab-gallery">
@@ -1194,7 +1185,7 @@
           </div>
         </div>
         <div class="seg" style="margin-bottom:6px;">
-          <select id="mobileSortBy"><option value="modified">수정한 날짜</option><option value="created">생성한 날짜</option></select>
+          <select id="mobileSortBy"><option value="modified">수정한 날짜</option><option value="created">생성한 날짜</option><option value="name">이름</option><option value="size">크기</option></select>
           <select id="mobileSortDir"><option value="desc">내림차순</option><option value="asc">오름차순</option></select>
         </div>
 
@@ -1259,6 +1250,47 @@
         <div class="card">
           <div style="font-size:12px; font-weight:700; margin-bottom:6px;">Todo</div>
           <div class="row"><span>완료 Todo 표시</span><span class="badge">숨김</span></div>
+          <div class="row">
+            <span>기본 정렬</span>
+            <select class="control" style="border:1px solid var(--border);border-radius:6px;padding:4px 6px;font-size:11px;background:var(--surface);color:var(--text-primary);">
+              <option value="due">마감일순</option>
+              <option value="priority">우선순위순</option>
+              <option value="created">생성일순</option>
+              <option value="manual">수동 정렬</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="card">
+          <div style="font-size:12px; font-weight:700; margin-bottom:6px;">알림</div>
+          <div class="row">
+            <span>Push 알림</span>
+            <div class="seg" style="margin:0;padding:0;">
+              <button class="active" style="font-size:10px;padding:4px 8px;">켜짐</button>
+              <button style="font-size:10px;padding:4px 8px;">꺼짐</button>
+            </div>
+          </div>
+          <div class="row">
+            <span>방해 금지</span>
+            <span style="display:flex;align-items:center;gap:3px;font-size:11px;">
+              <select style="border:1px solid var(--border);border-radius:6px;padding:3px 4px;font-size:10px;background:var(--surface);color:var(--text-primary);">
+                <option value="22" selected>22시</option>
+                <option value="23">23시</option>
+              </select>
+              ~
+              <select style="border:1px solid var(--border);border-radius:6px;padding:3px 4px;font-size:10px;background:var(--surface);color:var(--text-primary);">
+                <option value="7" selected>7시</option>
+                <option value="8">8시</option>
+              </select>
+            </span>
+          </div>
+          <div class="row">
+            <span>긴급만 허용</span>
+            <div class="seg" style="margin:0;padding:0;">
+              <button style="font-size:10px;padding:4px 8px;">켜짐</button>
+              <button class="active" style="font-size:10px;padding:4px 8px;">꺼짐</button>
+            </div>
+          </div>
         </div>
 
         <div class="card">
@@ -2280,6 +2312,207 @@
   document.getElementById('mobileSortBy').addEventListener('change', renderMobileGallery);
   document.getElementById('mobileSortDir').addEventListener('change', renderMobileGallery);
   renderMobileGallery();
+
+  /* ================================================================
+   * Mobile Todo rendering (independent inline implementation)
+   * ================================================================ */
+
+  var mActiveTodoList = 'list-1';
+  var mActiveTodoSort = 'due';
+  var mActiveTodoFilters = [];
+  var mTodoCollapsed = {};
+  var mTodoDoneOpen = false;
+  var mPriorityOrder = { urgent: 0, high: 1, normal: 2, low: 3 };
+
+  var mTodoIcons = {
+    grip: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="5" r="1"/><circle cx="9" cy="12" r="1"/><circle cx="9" cy="19" r="1"/><circle cx="15" cy="5" r="1"/><circle cx="15" cy="12" r="1"/><circle cx="15" cy="19" r="1"/></svg>',
+    chevron: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>',
+    flag: '<svg viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" y1="22" x2="4" y2="15"/></svg>',
+    pin: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 17v5"/><path d="M9 2h6l-1 7h4l-5.3 8H11.3L6 9h4z"/></svg>',
+    check: '<svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>'
+  };
+
+  function mTodoSort(a, b) {
+    if (mActiveTodoSort === 'due') return a.date.localeCompare(b.date) || mPriorityOrder[a.priority] - mPriorityOrder[b.priority];
+    if (mActiveTodoSort === 'priority') return (mPriorityOrder[a.priority] - mPriorityOrder[b.priority]) || a.date.localeCompare(b.date);
+    if (mActiveTodoSort === 'created') return a.created.localeCompare(b.created);
+    return a.sort_order - b.sort_order;
+  }
+
+  function mTodoPassFilter(todo) {
+    if (mActiveTodoFilters.length === 0) return true;
+    var today = new Date(MOBILE_YEAR, 1, 21);
+    var todayKey = `${MOBILE_YEAR}-${String(today.getMonth()+1).padStart(2,'0')}-${String(today.getDate()).padStart(2,'0')}`;
+    var weekEnd = new Date(today); weekEnd.setDate(weekEnd.getDate() + 7 - weekEnd.getDay());
+    var weekEndKey = `${weekEnd.getFullYear()}-${String(weekEnd.getMonth()+1).padStart(2,'0')}-${String(weekEnd.getDate()).padStart(2,'0')}`;
+    for (var i = 0; i < mActiveTodoFilters.length; i++) {
+      if (mActiveTodoFilters[i] === 'today' && todo.date === todayKey) return true;
+      if (mActiveTodoFilters[i] === 'week' && todo.date >= todayKey && todo.date <= weekEndKey) return true;
+      if (mActiveTodoFilters[i] === 'overdue' && todo.date < todayKey) return true;
+    }
+    return false;
+  }
+
+  function mBuildTodoRow(todo, isChild) {
+    var hasChildren = todoItems.some(t => t.parent_id === todo.id);
+    var collapsed = mTodoCollapsed[todo.id];
+    var todayKey = `${MOBILE_YEAR}-02-21`;
+    var overdue = !todo.done && todo.date < todayKey;
+    var parts = todo.date.split('-');
+    var dueStr = parseInt(parts[1]) + '/' + parseInt(parts[2]);
+
+    var html = '<div class="task-item todo-row-layout' + (todo.is_pinned ? ' todo-pinned-row' : '') + (isChild ? ' todo-child' : '') + '" data-todo-id="' + todo.id + '">';
+    html += '<span class="todo-drag-handle">' + mTodoIcons.grip + '</span>';
+    if (hasChildren) {
+      html += '<span class="todo-chevron' + (collapsed ? ' collapsed' : '') + '" data-parent-id="' + todo.id + '">' + mTodoIcons.chevron + '</span>';
+    } else {
+      html += '<span class="todo-chevron-placeholder"></span>';
+    }
+    html += '<span class="check' + (todo.done ? ' done' : '') + '" data-todo-id="' + todo.id + '">' + (todo.done ? mTodoIcons.check : '') + '</span>';
+    html += '<span class="todo-priority-flag ' + (todo.priority || 'normal') + '">' + mTodoIcons.flag + '</span>';
+    html += '<div class="todo-content"><span class="task-title' + (todo.done ? ' done' : '') + '">' + todo.title + '</span>';
+    html += '<span class="todo-due-badge' + (overdue ? ' overdue' : '') + '">' + dueStr + '</span></div>';
+    html += '<span class="todo-pin-icon' + (todo.is_pinned ? ' pinned' : '') + '" data-todo-id="' + todo.id + '">' + mTodoIcons.pin + '</span>';
+    html += '</div>';
+    return html;
+  }
+
+  function renderMobileTodo() {
+    // List chips
+    var chipContainer = document.getElementById('mobileTodoListChips');
+    chipContainer.querySelectorAll('button').forEach(btn => {
+      btn.classList.toggle('active', btn.dataset.list === mActiveTodoList);
+    });
+
+    var pinnedGroup = document.getElementById('mobileTodoPinnedGroup');
+    var container = document.getElementById('mobileTodoListItems');
+    var doneSection = document.getElementById('mobileTodoDoneSection');
+
+    var allTodos = todoItems.filter(t => t.list_id === mActiveTodoList && t.parent_id === null);
+    var active = allTodos.filter(t => !t.done);
+    var done = allTodos.filter(t => t.done);
+
+    if (mActiveTodoFilters.length > 0) active = active.filter(mTodoPassFilter);
+    active.sort(mTodoSort);
+    done.sort(mTodoSort);
+
+    var pinned = active.filter(t => t.is_pinned);
+    var unpinned = active.filter(t => !t.is_pinned);
+
+    var pinnedHTML = '';
+    pinned.forEach(todo => {
+      pinnedHTML += mBuildTodoRow(todo, false);
+      if (!mTodoCollapsed[todo.id]) {
+        todoItems.filter(c => c.parent_id === todo.id && !c.done).sort(mTodoSort).forEach(child => {
+          pinnedHTML += mBuildTodoRow(child, true);
+        });
+      }
+    });
+    if (pinned.length > 0) pinnedHTML += '<div class="todo-pin-separator"></div>';
+    pinnedGroup.innerHTML = pinnedHTML;
+
+    var html = '';
+    if (unpinned.length === 0 && pinned.length === 0) {
+      html = '<div class="task-meta" style="padding:8px;font-size:11px;">표시할 Todo가 없습니다.</div>';
+    }
+    unpinned.forEach(todo => {
+      html += mBuildTodoRow(todo, false);
+      if (!mTodoCollapsed[todo.id]) {
+        todoItems.filter(c => c.parent_id === todo.id && !c.done).sort(mTodoSort).forEach(child => {
+          html += mBuildTodoRow(child, true);
+        });
+      }
+    });
+    container.innerHTML = html;
+
+    var doneHTML = '';
+    if (done.length > 0) {
+      doneHTML += '<div class="todo-done-section' + (mTodoDoneOpen ? '' : ' collapsed') + '" id="mobileTodoDoneHeader"><svg class="todo-done-chevron" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>완료됨 (' + done.length + ')</div>';
+      if (mTodoDoneOpen) {
+        doneHTML += '<div>';
+        done.forEach(todo => { doneHTML += mBuildTodoRow(todo, false); });
+        doneHTML += '</div>';
+      }
+    }
+    doneSection.innerHTML = doneHTML;
+  }
+
+  // Mobile Todo event handlers
+  document.getElementById('mobileTodoListChips').addEventListener('click', e => {
+    var btn = e.target.closest('button[data-list]');
+    if (btn) { mActiveTodoList = btn.dataset.list; renderMobileTodo(); }
+  });
+
+  document.getElementById('mobileTodoSortBtn').addEventListener('click', e => {
+    e.stopPropagation();
+    var menu = document.getElementById('mobileTodoSortMenu');
+    menu.style.display = menu.style.display === 'block' ? 'none' : 'block';
+  });
+  document.addEventListener('click', () => {
+    var menu = document.getElementById('mobileTodoSortMenu');
+    if (menu) menu.style.display = 'none';
+  });
+  document.getElementById('mobileTodoSortMenu').addEventListener('click', e => {
+    var item = e.target.closest('[data-todo-sort]');
+    if (item) {
+      document.getElementById('mobileTodoSortMenu').querySelectorAll('[data-todo-sort]').forEach(b => b.classList.remove('active'));
+      item.classList.add('active');
+      mActiveTodoSort = item.dataset.todoSort;
+      document.getElementById('mobileTodoSortMenu').style.display = 'none';
+      renderMobileTodo();
+    }
+    e.stopPropagation();
+  });
+
+  document.getElementById('mobileTodoFilterChips').addEventListener('click', e => {
+    var chip = e.target.closest('[data-todo-filter]');
+    if (chip) {
+      chip.classList.toggle('active');
+      mActiveTodoFilters = [];
+      document.getElementById('mobileTodoFilterChips').querySelectorAll('.active').forEach(c => {
+        mActiveTodoFilters.push(c.dataset.todoFilter);
+      });
+      renderMobileTodo();
+    }
+  });
+
+  document.getElementById('tab-todo').addEventListener('click', e => {
+    var checkEl = e.target.closest('.check[data-todo-id]');
+    if (checkEl) {
+      var id = Number(checkEl.dataset.todoId);
+      var todo = todoItems.find(t => t.id === id);
+      if (todo) { todo.done = !todo.done; renderMobileTodo(); }
+      return;
+    }
+    var pinEl = e.target.closest('.todo-pin-icon[data-todo-id]');
+    if (pinEl) {
+      var id = Number(pinEl.dataset.todoId);
+      var todo = todoItems.find(t => t.id === id);
+      if (todo) {
+        if (!todo.is_pinned) {
+          var cnt = todoItems.filter(t => t.is_pinned && t.list_id === todo.list_id).length;
+          if (cnt >= 5) return;
+        }
+        todo.is_pinned = !todo.is_pinned;
+        renderMobileTodo();
+      }
+      return;
+    }
+    var chevron = e.target.closest('.todo-chevron[data-parent-id]');
+    if (chevron) {
+      var pid = Number(chevron.dataset.parentId);
+      mTodoCollapsed[pid] = !mTodoCollapsed[pid];
+      renderMobileTodo();
+      return;
+    }
+    var doneHeader = e.target.closest('.todo-done-section');
+    if (doneHeader) {
+      mTodoDoneOpen = !mTodoDoneOpen;
+      renderMobileTodo();
+    }
+  });
+
+  renderMobileTodo();
 </script>
 </body>
 </html>

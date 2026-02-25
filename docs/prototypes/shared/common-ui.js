@@ -284,6 +284,17 @@ function initCloudDropdowns() {
     sortMenu.querySelectorAll('.sort-menu-item').forEach(function (item) {
       item.addEventListener('click', function (e) {
         e.stopPropagation();
+        // Reset handler
+        if (item.hasAttribute('data-sort-reset')) {
+          sortMenu.querySelectorAll('[data-sort]').forEach(function (b) { b.classList.remove('active'); });
+          sortMenu.querySelectorAll('[data-dir]').forEach(function (b) { b.classList.remove('active'); });
+          var nameItem = sortMenu.querySelector('[data-sort="name"]');
+          var ascItem = sortMenu.querySelector('[data-dir="asc"]');
+          if (nameItem) nameItem.classList.add('active');
+          if (ascItem) ascItem.classList.add('active');
+          sortMenu.classList.remove('open');
+          return;
+        }
         var sortKey = item.dataset.sort;
         var sortDir = item.dataset.dir;
         if (sortKey) {
@@ -540,6 +551,283 @@ function initCloudSubnav() {
 }
 
 /* ============================================================
+ * 10. Todo interactions
+ * ============================================================ */
+
+function initTodoSort() {
+  document.addEventListener('click', function(e) {
+    var sortItem = e.target.closest('[data-todo-sort]');
+    if (sortItem) {
+      var menu = sortItem.closest('.sort-menu, .todo-sort-menu, [id$="SortMenu"]');
+      if (menu) {
+        menu.querySelectorAll('[data-todo-sort]').forEach(function(b) { b.classList.remove('active'); });
+        sortItem.classList.add('active');
+        menu.classList.remove('open');
+        if (menu.style) menu.style.display = 'none';
+      }
+      activeTodoSort = sortItem.dataset.todoSort;
+      if (typeof renderTodoPanel === 'function') renderTodoPanel();
+      e.stopPropagation();
+    }
+  });
+}
+
+function initTodoFilter() {
+  document.addEventListener('click', function(e) {
+    var chip = e.target.closest('[data-todo-filter]');
+    if (chip) {
+      chip.classList.toggle('active');
+      // Rebuild active filters
+      activeTodoFilters = [];
+      document.querySelectorAll('[data-todo-filter].active').forEach(function(c) {
+        activeTodoFilters.push(c.dataset.todoFilter);
+      });
+      if (typeof renderTodoPanel === 'function') renderTodoPanel();
+    }
+  });
+}
+
+function initTodoCompletion() {
+  document.addEventListener('click', function(e) {
+    var checkEl = e.target.closest('.todo-row-layout .check');
+    if (!checkEl) return;
+    var todoId = Number(checkEl.dataset.todoId);
+    if (!todoId) return;
+    var todo = todoItems.find(function(t) { return t.id === todoId; });
+    if (!todo) return;
+
+    todo.done = !todo.done;
+
+    // Animate out if completing
+    var row = checkEl.closest('.task-item');
+    if (todo.done && row) {
+      row.classList.add('todo-completion-exit');
+      var h = row.offsetHeight;
+      row.style.height = h + 'px';
+      requestAnimationFrame(function() {
+        row.classList.add('collapsing');
+      });
+      setTimeout(function() {
+        if (typeof renderTodoPanel === 'function') renderTodoPanel();
+      }, 320);
+    } else {
+      if (typeof renderTodoPanel === 'function') renderTodoPanel();
+    }
+  });
+}
+
+function initTodoPin() {
+  document.addEventListener('click', function(e) {
+    var pinEl = e.target.closest('.todo-pin-icon');
+    if (!pinEl) return;
+    var todoId = Number(pinEl.dataset.todoId);
+    if (!todoId) return;
+    var todo = todoItems.find(function(t) { return t.id === todoId; });
+    if (!todo) return;
+
+    if (!todo.is_pinned) {
+      var pinnedCount = todoItems.filter(function(t) { return t.is_pinned && t.list_id === todo.list_id; }).length;
+      if (pinnedCount >= 5) return;
+    }
+    todo.is_pinned = !todo.is_pinned;
+    if (typeof renderTodoPanel === 'function') renderTodoPanel();
+  });
+}
+
+function initTodoChevron() {
+  document.addEventListener('click', function(e) {
+    var chevron = e.target.closest('.todo-chevron');
+    if (!chevron) return;
+    var parentId = Number(chevron.dataset.parentId);
+    if (!parentId) return;
+    todoCollapsedParents[parentId] = !todoCollapsedParents[parentId];
+    if (typeof renderTodoPanel === 'function') renderTodoPanel();
+  });
+}
+
+function initTodoDoneSection() {
+  document.addEventListener('click', function(e) {
+    var header = e.target.closest('.todo-done-section');
+    if (!header) return;
+    todoDoneSectionOpen = !todoDoneSectionOpen;
+    if (typeof renderTodoPanel === 'function') renderTodoPanel();
+  });
+}
+
+function initTodoListSwitch() {
+  document.addEventListener('click', function(e) {
+    // List panel items (web/desktop)
+    var listItem = e.target.closest('.task-list-item[data-list-id]');
+    if (listItem) {
+      activeTodoList = listItem.dataset.listId;
+      if (typeof renderTodoPanel === 'function') renderTodoPanel();
+      return;
+    }
+    // Mobile list chips
+    var listChip = e.target.closest('.todo-mobile-list-chips .chip[data-list-id]');
+    if (listChip) {
+      activeTodoList = listChip.dataset.listId;
+      if (typeof renderTodoPanel === 'function') renderTodoPanel();
+    }
+  });
+}
+
+function initTodoSortButton() {
+  // Mobile sort button toggle
+  var sortBtn = document.getElementById('mobileTodoSortBtn');
+  var sortMenu = document.getElementById('mobileTodoSortMenu');
+  if (sortBtn && sortMenu) {
+    sortBtn.addEventListener('click', function(e) {
+      e.stopPropagation();
+      var open = sortMenu.style.display === 'block';
+      sortMenu.style.display = open ? 'none' : 'block';
+    });
+    document.addEventListener('click', function() {
+      if (sortMenu) sortMenu.style.display = 'none';
+    });
+  }
+}
+
+/* ============================================================
+ * 11. Calendar event popovers & undo toast
+ * ============================================================ */
+
+function showUndoToast(message, onUndo) {
+  var existing = document.querySelector('.undo-toast');
+  if (existing) existing.remove();
+
+  var toast = document.createElement('div');
+  toast.className = 'undo-toast';
+  toast.innerHTML = '<span>' + message + '</span><button class="undo-btn">실행 취소</button>';
+  document.body.appendChild(toast);
+
+  var timer = setTimeout(function() {
+    toast.classList.add('fade-out');
+    setTimeout(function() { toast.remove(); }, 300);
+  }, 5000);
+
+  toast.querySelector('.undo-btn').addEventListener('click', function() {
+    clearTimeout(timer);
+    toast.remove();
+    if (onUndo) onUndo();
+  });
+}
+
+function initEventPopover() {
+  document.addEventListener('click', function(e) {
+    // Close existing popovers on outside click
+    var existingPopover = document.querySelector('.event-popover');
+    if (existingPopover && !e.target.closest('.event-popover') && !e.target.closest('.wk-event-block')) {
+      existingPopover.remove();
+      return;
+    }
+
+    var block = e.target.closest('.wk-event-block');
+    if (!block) return;
+
+    // Remove existing
+    var old = document.querySelector('.event-popover');
+    if (old) old.remove();
+
+    var title = block.querySelector('.wk-title');
+    var time = block.querySelector('.wk-time');
+    var titleText = title ? title.textContent : 'Event';
+    var timeText = time ? time.textContent : '';
+
+    var popover = document.createElement('div');
+    popover.className = 'event-popover';
+    popover.innerHTML =
+      '<div class="event-popover-title">' + titleText + '</div>' +
+      '<div class="event-popover-time">' + timeText + '</div>' +
+      '<div class="event-popover-calendar"><span class="cal-dot" style="background:var(--primary)"></span>캘린더</div>' +
+      '<div class="event-popover-actions">' +
+        '<button class="btn" onclick="alert(\'수정 기능은 구현 단계에서 제공됩니다.\')">수정</button>' +
+        '<button class="btn danger event-delete-btn">삭제</button>' +
+      '</div>';
+
+    var rect = block.getBoundingClientRect();
+    popover.style.top = (rect.bottom + window.scrollY + 4) + 'px';
+    popover.style.left = (rect.left + window.scrollX) + 'px';
+    document.body.appendChild(popover);
+
+    // Delete handler
+    popover.querySelector('.event-delete-btn').addEventListener('click', function() {
+      block.style.display = 'none';
+      popover.remove();
+      showUndoToast('삭제됨', function() {
+        block.style.display = '';
+      });
+    });
+  });
+}
+
+function initQuickCreate() {
+  document.addEventListener('click', function(e) {
+    // Close existing quick create on outside click
+    var existing = document.querySelector('.quick-create-popover');
+    if (existing && !e.target.closest('.quick-create-popover')) {
+      existing.remove();
+    }
+
+    var cell = e.target.closest('.week-time-cell');
+    if (!cell || e.target.closest('.wk-event-block')) return;
+
+    var hour = cell.dataset.hour;
+    var day = cell.dataset.day;
+    if (hour === undefined || day === undefined) return;
+
+    // Remove existing
+    var old = document.querySelector('.quick-create-popover');
+    if (old) old.remove();
+
+    var timeStr = String(hour).padStart(2, '0') + ':00';
+    var endStr = String(Number(hour) + 1).padStart(2, '0') + ':00';
+
+    var popover = document.createElement('div');
+    popover.className = 'quick-create-popover';
+    popover.innerHTML =
+      '<input type="text" placeholder="제목 입력" class="qc-title-input" />' +
+      '<div class="qc-time">' + timeStr + ' - ' + endStr + '</div>' +
+      '<div class="qc-actions">' +
+        '<button class="btn qc-detail-btn">상세</button>' +
+        '<button class="btn primary qc-save-btn">저장</button>' +
+      '</div>';
+
+    var rect = cell.getBoundingClientRect();
+    popover.style.top = (rect.top + window.scrollY) + 'px';
+    popover.style.left = (rect.right + window.scrollX + 4) + 'px';
+    document.body.appendChild(popover);
+
+    var input = popover.querySelector('.qc-title-input');
+    setTimeout(function() { input.focus(); }, 50);
+
+    function saveQuickEvent() {
+      var title = input.value.trim();
+      if (!title) { input.focus(); return; }
+      // Create a temporary event block in the cell
+      var block = document.createElement('div');
+      block.className = 'wk-event-block teal';
+      block.style.top = '0px';
+      block.style.height = '46px';
+      block.innerHTML = '<div class="wk-time">' + timeStr + '-' + endStr + '</div><div class="wk-title">' + title + '</div>';
+      cell.appendChild(block);
+      popover.remove();
+    }
+
+    popover.querySelector('.qc-save-btn').addEventListener('click', saveQuickEvent);
+    popover.querySelector('.qc-detail-btn').addEventListener('click', function() {
+      alert('상세 편집은 구현 단계에서 제공됩니다.');
+    });
+    input.addEventListener('keydown', function(ev) {
+      if (ev.key === 'Enter') saveQuickEvent();
+      if (ev.key === 'Escape') popover.remove();
+    });
+
+    e.stopPropagation();
+  });
+}
+
+/* ============================================================
  * 편의 함수: 모든 공통 UI 초기화를 한 번에 호출
  * ============================================================ */
 
@@ -552,4 +840,14 @@ function initCommonUI() {
   initColumnDragReorder();
   initColumnResize();
   initCloudSubnav();
+  initTodoSort();
+  initTodoFilter();
+  initTodoCompletion();
+  initTodoPin();
+  initTodoChevron();
+  initTodoDoneSection();
+  initTodoListSwitch();
+  initTodoSortButton();
+  initEventPopover();
+  initQuickCreate();
 }

@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>LifeBase Desktop App Prototype v5</title>
+<title>LifeBase Desktop App Prototype v6</title>
 <link rel="icon" type="image/svg+xml" href="../../resources/logo_with_bg.svg">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css">
 <link rel="stylesheet" href="shared/common.css">
@@ -173,9 +173,12 @@
                       <button class="sort-menu-item active" data-sort="name">이름순</button>
                       <button class="sort-menu-item" data-sort="size">크기순</button>
                       <button class="sort-menu-item" data-sort="date">수정한 날짜순</button>
+                      <button class="sort-menu-item" data-sort="created">생성한 날짜순</button>
                       <div class="sort-menu-divider"></div>
                       <button class="sort-menu-item active" data-dir="asc">오름차순</button>
                       <button class="sort-menu-item" data-dir="desc">내림차순</button>
+                      <div class="sort-menu-divider"></div>
+                      <button class="sort-menu-item" data-sort-reset>기본 정렬로 돌아가기</button>
                     </div>
                   </div>
                 </div>
@@ -322,28 +325,40 @@
         </section>
 
         <section class="panel" id="tab-todo">
-          <h2 class="section-title">Todo (Google Tasks Style)</h2>
-          <p class="sub">리스트 중심, 간단 체크, due 중심 정렬의 Google Tasks 패턴을 따릅니다.</p>
+          <h2 class="section-title">Todo</h2>
+          <p class="sub">리스트 중심, 계층 구조, 우선순위/고정/정렬을 지원합니다.</p>
+
+          <div class="todo-mobile-list-chips" id="todoMobileListChips"></div>
 
           <div class="todo-layout">
             <div class="card">
               <div class="card-title">목록</div>
-              <div class="task-list-item active">내 할 일</div>
-              <div class="task-list-item">업무</div>
-              <div class="task-list-item">개인</div>
-              <div class="task-list-item">대기중</div>
+              <div id="todoListPanel"></div>
+              <button class="todo-add-list-btn"><svg viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>새 목록</button>
             </div>
 
             <div class="card">
               <div class="task-toolbar">
-                <div class="card-title" style="margin:0;">내 할 일</div>
-                <div class="seg">
-                  <button class="btn">내 순서</button>
-                  <button class="btn">마감일</button>
+                <div class="card-title" style="margin:0;" id="todoActiveListName">내 할 일</div>
+                <div class="sort-menu-wrapper">
+                  <button class="btn-icon" data-action-toggle data-tooltip="정렬"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="6" x2="20" y2="6"/><line x1="4" y1="12" x2="14" y2="12"/><line x1="4" y1="18" x2="9" y2="18"/></svg></button>
+                  <div class="sort-menu todo-sort-menu" id="todoSortMenu">
+                    <button class="sort-menu-item active" data-todo-sort="due">마감일순</button>
+                    <button class="sort-menu-item" data-todo-sort="priority">우선순위순</button>
+                    <button class="sort-menu-item" data-todo-sort="created">생성일순</button>
+                    <button class="sort-menu-item" data-todo-sort="manual">수동 정렬</button>
+                  </div>
                 </div>
               </div>
-              <input class="task-input" placeholder="새 작업 추가" />
+              <div class="todo-filter-chips" id="todoFilterChips">
+                <span class="chip" data-todo-filter="today">오늘</span>
+                <span class="chip" data-todo-filter="week">이번 주</span>
+                <span class="chip" data-todo-filter="overdue">마감 지남</span>
+              </div>
+              <input class="task-input" placeholder="새 Todo 추가" />
+              <div id="todoPinnedGroup"></div>
               <div id="todoListItems"></div>
+              <div id="todoDoneSection"></div>
             </div>
           </div>
         </section>
@@ -368,6 +383,8 @@
                 <select id="gallerySortBy" class="control">
                   <option value="modified">수정한 날짜</option>
                   <option value="created">생성한 날짜</option>
+                  <option value="name">이름</option>
+                  <option value="size">크기</option>
                 </select>
                 <select id="gallerySortDir" class="control">
                   <option value="desc">내림차순</option>
@@ -451,6 +468,51 @@
           <div class="card" style="margin-bottom:10px;">
             <div class="card-title">Todo</div>
             <div class="row"><span>완료 Todo 표시</span><button class="control" id="todoDoneToggle">숨김</button></div>
+            <div class="row">
+              <span>기본 정렬</span>
+              <select class="control" id="todoDefaultSort">
+                <option value="due">마감일순</option>
+                <option value="priority">우선순위순</option>
+                <option value="created">생성일순</option>
+                <option value="manual">수동 정렬</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="card" style="margin-bottom:10px;">
+            <div class="card-title">알림</div>
+            <div class="row">
+              <span>Push 알림</span>
+              <div class="seg">
+                <button class="btn active">켜짐</button>
+                <button class="btn">꺼짐</button>
+              </div>
+            </div>
+            <div class="row">
+              <span>방해 금지 시간</span>
+              <span style="display:flex;align-items:center;gap:4px;">
+                <select class="control" id="dndStart">
+                  <option value="">없음</option>
+                  <option value="22" selected>22시</option>
+                  <option value="23">23시</option>
+                  <option value="0">0시</option>
+                </select>
+                <span>~</span>
+                <select class="control" id="dndEnd">
+                  <option value="">없음</option>
+                  <option value="7" selected>7시</option>
+                  <option value="8">8시</option>
+                  <option value="9">9시</option>
+                </select>
+              </span>
+            </div>
+            <div class="row">
+              <span>긴급만 허용</span>
+              <div class="seg">
+                <button class="btn">켜짐</button>
+                <button class="btn active">꺼짐</button>
+              </div>
+            </div>
           </div>
 
           <div class="card" style="margin-bottom:10px;">

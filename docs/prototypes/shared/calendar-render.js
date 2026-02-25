@@ -720,32 +720,204 @@ function renderAgendaView() {
  * Todo panel
  * ================================================================ */
 
-function renderTodoPanel() {
-  const container = document.getElementById('todoListItems');
-  const todos = [...todoItems]
-    .filter((todo) => passAccount(todo) && (showCompletedTodos || !todo.done))
-    .sort((a, b) => a.date.localeCompare(b.date));
+/* ================================================================
+ * Todo state
+ * ================================================================ */
 
-  container.innerHTML = '';
-  if (todos.length === 0) {
-    container.innerHTML = '<div class="task-meta">표시할 Todo가 없습니다.</div>';
-    return;
+var activeTodoList = 'list-1';
+var activeTodoSort = 'due';
+var activeTodoFilters = [];
+var todoCollapsedParents = {};
+var todoDoneSectionOpen = false;
+
+var priorityOrder = { urgent: 0, high: 1, normal: 2, low: 3 };
+
+/* SVG icons for Todo */
+var todoIcons = {
+  grip: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="5" r="1"/><circle cx="9" cy="12" r="1"/><circle cx="9" cy="19" r="1"/><circle cx="15" cy="5" r="1"/><circle cx="15" cy="12" r="1"/><circle cx="15" cy="19" r="1"/></svg>',
+  chevron: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>',
+  flag: '<svg viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" y1="22" x2="4" y2="15"/></svg>',
+  pin: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 17v5"/><path d="M9 2h6l-1 7h4l-5.3 8H11.3L6 9h4z"/></svg>',
+  more: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="5" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="12" cy="19" r="1"/></svg>',
+  check: '<svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>'
+};
+
+function todoSortComparator(a, b) {
+  if (activeTodoSort === 'due') return a.date.localeCompare(b.date) || priorityOrder[a.priority] - priorityOrder[b.priority];
+  if (activeTodoSort === 'priority') return (priorityOrder[a.priority] - priorityOrder[b.priority]) || a.date.localeCompare(b.date);
+  if (activeTodoSort === 'created') return a.created.localeCompare(b.created);
+  return a.sort_order - b.sort_order;
+}
+
+function todoPassFilter(todo) {
+  if (activeTodoFilters.length === 0) return true;
+  var todayKey = dateKey(demoToday.getFullYear(), demoToday.getMonth() + 1, demoToday.getDate());
+  var weekEnd = addDays(demoToday, 7 - demoToday.getDay());
+  var weekEndKey = dateKey(weekEnd.getFullYear(), weekEnd.getMonth() + 1, weekEnd.getDate());
+  for (var i = 0; i < activeTodoFilters.length; i++) {
+    var f = activeTodoFilters[i];
+    if (f === 'today' && todo.date === todayKey) return true;
+    if (f === 'week' && todo.date >= todayKey && todo.date <= weekEndKey) return true;
+    if (f === 'overdue' && todo.date < todayKey) return true;
+  }
+  return false;
+}
+
+function isOverdue(dateStr) {
+  var todayKey = dateKey(demoToday.getFullYear(), demoToday.getMonth() + 1, demoToday.getDate());
+  return dateStr < todayKey;
+}
+
+function formatDueShort(dateStr) {
+  var parts = dateStr.split('-');
+  return parseInt(parts[1]) + '/' + parseInt(parts[2]);
+}
+
+function buildTodoRowHTML(todo, isChild) {
+  var hasChildren = todoItems.some(function(t) { return t.parent_id === todo.id; });
+  var isCollapsed = todoCollapsedParents[todo.id];
+  var pinnedClass = todo.is_pinned ? ' todo-pinned-row' : '';
+  var childClass = isChild ? ' todo-child' : '';
+  var overdue = !todo.done && isOverdue(todo.date);
+
+  var html = '<div class="task-item todo-row-layout' + pinnedClass + childClass + '" data-todo-id="' + todo.id + '">';
+  html += '<span class="todo-drag-handle">' + todoIcons.grip + '</span>';
+
+  if (hasChildren) {
+    html += '<span class="todo-chevron' + (isCollapsed ? ' collapsed' : '') + '" data-parent-id="' + todo.id + '">' + todoIcons.chevron + '</span>';
+  } else {
+    html += '<span class="todo-chevron-placeholder"></span>';
   }
 
-  todos.forEach((todo) => {
-    const item = document.createElement('div');
-    item.className = `task-item${todo.done ? ' soft-secondary' : ''}`;
-    item.innerHTML = `
-      <div class="task-row">
-        <span class="check${todo.done ? ' done' : ''}"></span>
-        <div>
-          <div class="task-title${todo.done ? ' done' : ''}">${todo.title}</div>
-          <div class="task-meta">Due ${todo.date} · ${accountLabel[todo.account]}</div>
-        </div>
-      </div>
-    `;
-    container.appendChild(item);
+  html += '<span class="check' + (todo.done ? ' done' : '') + '" data-todo-id="' + todo.id + '">';
+  if (todo.done) html += todoIcons.check;
+  html += '</span>';
+
+  var prioClass = todo.priority || 'normal';
+  html += '<span class="todo-priority-flag ' + prioClass + '">' + todoIcons.flag + '</span>';
+
+  html += '<div class="todo-content">';
+  html += '<span class="task-title' + (todo.done ? ' done' : '') + '">' + todo.title + '</span>';
+  html += '<span class="todo-due-badge' + (overdue ? ' overdue' : '') + '">' + formatDueShort(todo.date) + '</span>';
+  html += '</div>';
+
+  html += '<span class="todo-pin-icon' + (todo.is_pinned ? ' pinned' : '') + '" data-todo-id="' + todo.id + '">' + todoIcons.pin + '</span>';
+  html += '<button class="todo-more-btn">' + todoIcons.more + '</button>';
+  html += '</div>';
+  return html;
+}
+
+function renderTodoPanel() {
+  var listPanel = document.getElementById('todoListPanel');
+  var mobileChips = document.getElementById('todoMobileListChips');
+  var activeListName = document.getElementById('todoActiveListName');
+  var pinnedGroup = document.getElementById('todoPinnedGroup');
+  var container = document.getElementById('todoListItems');
+  var doneSection = document.getElementById('todoDoneSection');
+
+  if (!container) return;
+
+  // Render list panel
+  if (listPanel) {
+    var listHTML = '';
+    todoLists.forEach(function(list) {
+      var count = todoItems.filter(function(t) { return t.list_id === list.id && !t.done; }).length;
+      listHTML += '<div class="task-list-item' + (list.id === activeTodoList ? ' active' : '') + '" data-list-id="' + list.id + '">';
+      listHTML += list.name;
+      if (count > 0) listHTML += '<span class="todo-count-badge">' + count + '</span>';
+      listHTML += '</div>';
+    });
+    listPanel.innerHTML = listHTML;
+  }
+
+  // Render mobile list chips
+  if (mobileChips) {
+    var chipHTML = '';
+    todoLists.forEach(function(list) {
+      chipHTML += '<span class="chip' + (list.id === activeTodoList ? ' active' : '') + '" data-list-id="' + list.id + '">' + list.name + '</span>';
+    });
+    mobileChips.innerHTML = chipHTML;
+  }
+
+  // Active list name
+  var activeList = todoLists.find(function(l) { return l.id === activeTodoList; });
+  if (activeListName && activeList) activeListName.textContent = activeList.name;
+
+  // Filter todos for active list
+  var allTodos = todoItems.filter(function(t) {
+    return t.list_id === activeTodoList && passAccount(t) && t.parent_id === null;
   });
+
+  // Separate done / not done
+  var activeTodos = allTodos.filter(function(t) { return !t.done; });
+  var doneTodos = allTodos.filter(function(t) { return t.done; });
+
+  // Apply filters
+  if (activeTodoFilters.length > 0) {
+    activeTodos = activeTodos.filter(todoPassFilter);
+  }
+
+  // Sort
+  activeTodos.sort(todoSortComparator);
+  doneTodos.sort(todoSortComparator);
+
+  // Split pinned / unpinned
+  var pinned = activeTodos.filter(function(t) { return t.is_pinned; });
+  var unpinned = activeTodos.filter(function(t) { return !t.is_pinned; });
+
+  // Render pinned group
+  if (pinnedGroup) {
+    var pinnedHTML = '';
+    if (pinned.length > 0) {
+      pinned.forEach(function(todo) {
+        pinnedHTML += buildTodoRowHTML(todo, false);
+        if (!todoCollapsedParents[todo.id]) {
+          todoItems.filter(function(c) { return c.parent_id === todo.id && !c.done; }).sort(todoSortComparator).forEach(function(child) {
+            pinnedHTML += buildTodoRowHTML(child, true);
+          });
+        }
+      });
+      pinnedHTML += '<div class="todo-pin-separator"></div>';
+    }
+    pinnedGroup.innerHTML = pinnedHTML;
+  }
+
+  // Render unpinned
+  var html = '';
+  if (unpinned.length === 0 && pinned.length === 0) {
+    html = '<div class="task-meta" style="padding:8px;">표시할 Todo가 없습니다.</div>';
+  } else {
+    unpinned.forEach(function(todo) {
+      html += buildTodoRowHTML(todo, false);
+      if (!todoCollapsedParents[todo.id]) {
+        todoItems.filter(function(c) { return c.parent_id === todo.id && !c.done; }).sort(todoSortComparator).forEach(function(child) {
+          html += buildTodoRowHTML(child, true);
+        });
+      }
+    });
+  }
+  container.innerHTML = html;
+
+  // Render done section
+  if (doneSection) {
+    var doneHTML = '';
+    if (doneTodos.length > 0) {
+      var chevronSVG = '<svg class="todo-done-chevron" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>';
+      doneHTML += '<div class="todo-done-section' + (todoDoneSectionOpen ? '' : ' collapsed') + '" id="todoDoneHeader">' + chevronSVG + '완료됨 (' + doneTodos.length + ')</div>';
+      if (todoDoneSectionOpen) {
+        doneHTML += '<div id="todoDoneList">';
+        doneTodos.forEach(function(todo) {
+          doneHTML += buildTodoRowHTML(todo, false);
+          // Include done children
+          todoItems.filter(function(c) { return c.parent_id === todo.id && c.done; }).forEach(function(child) {
+            doneHTML += buildTodoRowHTML(child, true);
+          });
+        });
+        doneHTML += '</div>';
+      }
+    }
+    doneSection.innerHTML = doneHTML;
+  }
 }
 
 /* ================================================================
@@ -785,7 +957,7 @@ function updateCalendarRangeLabel() {
 
 function syncTodoToggleText() {
   const toggle = document.getElementById('todoDoneToggle');
-  toggle.textContent = showCompletedTodos ? '완료 Todo 표시 중' : '완료 Todo 숨김';
+  if (toggle) toggle.textContent = showCompletedTodos ? '완료 Todo 표시 중' : '완료 Todo 숨김';
 }
 
 function syncTimelineFocusClass() {
@@ -912,11 +1084,14 @@ function initCalendarUI() {
   calViewMenu.addEventListener('click', (e) => e.stopPropagation());
 
   // Todo done toggle
-  document.getElementById('todoDoneToggle').addEventListener('click', () => {
-    showCompletedTodos = !showCompletedTodos;
-    syncTodoToggleText();
-    renderCalendar();
-  });
+  var todoDoneToggle = document.getElementById('todoDoneToggle');
+  if (todoDoneToggle) {
+    todoDoneToggle.addEventListener('click', () => {
+      showCompletedTodos = !showCompletedTodos;
+      syncTodoToggleText();
+      renderCalendar();
+    });
+  }
 
   // Navigation buttons
   document.getElementById('calendarPrev').addEventListener('click', calendarPrev);
