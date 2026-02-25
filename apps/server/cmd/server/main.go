@@ -18,6 +18,9 @@ import (
 	authhttp "lifebase/internal/auth/adapter/in/http"
 	authpg "lifebase/internal/auth/adapter/out/postgres"
 	authusecase "lifebase/internal/auth/usecase"
+	calendarhttp "lifebase/internal/calendar/adapter/in/http"
+	calendarpg "lifebase/internal/calendar/adapter/out/postgres"
+	calendarusecase "lifebase/internal/calendar/usecase"
 	cloudhttp "lifebase/internal/cloud/adapter/in/http"
 	"lifebase/internal/cloud/adapter/out/filesystem"
 	cloudpg "lifebase/internal/cloud/adapter/out/postgres"
@@ -78,6 +81,11 @@ func main() {
 	// Gallery repos
 	mediaRepo := gallerypg.NewMediaRepo(dbpool)
 
+	// Calendar repos
+	calendarRepo := calendarpg.NewCalendarRepo(dbpool)
+	eventRepo := calendarpg.NewEventRepo(dbpool)
+	reminderRepo := calendarpg.NewReminderRepo(dbpool)
+
 	// Sharing repos
 	shareRepo := sharingpg.NewShareRepo(dbpool)
 	inviteRepo := sharingpg.NewInviteRepo(dbpool)
@@ -86,12 +94,14 @@ func main() {
 	authUC := authusecase.NewAuthUseCase(cfg, userRepo, googleAccountRepo, refreshTokenRepo)
 	cloudUC := cloudusecase.NewCloudUseCase(folderRepo, fileRepo, storage, asynqClient)
 	galleryUC := galleryusecase.NewGalleryUseCase(mediaRepo)
+	calendarUC := calendarusecase.NewCalendarUseCase(calendarRepo, eventRepo, reminderRepo)
 	sharingUC := sharingusecase.NewSharingUseCase(shareRepo, inviteRepo)
 
 	// Handlers
 	authHandler := authhttp.NewAuthHandler(authUC)
 	cloudHandler := cloudhttp.NewCloudHandler(cloudUC)
 	galleryHandler := galleryhttp.NewGalleryHandler(galleryUC, cfg.Storage.ThumbPath)
+	calendarHandler := calendarhttp.NewCalendarHandler(calendarUC)
 	sharingHandler := sharinghttp.NewSharingHandler(sharingUC)
 
 	// Router
@@ -172,6 +182,21 @@ func main() {
 			r.Route("/gallery", func(r chi.Router) {
 				r.Get("/", galleryHandler.ListMedia)
 				r.Get("/thumbnails/{fileID}/{size}", galleryHandler.GetThumbnail)
+			})
+
+			// Calendar
+			r.Route("/calendars", func(r chi.Router) {
+				r.Post("/", calendarHandler.CreateCalendar)
+				r.Get("/", calendarHandler.ListCalendars)
+				r.Patch("/{calendarID}", calendarHandler.UpdateCalendar)
+				r.Delete("/{calendarID}", calendarHandler.DeleteCalendar)
+			})
+			r.Route("/events", func(r chi.Router) {
+				r.Post("/", calendarHandler.CreateEvent)
+				r.Get("/", calendarHandler.ListEvents)
+				r.Get("/{eventID}", calendarHandler.GetEvent)
+				r.Patch("/{eventID}", calendarHandler.UpdateEvent)
+				r.Delete("/{eventID}", calendarHandler.DeleteEvent)
 			})
 
 			// Sharing
