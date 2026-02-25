@@ -20,7 +20,7 @@
 - 명사형 종결 (예: `- OAuth 토큰 갱신 로직 추가`, `- 불필요한 의존성 제거`)
 
 ## type 목록
-- `feat`, `fix`, `refactor`, `docs`, `test`, `chore`, `perf`, `ci`, `build`, `revert`
+- `feat`, `fix`, `refactor`, `style`, `docs`, `test`, `chore`, `perf`, `ci`, `build`, `revert`
 
 ## 금지
 - `update`, `수정`, `작업` 같은 모호한 제목

@@ -11,10 +11,12 @@
 
 ## 예시
 ```
-/calendar/year/2026
+/calendar/year-compact/2026
+/calendar/year-timeline/2026
 /calendar/month/2026-02
 /calendar/week/2026-W09
-/calendar/day/2026-02-23
+/calendar/3day/2026-02-23
+/calendar/agenda
 
 /cloud/folders/{folderId}
 /cloud/files/{fileId}
@@ -23,5 +25,12 @@
 
 /todo/{listId}
 
-/settings/accounts
+/settings/general
+/settings/calendar
+/settings/todo
+/settings/notifications
+/settings/cloud
 ```
+
+## 탭 순서
+- Cloud / Calendar / Todo / Gallery / Settings (고정)

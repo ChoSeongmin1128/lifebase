@@ -1,5 +1,9 @@
 # Google 연동 규칙
 
+## 스코프
+- 사용 스코프: openid, email, profile, calendar(읽기/쓰기), tasks(읽기/쓰기)
+- Google Drive 스코프는 사용하지 않는다 (자체 파일 스토리지 사용)
+
 ## 색상
 - Google Calendar 색상(이벤트 11종, 캘린더 24종)을 하드코딩하지 않는다
 - 반드시 colors.get() API로 런타임에 hex 값을 조회한다
@@ -8,6 +12,7 @@
 ## 동기화 전략
 - Calendar: 웹훅(events.watch()) + syncToken 증분 동기화
 - Google Tasks: 폴링(tasks.list() + updatedMin) — 웹훅 미지원
+- Google Tasks 폴링 주기: 3분 (5명 기준 일일 2,400 쿼리, 쿼터 50,000의 5%)
 - 두 도메인의 동기화 워커를 별도로 설계한다
 
 ## Google Tasks 확장 필드

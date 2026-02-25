@@ -5,7 +5,9 @@ LifeBase용 에이전트 규칙 진입점.
 
 ## 프로젝트 핵심
 - 제품: 클라우드 + 캘린더 + Todo 통합
+- 스택: Go(chi) + PostgreSQL + Redis(Asynq) / Next.js + Tauri v2 + React Native
 - 인증: Google OAuth only
+- 호스팅: Mac Mini bare metal + Caddy + Cloudflare DNS (`lifebase.cc`)
 - 플랫폼: Web, Desktop(macOS/Windows), Mobile(iOS/Android)
 - 기획 인덱스: `@plan.md`
 
