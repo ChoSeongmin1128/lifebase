@@ -1,0 +1,9 @@
+# 개발 환경
+:8443 {
+	handle /api/* {
+		reverse_proxy localhost:8080
+	}
+	handle {
+		reverse_proxy localhost:3000
+	}
+}

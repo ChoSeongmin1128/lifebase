@@ -1,3 +1,34 @@
 # macOS Finder metadata
 .DS_Store
 **/.DS_Store
+
+# Dependencies
+node_modules/
+
+# Turborepo
+.turbo/
+
+# Next.js
+.next/
+out/
+
+# Go
+apps/server/tmp/
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Build outputs
+dist/
+
+# OS files
+Thumbs.db
+desktop.ini
