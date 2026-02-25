@@ -17,7 +17,11 @@ import (
 
 	authhttp "lifebase/internal/auth/adapter/in/http"
 	authpg "lifebase/internal/auth/adapter/out/postgres"
-	"lifebase/internal/auth/usecase"
+	authusecase "lifebase/internal/auth/usecase"
+	cloudhttp "lifebase/internal/cloud/adapter/in/http"
+	"lifebase/internal/cloud/adapter/out/filesystem"
+	cloudpg "lifebase/internal/cloud/adapter/out/postgres"
+	cloudusecase "lifebase/internal/cloud/usecase"
 	"lifebase/internal/shared/config"
 	"lifebase/internal/shared/middleware"
 	"lifebase/internal/shared/response"
@@ -48,12 +52,19 @@ func main() {
 	userRepo := authpg.NewUserRepo(dbpool)
 	googleAccountRepo := authpg.NewGoogleAccountRepo(dbpool)
 	refreshTokenRepo := authpg.NewRefreshTokenRepo(dbpool)
+	folderRepo := cloudpg.NewFolderRepo(dbpool)
+	fileRepo := cloudpg.NewFileRepo(dbpool)
+
+	// Storage
+	storage := filesystem.NewLocalStorage(cfg.Storage.DataPath)
 
 	// Use Cases
-	authUC := usecase.NewAuthUseCase(cfg, userRepo, googleAccountRepo, refreshTokenRepo)
+	authUC := authusecase.NewAuthUseCase(cfg, userRepo, googleAccountRepo, refreshTokenRepo)
+	cloudUC := cloudusecase.NewCloudUseCase(folderRepo, fileRepo, storage)
 
 	// Handlers
 	authHandler := authhttp.NewAuthHandler(authUC)
+	cloudHandler := cloudhttp.NewCloudHandler(cloudUC)
 
 	// Router
 	r := chi.NewRouter()
@@ -100,6 +111,33 @@ func main() {
 				response.JSON(w, http.StatusOK, map[string]string{
 					"user_id": userID,
 				})
+			})
+
+			// Cloud
+			r.Route("/cloud", func(r chi.Router) {
+				// Folders
+				r.Post("/folders", cloudHandler.CreateFolder)
+				r.Get("/folders/{folderID}", cloudHandler.GetFolder)
+				r.Get("/folders", cloudHandler.ListFolder)
+				r.Patch("/folders/{folderID}/rename", cloudHandler.RenameFolder)
+				r.Patch("/folders/{folderID}/move", cloudHandler.MoveFolder)
+				r.Delete("/folders/{folderID}", cloudHandler.DeleteFolder)
+
+				// Files
+				r.Post("/files/upload", cloudHandler.UploadFile)
+				r.Get("/files/{fileID}", cloudHandler.GetFile)
+				r.Get("/files/{fileID}/download", cloudHandler.DownloadFile)
+				r.Patch("/files/{fileID}/rename", cloudHandler.RenameFile)
+				r.Patch("/files/{fileID}/move", cloudHandler.MoveFile)
+				r.Delete("/files/{fileID}", cloudHandler.DeleteFile)
+
+				// Trash
+				r.Get("/trash", cloudHandler.ListTrash)
+				r.Post("/trash/restore", cloudHandler.RestoreItem)
+				r.Delete("/trash", cloudHandler.EmptyTrash)
+
+				// Search
+				r.Get("/search", cloudHandler.SearchFiles)
 			})
 		})
 	})

@@ -1,0 +1,272 @@
+package usecase
+
+import (
+	"context"
+	"fmt"
+	"time"
+
+	"github.com/google/uuid"
+
+	"lifebase/internal/cloud/domain"
+	portin "lifebase/internal/cloud/port/in"
+	portout "lifebase/internal/cloud/port/out"
+)
+
+type cloudUseCase struct {
+	folders portout.FolderRepository
+	files   portout.FileRepository
+	storage portout.FileStorage
+}
+
+func NewCloudUseCase(
+	folders portout.FolderRepository,
+	files portout.FileRepository,
+	storage portout.FileStorage,
+) portin.CloudUseCase {
+	return &cloudUseCase{
+		folders: folders,
+		files:   files,
+		storage: storage,
+	}
+}
+
+// Folders
+
+func (uc *cloudUseCase) CreateFolder(ctx context.Context, userID string, parentID *string, name string) (*domain.Folder, error) {
+	if parentID != nil {
+		parent, err := uc.folders.FindByID(ctx, userID, *parentID)
+		if err != nil || parent == nil {
+			return nil, fmt.Errorf("parent folder not found")
+		}
+	}
+
+	now := time.Now()
+	folder := &domain.Folder{
+		ID:        uuid.New().String(),
+		UserID:    userID,
+		ParentID:  parentID,
+		Name:      name,
+		CreatedAt: now,
+		UpdatedAt: now,
+	}
+
+	if err := uc.folders.Create(ctx, folder); err != nil {
+		return nil, fmt.Errorf("create folder: %w", err)
+	}
+	return folder, nil
+}
+
+func (uc *cloudUseCase) GetFolder(ctx context.Context, userID, folderID string) (*domain.Folder, error) {
+	return uc.folders.FindByID(ctx, userID, folderID)
+}
+
+func (uc *cloudUseCase) ListFolder(ctx context.Context, userID string, folderID *string, sortBy, sortDir string) ([]portin.FolderItem, error) {
+	folders, err := uc.folders.ListByParent(ctx, userID, folderID)
+	if err != nil {
+		return nil, err
+	}
+
+	files, err := uc.files.ListByFolder(ctx, userID, folderID, sortBy, sortDir)
+	if err != nil {
+		return nil, err
+	}
+
+	items := make([]portin.FolderItem, 0, len(folders)+len(files))
+	for _, f := range folders {
+		items = append(items, portin.FolderItem{Type: "folder", Folder: f})
+	}
+	for _, f := range files {
+		items = append(items, portin.FolderItem{Type: "file", File: f})
+	}
+	return items, nil
+}
+
+func (uc *cloudUseCase) RenameFolder(ctx context.Context, userID, folderID, newName string) error {
+	folder, err := uc.folders.FindByID(ctx, userID, folderID)
+	if err != nil {
+		return fmt.Errorf("folder not found")
+	}
+	folder.Name = newName
+	folder.UpdatedAt = time.Now()
+	return uc.folders.Update(ctx, folder)
+}
+
+func (uc *cloudUseCase) MoveFolder(ctx context.Context, userID, folderID string, newParentID *string) error {
+	folder, err := uc.folders.FindByID(ctx, userID, folderID)
+	if err != nil {
+		return fmt.Errorf("folder not found")
+	}
+
+	if newParentID != nil {
+		if *newParentID == folderID {
+			return fmt.Errorf("cannot move folder into itself")
+		}
+		parent, err := uc.folders.FindByID(ctx, userID, *newParentID)
+		if err != nil || parent == nil {
+			return fmt.Errorf("target folder not found")
+		}
+	}
+
+	folder.ParentID = newParentID
+	folder.UpdatedAt = time.Now()
+	return uc.folders.Update(ctx, folder)
+}
+
+func (uc *cloudUseCase) DeleteFolder(ctx context.Context, userID, folderID string) error {
+	return uc.folders.SoftDelete(ctx, userID, folderID)
+}
+
+// Files
+
+func (uc *cloudUseCase) UploadFile(ctx context.Context, userID string, folderID *string, name string, mimeType string, size int64, data []byte) (*domain.File, error) {
+	if folderID != nil {
+		folder, err := uc.folders.FindByID(ctx, userID, *folderID)
+		if err != nil || folder == nil {
+			return nil, fmt.Errorf("folder not found")
+		}
+	}
+
+	fileID := uuid.New().String()
+	storagePath, err := uc.storage.Save(userID, fileID, data)
+	if err != nil {
+		return nil, fmt.Errorf("save file: %w", err)
+	}
+
+	now := time.Now()
+	file := &domain.File{
+		ID:          fileID,
+		UserID:      userID,
+		FolderID:    folderID,
+		Name:        name,
+		MimeType:    mimeType,
+		SizeBytes:   size,
+		StoragePath: storagePath,
+		ThumbStatus: "pending",
+		CreatedAt:   now,
+		UpdatedAt:   now,
+	}
+
+	if err := uc.files.Create(ctx, file); err != nil {
+		_ = uc.storage.Delete(storagePath)
+		return nil, fmt.Errorf("create file record: %w", err)
+	}
+
+	if err := uc.files.UpdateStorageUsed(ctx, userID, size); err != nil {
+		return nil, fmt.Errorf("update storage used: %w", err)
+	}
+
+	return file, nil
+}
+
+func (uc *cloudUseCase) GetFile(ctx context.Context, userID, fileID string) (*domain.File, error) {
+	return uc.files.FindByID(ctx, userID, fileID)
+}
+
+func (uc *cloudUseCase) DownloadFile(ctx context.Context, userID, fileID string) ([]byte, *domain.File, error) {
+	file, err := uc.files.FindByID(ctx, userID, fileID)
+	if err != nil {
+		return nil, nil, fmt.Errorf("file not found")
+	}
+
+	data, err := uc.storage.Read(file.StoragePath)
+	if err != nil {
+		return nil, nil, fmt.Errorf("read file: %w", err)
+	}
+
+	return data, file, nil
+}
+
+func (uc *cloudUseCase) RenameFile(ctx context.Context, userID, fileID, newName string) error {
+	file, err := uc.files.FindByID(ctx, userID, fileID)
+	if err != nil {
+		return fmt.Errorf("file not found")
+	}
+	file.Name = newName
+	file.UpdatedAt = time.Now()
+	return uc.files.Update(ctx, file)
+}
+
+func (uc *cloudUseCase) MoveFile(ctx context.Context, userID, fileID string, newFolderID *string) error {
+	file, err := uc.files.FindByID(ctx, userID, fileID)
+	if err != nil {
+		return fmt.Errorf("file not found")
+	}
+
+	if newFolderID != nil {
+		folder, err := uc.folders.FindByID(ctx, userID, *newFolderID)
+		if err != nil || folder == nil {
+			return fmt.Errorf("target folder not found")
+		}
+	}
+
+	file.FolderID = newFolderID
+	file.UpdatedAt = time.Now()
+	return uc.files.Update(ctx, file)
+}
+
+func (uc *cloudUseCase) DeleteFile(ctx context.Context, userID, fileID string) error {
+	return uc.files.SoftDelete(ctx, userID, fileID)
+}
+
+// Trash
+
+func (uc *cloudUseCase) ListTrash(ctx context.Context, userID string) ([]portin.FolderItem, error) {
+	folders, err := uc.folders.ListTrashed(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+
+	files, err := uc.files.ListTrashed(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+
+	items := make([]portin.FolderItem, 0, len(folders)+len(files))
+	for _, f := range folders {
+		items = append(items, portin.FolderItem{Type: "folder", Folder: f})
+	}
+	for _, f := range files {
+		items = append(items, portin.FolderItem{Type: "file", File: f})
+	}
+	return items, nil
+}
+
+func (uc *cloudUseCase) RestoreItem(ctx context.Context, userID, itemID, itemType string) error {
+	switch itemType {
+	case "folder":
+		return uc.folders.Restore(ctx, userID, itemID)
+	case "file":
+		return uc.files.Restore(ctx, userID, itemID)
+	default:
+		return fmt.Errorf("invalid item type: %s", itemType)
+	}
+}
+
+func (uc *cloudUseCase) EmptyTrash(ctx context.Context, userID string) error {
+	files, err := uc.files.ListTrashed(ctx, userID)
+	if err != nil {
+		return err
+	}
+
+	for _, f := range files {
+		_ = uc.storage.Delete(f.StoragePath)
+		_ = uc.files.HardDelete(ctx, f.ID)
+		_ = uc.files.UpdateStorageUsed(ctx, userID, -f.SizeBytes)
+	}
+
+	folders, err := uc.folders.ListTrashed(ctx, userID)
+	if err != nil {
+		return err
+	}
+	for _, f := range folders {
+		_ = uc.folders.HardDelete(ctx, f.ID)
+	}
+
+	return nil
+}
+
+// Search
+
+func (uc *cloudUseCase) Search(ctx context.Context, userID, query string) ([]*domain.File, error) {
+	return uc.files.Search(ctx, userID, query, 50)
+}
