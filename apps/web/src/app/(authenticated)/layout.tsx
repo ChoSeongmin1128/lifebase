@@ -2,7 +2,7 @@
 
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { isAuthenticated, clearTokens } from "@/lib/auth";
+import { isAuthenticated, isTokenExpiringSoon, refreshAccessToken, clearTokens } from "@/lib/auth";
 import { Sidebar } from "@/components/layout/Sidebar";
 import { BottomTabBar } from "@/components/layout/BottomTabBar";
 import { useSidebar } from "@/hooks/useSidebar";
@@ -18,6 +18,17 @@ export default function AuthenticatedLayout({
   useEffect(() => {
     if (!isAuthenticated()) {
       router.replace("/");
+      return;
+    }
+
+    // 앱 시작 시 토큰 만료 임박이면 선제 갱신
+    if (isTokenExpiringSoon()) {
+      refreshAccessToken().then((token) => {
+        if (!token) {
+          clearTokens();
+          router.replace("/");
+        }
+      });
     }
   }, [router]);
 
