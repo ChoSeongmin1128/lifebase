@@ -263,7 +263,7 @@ export default function CloudPage() {
       onDrop={handleDrop}
     >
       {/* Header */}
-      <div className="flex items-center justify-between border-b border-foreground/10 px-6 py-3">
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-foreground/10 px-4 md:px-6 py-3">
         <div className="flex items-center gap-2">
           {/* Breadcrumb */}
           <nav className="flex items-center gap-1 text-sm">
@@ -297,7 +297,7 @@ export default function CloudPage() {
                 if (!e.target.value) setSearchResults(null);
               }}
               onKeyDown={(e) => e.key === "Enter" && handleSearch()}
-              className="h-8 w-48 rounded-md border border-foreground/10 bg-background px-3 text-sm outline-none focus:border-foreground/30"
+              className="h-8 w-full md:w-48 rounded-md border border-foreground/10 bg-background px-3 text-sm outline-none focus:border-foreground/30"
             />
           </div>
 
@@ -311,7 +311,7 @@ export default function CloudPage() {
               className="flex h-8 items-center gap-1 rounded-md border border-foreground/10 px-2 text-sm hover:bg-foreground/5"
             >
               <SortIcon size={14} />
-              정렬
+              <span className="hidden md:inline">정렬</span>
             </button>
             {showSortMenu && (
               <div className="absolute right-0 top-full z-10 mt-1 w-40 rounded-md border border-foreground/10 bg-background py-1 shadow-lg">
@@ -360,16 +360,16 @@ export default function CloudPage() {
             className="flex h-8 items-center gap-1 rounded-md border border-foreground/10 px-2 text-sm hover:bg-foreground/5"
           >
             <FolderPlusIcon size={14} />
-            새 폴더
+            <span className="hidden md:inline">새 폴더</span>
           </button>
 
           {/* Upload */}
           <button
             onClick={() => fileInputRef.current?.click()}
-            className="flex h-8 items-center gap-1 rounded-md bg-foreground px-3 text-sm text-background hover:opacity-90"
+            className="flex h-8 items-center gap-1 rounded-md bg-foreground px-2 md:px-3 text-sm text-background hover:opacity-90"
           >
             <UploadIcon size={14} />
-            업로드
+            <span className="hidden md:inline">업로드</span>
           </button>
           <input
             ref={fileInputRef}
@@ -466,9 +466,9 @@ export default function CloudPage() {
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-foreground/10 text-left text-foreground/50">
-                <th className="px-6 py-2 font-normal">이름</th>
-                <th className="px-4 py-2 font-normal w-28">크기</th>
-                <th className="px-4 py-2 font-normal w-36">수정한 날짜</th>
+                <th className="px-4 md:px-6 py-2 font-normal">이름</th>
+                <th className="hidden md:table-cell px-4 py-2 font-normal w-28">크기</th>
+                <th className="hidden md:table-cell px-4 py-2 font-normal w-36">수정한 날짜</th>
               </tr>
             </thead>
             <tbody>
@@ -493,7 +493,7 @@ export default function CloudPage() {
                       }
                     }}
                   >
-                    <td className="px-6 py-2">
+                    <td className="px-4 md:px-6 py-2">
                       <div className="flex items-center gap-2">
                         {item.type === "folder" ? (
                           <FolderIcon size={16} />
@@ -535,10 +535,10 @@ export default function CloudPage() {
                         )}
                       </div>
                     </td>
-                    <td className="px-4 py-2 text-foreground/50">
+                    <td className="hidden md:table-cell px-4 py-2 text-foreground/50">
                       {item.type === "file" ? formatSize(item.file!.size_bytes) : "—"}
                     </td>
-                    <td className="px-4 py-2 text-foreground/50">
+                    <td className="hidden md:table-cell px-4 py-2 text-foreground/50">
                       {formatDate(
                         item.type === "folder"
                           ? item.folder!.updated_at

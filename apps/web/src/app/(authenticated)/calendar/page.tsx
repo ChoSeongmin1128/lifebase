@@ -159,8 +159,8 @@ export default function CalendarPage() {
   return (
     <div className="flex h-full flex-col">
       {/* Header */}
-      <div className="flex items-center justify-between border-b border-foreground/10 px-6 py-3">
-        <div className="flex items-center gap-3">
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-foreground/10 px-4 md:px-6 py-3">
+        <div className="flex items-center gap-2 md:gap-3">
           <button
             onClick={goToday}
             className="rounded-full border border-foreground/10 px-3 py-1 text-sm hover:bg-foreground/5"
@@ -238,7 +238,7 @@ export default function CalendarPage() {
           onClick={() => setSelectedEvent(null)}
         >
           <div
-            className="w-80 rounded-lg border border-foreground/10 bg-background p-4 shadow-xl"
+            className="w-[calc(100vw-2rem)] max-w-80 md:w-80 rounded-lg border border-foreground/10 bg-background p-4 shadow-xl"
             onClick={(e) => e.stopPropagation()}
           >
             <h3 className="text-base font-medium">{selectedEvent.title || "(제목 없음)"}</h3>
@@ -276,7 +276,7 @@ export default function CalendarPage() {
           onClick={() => setShowCreateModal(false)}
         >
           <div
-            className="w-96 rounded-lg border border-foreground/10 bg-background p-4 shadow-xl"
+            className="w-[calc(100vw-2rem)] max-w-96 md:w-96 rounded-lg border border-foreground/10 bg-background p-4 shadow-xl"
             onClick={(e) => e.stopPropagation()}
           >
             <h3 className="text-base font-medium">새 일정</h3>
@@ -415,7 +415,7 @@ function MonthView({
             return (
               <div
                 key={idx}
-                className={`min-h-[80px] border-b border-r border-foreground/5 p-1 ${
+                className={`min-h-[60px] md:min-h-[80px] border-b border-r border-foreground/5 p-1 ${
                   day === null ? "bg-foreground/[0.02]" : ""
                 }`}
               >
@@ -435,13 +435,13 @@ function MonthView({
                       {day}
                     </div>
                     <div className="space-y-0.5">
-                      {dayEvents.slice(0, 3).map((e) => {
+                      {dayEvents.slice(0, 3).map((e, ei) => {
                         const cal = calMap.get(e.calendar_id);
                         return (
                           <div
                             key={e.id}
                             onClick={() => onEventClick(e)}
-                            className="cursor-pointer truncate rounded px-1 py-0.5 text-[10px] leading-tight text-white"
+                            className={`cursor-pointer truncate rounded px-1 py-0.5 text-[10px] leading-tight text-white ${ei === 2 ? "hidden md:block" : ""}`}
                             style={{
                               backgroundColor: getEventColor(e.color_id, cal?.color_id ?? null),
                             }}
@@ -450,9 +450,10 @@ function MonthView({
                           </div>
                         );
                       })}
-                      {dayEvents.length > 3 && (
+                      {dayEvents.length > 2 && (
                         <div className="text-[10px] text-foreground/40 px-1">
-                          +{dayEvents.length - 3}
+                          <span className="md:hidden">+{dayEvents.length - 2}</span>
+                          <span className="hidden md:inline">{dayEvents.length > 3 ? `+${dayEvents.length - 3}` : ""}</span>
                         </div>
                       )}
                     </div>
@@ -514,7 +515,7 @@ function WeekView({
     <div className="flex h-full flex-col">
       {/* Day headers */}
       <div className="flex border-b border-foreground/10">
-        <div className="w-14 shrink-0" />
+        <div className="w-10 md:w-14 shrink-0" />
         {dayDates.map((d, i) => {
           const isToday = d.toDateString() === today.toDateString();
           return (
@@ -534,7 +535,7 @@ function WeekView({
 
       {/* Time grid */}
       <div className="flex flex-1 overflow-auto">
-        <div className="w-14 shrink-0">
+        <div className="w-10 md:w-14 shrink-0">
           {hours.map((h) => (
             <div key={h} className="relative h-12">
               <span className="absolute -top-2 right-2 text-[10px] text-foreground/40">

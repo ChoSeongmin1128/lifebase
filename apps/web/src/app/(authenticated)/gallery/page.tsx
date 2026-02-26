@@ -175,9 +175,9 @@ export default function GalleryPage() {
   return (
     <div className="flex h-full flex-col">
       {/* Header */}
-      <div className="flex items-center justify-between border-b border-foreground/10 px-6 py-3">
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-foreground/10 px-4 md:px-6 py-3">
         <h1 className="text-lg font-semibold">갤러리</h1>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2 md:gap-3">
           {/* Media type filter */}
           <div className="flex rounded-md border border-foreground/10">
             {mediaFilters.map((f) => (
@@ -250,7 +250,7 @@ export default function GalleryPage() {
             <p className="mt-1 text-sm">Cloud에 이미지나 동영상을 업로드하면 여기에 표시됩니다</p>
           </div>
         ) : viewMode === "grid" ? (
-          <div className="grid grid-cols-[repeat(auto-fill,minmax(150px,1fr))] gap-2">
+          <div className="grid grid-cols-[repeat(auto-fill,minmax(100px,1fr))] md:grid-cols-[repeat(auto-fill,minmax(150px,1fr))] gap-2">
             {items.map((file) => (
               <div
                 key={file.id}
@@ -298,8 +298,8 @@ export default function GalleryPage() {
               <tr className="border-b border-foreground/10 text-left text-foreground/50">
                 <th className="w-12 px-2 py-2 font-normal"></th>
                 <th className="px-4 py-2 font-normal">이름</th>
-                <th className="w-24 px-4 py-2 font-normal">크기</th>
-                <th className="w-36 px-4 py-2 font-normal">날짜</th>
+                <th className="hidden md:table-cell w-24 px-4 py-2 font-normal">크기</th>
+                <th className="hidden md:table-cell w-36 px-4 py-2 font-normal">날짜</th>
               </tr>
             </thead>
             <tbody>
@@ -337,10 +337,10 @@ export default function GalleryPage() {
                       <span className="truncate">{file.name}</span>
                     </div>
                   </td>
-                  <td className="px-4 py-1 text-foreground/50">
+                  <td className="hidden md:table-cell px-4 py-1 text-foreground/50">
                     {formatSize(file.size_bytes)}
                   </td>
-                  <td className="px-4 py-1 text-foreground/50">
+                  <td className="hidden md:table-cell px-4 py-1 text-foreground/50">
                     {formatDate(file.taken_at || file.created_at)}
                   </td>
                 </tr>
@@ -355,7 +355,7 @@ export default function GalleryPage() {
                 <h3 className="mb-2 text-sm font-medium text-foreground/70">
                   {formatDate(group.date)}
                 </h3>
-                <div className="grid grid-cols-[repeat(auto-fill,minmax(150px,1fr))] gap-2">
+                <div className="grid grid-cols-[repeat(auto-fill,minmax(100px,1fr))] md:grid-cols-[repeat(auto-fill,minmax(150px,1fr))] gap-2">
                   {group.items.map((file) => (
                     <div
                       key={file.id}

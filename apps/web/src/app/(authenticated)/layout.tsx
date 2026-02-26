@@ -33,9 +33,9 @@ export default function AuthenticatedLayout({
   };
 
   return (
-    <div className="flex h-screen">
-      {/* Sidebar */}
-      <aside className="flex w-56 flex-col border-r border-foreground/10 bg-background">
+    <div className="flex h-screen flex-col md:flex-row">
+      {/* Sidebar — desktop only */}
+      <aside className="hidden md:flex w-56 flex-col border-r border-foreground/10 bg-background">
         <div className="flex items-center gap-2 px-4 py-3 border-b border-foreground/10">
           <span className="text-lg font-semibold">LifeBase</span>
         </div>
@@ -72,9 +72,30 @@ export default function AuthenticatedLayout({
       </aside>
 
       {/* Main content */}
-      <main className="flex-1 overflow-auto">
+      <main className="flex-1 overflow-auto pb-14 md:pb-0">
         {children}
       </main>
+
+      {/* Bottom tab bar — mobile only */}
+      <nav className="fixed bottom-0 left-0 right-0 z-40 flex md:hidden border-t border-foreground/10 bg-background">
+        {NAV_ITEMS.map(({ href, label, icon: Icon }) => {
+          const isActive = pathname.startsWith(href);
+          return (
+            <Link
+              key={href}
+              href={href}
+              className={`flex flex-1 flex-col items-center gap-0.5 py-2 text-[10px] transition-colors ${
+                isActive
+                  ? "text-foreground font-medium"
+                  : "text-foreground/50"
+              }`}
+            >
+              <Icon size={20} />
+              {label}
+            </Link>
+          );
+        })}
+      </nav>
     </div>
   );
 }

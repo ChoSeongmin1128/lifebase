@@ -53,12 +53,12 @@ export default function SettingsPage() {
   return (
     <div className="flex h-full flex-col">
       {/* Tab bar */}
-      <div className="flex border-b border-foreground/10 px-6">
+      <div className="flex overflow-x-auto border-b border-foreground/10 px-4 md:px-6">
         {TABS.map((t) => (
           <button
             key={t.value}
             onClick={() => setTab(t.value)}
-            className={`px-4 py-3 text-sm border-b-2 transition-colors ${
+            className={`shrink-0 px-3 md:px-4 py-3 text-sm border-b-2 transition-colors ${
               tab === t.value
                 ? "border-foreground font-medium"
                 : "border-transparent text-foreground/50 hover:text-foreground/70"
@@ -70,7 +70,7 @@ export default function SettingsPage() {
       </div>
 
       {/* Content */}
-      <div className="flex-1 overflow-auto p-6">
+      <div className="flex-1 overflow-auto p-4 md:p-6">
         {loading ? (
           <div className="flex items-center justify-center py-20 text-foreground/40">
             불러오는 중...
