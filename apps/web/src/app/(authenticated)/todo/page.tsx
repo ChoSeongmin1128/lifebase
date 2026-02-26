@@ -112,6 +112,7 @@ function TodoPageInner() {
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const [addingSubtaskFor, setAddingSubtaskFor] = useState<string | null>(null);
   const [subtaskTitle, setSubtaskTitle] = useState("");
+  const [creating, setCreating] = useState(false);
 
   const token = getAccessToken();
 
@@ -129,7 +130,7 @@ function TodoPageInner() {
         try {
           const list = await api<TodoList>("/todo/lists", {
             method: "POST",
-            body: { name: "내 할일" },
+            body: { name: "할 일" },
             token,
           });
           setLists([list]);
@@ -141,13 +142,18 @@ function TodoPageInner() {
       }
 
       setLists(fetchedLists);
-      if (fetchedLists.length > 0 && !activeListId) {
-        setActiveListId(fetchedLists[0].id);
-      }
+      setActiveListIdState((prev) => {
+        if (!prev && fetchedLists.length > 0) {
+          const firstId = fetchedLists[0].id;
+          router.replace(`/todo?list=${firstId}`, { scroll: false });
+          return firstId;
+        }
+        return prev;
+      });
     } catch {
       setLists([]);
     }
-  }, [token, activeListId]);
+  }, [token, setActiveListId, router]);
 
   const loadTodos = useCallback(async () => {
     if (!token || !activeListId) return;
@@ -187,9 +193,10 @@ function TodoPageInner() {
   };
 
   const handleCreateTodo = async (parentId?: string) => {
-    if (!token || !activeListId) return;
+    if (!token || !activeListId || creating) return;
     const title = parentId ? subtaskTitle : newTodoTitle;
     if (!title.trim()) return;
+    setCreating(true);
     try {
       await api("/todo", {
         method: "POST",
@@ -215,6 +222,8 @@ function TodoPageInner() {
       loadTodos();
     } catch (err) {
       console.error("Create todo failed:", err);
+    } finally {
+      setCreating(false);
     }
   };
 
