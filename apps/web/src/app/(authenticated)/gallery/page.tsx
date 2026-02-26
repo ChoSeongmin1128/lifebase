@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
+import Image from "next/image";
 import { api } from "@/lib/api";
 import { getAccessToken } from "@/lib/auth";
 
@@ -257,11 +258,13 @@ export default function GalleryPage() {
                 onClick={() => setSelectedFile(file)}
               >
                 {file.thumb_status === "done" ? (
-                  <img
+                  <Image
                     src={thumbUrl(file.id, "small")}
                     alt={file.name}
-                    className="h-full w-full object-cover"
-                    loading="lazy"
+                    fill
+                    unoptimized
+                    sizes="(max-width: 768px) 33vw, (max-width: 1280px) 16vw, 150px"
+                    className="object-cover"
                   />
                 ) : (
                   <div className="flex h-full w-full items-center justify-center text-foreground/30">
@@ -307,13 +310,15 @@ export default function GalleryPage() {
                   onClick={() => setSelectedFile(file)}
                 >
                   <td className="px-2 py-1">
-                    <div className="h-8 w-8 overflow-hidden rounded bg-foreground/5">
+                    <div className="relative h-8 w-8 overflow-hidden rounded bg-foreground/5">
                       {file.thumb_status === "done" ? (
-                        <img
+                        <Image
                           src={thumbUrl(file.id, "small")}
                           alt=""
-                          className="h-full w-full object-cover"
-                          loading="lazy"
+                          fill
+                          unoptimized
+                          sizes="32px"
+                          className="object-cover"
                         />
                       ) : (
                         <div className="flex h-full w-full items-center justify-center text-[8px] text-foreground/30">
@@ -358,11 +363,13 @@ export default function GalleryPage() {
                       onClick={() => setSelectedFile(file)}
                     >
                       {file.thumb_status === "done" ? (
-                        <img
+                        <Image
                           src={thumbUrl(file.id, "small")}
                           alt={file.name}
-                          className="h-full w-full object-cover"
-                          loading="lazy"
+                          fill
+                          unoptimized
+                          sizes="(max-width: 768px) 33vw, (max-width: 1280px) 16vw, 150px"
+                          className="object-cover"
                         />
                       ) : (
                         <div className="flex h-full w-full items-center justify-center text-xs text-foreground/30">
@@ -412,10 +419,14 @@ export default function GalleryPage() {
               ✕
             </button>
             {selectedFile.thumb_status === "done" ? (
-              <img
+              <Image
                 src={thumbUrl(selectedFile.id, "medium")}
                 alt={selectedFile.name}
-                className="max-h-[85vh] rounded-lg object-contain"
+                width={1200}
+                height={1200}
+                unoptimized
+                sizes="90vw"
+                className="max-h-[85vh] w-auto rounded-lg object-contain"
               />
             ) : (
               <div className="flex h-64 w-64 items-center justify-center rounded-lg bg-foreground/10 text-foreground/40">

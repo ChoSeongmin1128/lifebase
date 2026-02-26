@@ -9,13 +9,10 @@ function CallbackContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [error, setError] = useState<string | null>(null);
+  const code = searchParams.get("code");
 
   useEffect(() => {
-    const code = searchParams.get("code");
-    if (!code) {
-      setError("인증 코드가 없습니다.");
-      return;
-    }
+    if (!code) return;
 
     const exchangeCode = async () => {
       try {
@@ -36,7 +33,23 @@ function CallbackContent() {
     };
 
     exchangeCode();
-  }, [searchParams, router]);
+  }, [code, router]);
+
+  if (!code) {
+    return (
+      <div className="flex min-h-screen items-center justify-center">
+        <div className="flex flex-col items-center gap-4">
+          <p className="text-red-500">인증 코드가 없습니다.</p>
+          <button
+            onClick={() => router.replace("/")}
+            className="rounded-lg border border-foreground/10 px-4 py-2 transition-colors hover:bg-foreground/5"
+          >
+            돌아가기
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   if (error) {
     return (

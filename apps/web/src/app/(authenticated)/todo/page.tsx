@@ -25,7 +25,6 @@ interface TodoItem {
   created_at: string;
 }
 
-const PRIORITY_ORDER: Record<string, number> = { urgent: 0, high: 1, normal: 2, low: 3 };
 const PRIORITY_COLORS: Record<string, string> = {
   urgent: "text-red-500",
   high: "text-orange-500",
@@ -186,9 +185,9 @@ export default function TodoPage() {
   };
 
   return (
-    <div className="flex h-full">
-      {/* Left: Lists */}
-      <div className="w-56 shrink-0 border-r border-foreground/10 overflow-auto">
+    <div className="flex h-full flex-col md:flex-row">
+      {/* Left: Lists — desktop only */}
+      <div className="hidden md:block w-56 shrink-0 border-r border-foreground/10 overflow-auto">
         <div className="p-3">
           <h2 className="mb-2 text-sm font-medium text-foreground/50">목록</h2>
           {lists.map((list) => (
@@ -235,6 +234,38 @@ export default function TodoPage() {
             </button>
           )}
         </div>
+      </div>
+
+      {/* Mobile: Horizontal chip bar */}
+      <div className="flex md:hidden overflow-x-auto gap-2 px-4 py-2 border-b border-foreground/10">
+        {lists.map((list) => (
+          <button
+            key={list.id}
+            onClick={() => setActiveListId(list.id)}
+            className={`flex shrink-0 items-center gap-1.5 rounded-full px-3 py-1 text-sm transition-colors ${
+              activeListId === list.id
+                ? "bg-foreground text-background font-medium"
+                : "bg-foreground/5 text-foreground/70"
+            }`}
+          >
+            {list.name}
+            {todoCount(list.id) > 0 && (
+              <span className={`rounded-full px-1.5 text-[10px] ${
+                activeListId === list.id
+                  ? "bg-background/20"
+                  : "bg-foreground/10"
+              }`}>
+                {todoCount(list.id)}
+              </span>
+            )}
+          </button>
+        ))}
+        <button
+          onClick={() => setShowNewList(true)}
+          className="shrink-0 rounded-full bg-foreground/5 px-3 py-1 text-sm text-foreground/40"
+        >
+          +
+        </button>
       </div>
 
       {/* Right: Todos */}
@@ -348,7 +379,7 @@ export default function TodoPage() {
           onClick={() => setEditingTodo(null)}
         >
           <div
-            className="w-96 rounded-lg border border-foreground/10 bg-background p-4 shadow-xl"
+            className="w-[calc(100vw-2rem)] max-w-96 md:w-96 rounded-lg border border-foreground/10 bg-background p-4 shadow-xl"
             onClick={(e) => e.stopPropagation()}
           >
             <h3 className="text-base font-medium">Todo 수정</h3>
