@@ -1,8 +1,25 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, Suspense } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { api } from "@/lib/api";
 import { getAccessToken } from "@/lib/auth";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Separator } from "@/components/ui/separator";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from "@/components/ui/dialog";
+import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@/components/ui/select";
+import { Textarea } from "@/components/ui/textarea";
+import { TodoToolbar, type TodoSortBy, type TodoFilterMode } from "@/components/todo/TodoToolbar";
+import { TodoRow } from "@/components/todo/TodoRow";
+import { Plus } from "lucide-react";
+import { cn } from "@/lib/utils";
 
 interface TodoList {
   id: string;
@@ -25,29 +42,30 @@ interface TodoItem {
   created_at: string;
 }
 
-const PRIORITY_COLORS: Record<string, string> = {
-  urgent: "text-red-500",
-  high: "text-orange-500",
-  normal: "text-foreground/50",
-  low: "text-foreground/30",
-};
-const PRIORITY_LABELS: Record<string, string> = {
-  urgent: "긴급",
-  high: "높음",
-  normal: "보통",
-  low: "낮음",
-};
+function TodoPageInner() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const listFromUrl = searchParams.get("list") || "";
 
-export default function TodoPage() {
   const [lists, setLists] = useState<TodoList[]>([]);
-  const [activeListId, setActiveListId] = useState<string>("");
+  const [activeListId, setActiveListIdState] = useState<string>(listFromUrl);
+
+  const setActiveListId = useCallback((id: string) => {
+    setActiveListIdState(id);
+    if (id) {
+      router.replace(`/todo?list=${id}`, { scroll: false });
+    }
+  }, [router]);
+
   const [todos, setTodos] = useState<TodoItem[]>([]);
   const [loading, setLoading] = useState(true);
-  const [showDone, setShowDone] = useState(false);
   const [newTodoTitle, setNewTodoTitle] = useState("");
   const [newListName, setNewListName] = useState("");
   const [showNewList, setShowNewList] = useState(false);
   const [editingTodo, setEditingTodo] = useState<TodoItem | null>(null);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [sortBy, setSortBy] = useState<TodoSortBy>("due");
+  const [filter, setFilter] = useState<TodoFilterMode>("all");
 
   const token = getAccessToken();
 
@@ -70,7 +88,7 @@ export default function TodoPage() {
     try {
       const params = new URLSearchParams({
         list_id: activeListId,
-        include_done: showDone ? "true" : "false",
+        include_done: filter === "done" ? "true" : "false",
       });
       const data = await api<{ todos: TodoItem[] }>(`/todo?${params}`, { token });
       setTodos(data.todos || []);
@@ -79,15 +97,10 @@ export default function TodoPage() {
     } finally {
       setLoading(false);
     }
-  }, [token, activeListId, showDone]);
+  }, [token, activeListId, filter]);
 
-  useEffect(() => {
-    loadLists();
-  }, [loadLists]);
-
-  useEffect(() => {
-    loadTodos();
-  }, [loadTodos]);
+  useEffect(() => { loadLists(); }, [loadLists]);
+  useEffect(() => { loadTodos(); }, [loadTodos]);
 
   const handleCreateList = async () => {
     if (!token || !newListName.trim()) return;
@@ -124,11 +137,7 @@ export default function TodoPage() {
   const handleToggleDone = async (todo: TodoItem) => {
     if (!token) return;
     try {
-      await api(`/todo/${todo.id}`, {
-        method: "PATCH",
-        body: { is_done: !todo.is_done },
-        token,
-      });
+      await api(`/todo/${todo.id}`, { method: "PATCH", body: { is_done: !todo.is_done }, token });
       loadTodos();
     } catch (err) {
       console.error("Toggle failed:", err);
@@ -138,11 +147,7 @@ export default function TodoPage() {
   const handleTogglePin = async (todo: TodoItem) => {
     if (!token) return;
     try {
-      await api(`/todo/${todo.id}`, {
-        method: "PATCH",
-        body: { is_pinned: !todo.is_pinned },
-        token,
-      });
+      await api(`/todo/${todo.id}`, { method: "PATCH", body: { is_pinned: !todo.is_pinned }, token });
       loadTodos();
     } catch (err) {
       console.error("Pin toggle failed:", err);
@@ -171,64 +176,63 @@ export default function TodoPage() {
     }
   };
 
-  // Separate pinned, active, done
-  const pinnedTodos = todos.filter((t) => t.is_pinned && !t.is_done);
-  const activeTodos = todos.filter((t) => !t.is_pinned && !t.is_done);
-  const doneTodos = todos.filter((t) => t.is_done);
-
-  const todoCount = (listId: string) =>
-    todos.filter((t) => t.list_id === listId && !t.is_done).length;
-
   const isOverdue = (due: string | null) => {
     if (!due) return false;
     return new Date(due) < new Date(new Date().toDateString());
   };
 
+  // Filter and search
+  let filteredTodos = todos;
+  if (searchQuery) {
+    const q = searchQuery.toLowerCase();
+    filteredTodos = filteredTodos.filter((t) => t.title.toLowerCase().includes(q));
+  }
+  if (filter === "has_due") filteredTodos = filteredTodos.filter((t) => t.due);
+  if (filter === "has_priority") filteredTodos = filteredTodos.filter((t) => t.priority !== "normal");
+  if (filter === "done") filteredTodos = filteredTodos.filter((t) => t.is_done);
+
+  const pinnedTodos = filteredTodos.filter((t) => t.is_pinned && !t.is_done);
+  const activeTodos = filteredTodos.filter((t) => !t.is_pinned && !t.is_done);
+  const doneTodos = filteredTodos.filter((t) => t.is_done);
+
   return (
     <div className="flex h-full flex-col md:flex-row">
-      {/* Left: Lists — desktop only */}
-      <div className="hidden md:block w-56 shrink-0 border-r border-foreground/10 overflow-auto">
+      {/* Left: Lists — desktop */}
+      <div className="hidden md:block w-56 shrink-0 border-r border-border overflow-auto">
         <div className="p-3">
-          <h2 className="mb-2 text-sm font-medium text-foreground/50">목록</h2>
+          <h2 className="mb-2 text-xs font-medium text-text-muted uppercase tracking-wider">목록</h2>
           {lists.map((list) => (
             <button
               key={list.id}
               onClick={() => setActiveListId(list.id)}
-              className={`mb-0.5 flex w-full items-center justify-between rounded-md px-3 py-2 text-sm ${
+              className={cn(
+                "mb-0.5 flex w-full items-center justify-between rounded-lg px-3 py-2 text-sm transition-colors",
                 activeListId === list.id
-                  ? "bg-foreground/10 font-medium"
-                  : "hover:bg-foreground/5 text-foreground/70"
-              }`}
+                  ? "border-l-2 border-primary bg-surface-accent font-medium text-text-strong"
+                  : "text-text-secondary hover:bg-surface-accent/50"
+              )}
             >
               <span className="truncate">{list.name}</span>
-              {activeListId !== list.id && todoCount(list.id) > 0 && (
-                <span className="ml-1 rounded-full bg-foreground/10 px-1.5 text-[10px]">
-                  {todoCount(list.id)}
-                </span>
-              )}
             </button>
           ))}
           {showNewList ? (
             <div className="mt-1 flex gap-1">
-              <input
+              <Input
                 autoFocus
                 placeholder="목록 이름"
                 value={newListName}
                 onChange={(e) => setNewListName(e.target.value)}
                 onKeyDown={(e) => {
                   if (e.key === "Enter") handleCreateList();
-                  if (e.key === "Escape") {
-                    setShowNewList(false);
-                    setNewListName("");
-                  }
+                  if (e.key === "Escape") { setShowNewList(false); setNewListName(""); }
                 }}
-                className="flex-1 rounded border border-foreground/10 bg-background px-2 py-1 text-sm outline-none"
+                className="h-8 flex-1"
               />
             </div>
           ) : (
             <button
               onClick={() => setShowNewList(true)}
-              className="mt-1 w-full rounded-md px-3 py-2 text-left text-sm text-foreground/40 hover:bg-foreground/5"
+              className="mt-1 w-full rounded-lg px-3 py-2 text-left text-sm text-text-muted hover:bg-surface-accent/50 transition-colors"
             >
               + 새 목록
             </button>
@@ -237,75 +241,61 @@ export default function TodoPage() {
       </div>
 
       {/* Mobile: Horizontal chip bar */}
-      <div className="flex md:hidden overflow-x-auto gap-2 px-4 py-2 border-b border-foreground/10">
+      <div className="flex md:hidden overflow-x-auto gap-2 px-4 py-2 border-b border-border">
         {lists.map((list) => (
           <button
             key={list.id}
             onClick={() => setActiveListId(list.id)}
-            className={`flex shrink-0 items-center gap-1.5 rounded-full px-3 py-1 text-sm transition-colors ${
+            className={cn(
+              "flex shrink-0 items-center gap-1.5 rounded-full px-3 py-1 text-sm transition-colors",
               activeListId === list.id
-                ? "bg-foreground text-background font-medium"
-                : "bg-foreground/5 text-foreground/70"
-            }`}
+                ? "bg-primary text-white font-medium"
+                : "bg-surface-accent text-text-secondary"
+            )}
           >
             {list.name}
-            {todoCount(list.id) > 0 && (
-              <span className={`rounded-full px-1.5 text-[10px] ${
-                activeListId === list.id
-                  ? "bg-background/20"
-                  : "bg-foreground/10"
-              }`}>
-                {todoCount(list.id)}
-              </span>
-            )}
           </button>
         ))}
         <button
           onClick={() => setShowNewList(true)}
-          className="shrink-0 rounded-full bg-foreground/5 px-3 py-1 text-sm text-foreground/40"
+          className="shrink-0 rounded-full bg-surface-accent px-3 py-1 text-sm text-text-muted"
         >
           +
         </button>
       </div>
 
       {/* Right: Todos */}
-      <div className="flex flex-1 flex-col">
-        {/* Toolbar */}
-        <div className="flex items-center justify-between border-b border-foreground/10 px-4 py-2">
-          <h2 className="font-medium">
-            {lists.find((l) => l.id === activeListId)?.name || "Todo"}
-          </h2>
-          <label className="flex items-center gap-1.5 text-xs text-foreground/50">
-            <input
-              type="checkbox"
-              checked={showDone}
-              onChange={(e) => setShowDone(e.target.checked)}
-              className="rounded"
-            />
-            완료된 항목 표시
-          </label>
-        </div>
+      <div className="flex flex-1 flex-col min-w-0">
+        <TodoToolbar
+          listName={lists.find((l) => l.id === activeListId)?.name || "Todo"}
+          searchQuery={searchQuery}
+          onSearchChange={setSearchQuery}
+          sortBy={sortBy}
+          onSortChange={setSortBy}
+          filter={filter}
+          onFilterChange={setFilter}
+        />
 
         {/* New todo input */}
-        <div className="flex items-center gap-2 border-b border-foreground/10 px-4 py-2">
-          <span className="text-foreground/30">+</span>
-          <input
+        <div className="flex items-center gap-2 border-b border-border px-4 py-2">
+          <Plus size={14} className="text-text-muted" />
+          <Input
             placeholder="새 Todo 추가..."
             value={newTodoTitle}
             onChange={(e) => setNewTodoTitle(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && handleCreateTodo()}
-            className="flex-1 bg-transparent text-sm outline-none placeholder:text-foreground/30"
+            className="h-8 border-0 bg-transparent px-0 focus:border-0"
           />
         </div>
 
         {/* Todo list */}
         <div className="flex-1 overflow-auto">
           {loading ? (
-            <div className="flex items-center justify-center py-20 text-foreground/40">
+            <div className="flex items-center justify-center py-20 text-text-muted">
               불러오는 중...
             </div>
           ) : !activeListId ? (
-            <div className="flex flex-col items-center justify-center py-20 text-foreground/40">
+            <div className="flex flex-col items-center justify-center py-20 text-text-muted">
               <p>목록을 선택하거나 만들어 주세요</p>
             </div>
           ) : (
@@ -313,7 +303,7 @@ export default function TodoPage() {
               {/* Pinned */}
               {pinnedTodos.length > 0 && (
                 <>
-                  <div className="px-4 pt-3 pb-1 text-[10px] font-medium uppercase tracking-wider text-foreground/40">
+                  <div className="px-4 pt-3 pb-1 text-[10px] font-medium uppercase tracking-wider text-text-muted">
                     고정됨
                   </div>
                   {pinnedTodos.map((todo) => (
@@ -324,9 +314,11 @@ export default function TodoPage() {
                       onToggleDone={() => handleToggleDone(todo)}
                       onTogglePin={() => handleTogglePin(todo)}
                       onEdit={() => setEditingTodo(todo)}
+                      onDelete={() => handleDeleteTodo(todo.id)}
+                      onChangePriority={(p) => handleUpdateTodo(todo.id, { priority: p })}
                     />
                   ))}
-                  <div className="mx-4 border-b border-foreground/10" />
+                  <div className="mx-4"><Separator /></div>
                 </>
               )}
 
@@ -339,13 +331,15 @@ export default function TodoPage() {
                   onToggleDone={() => handleToggleDone(todo)}
                   onTogglePin={() => handleTogglePin(todo)}
                   onEdit={() => setEditingTodo(todo)}
+                  onDelete={() => handleDeleteTodo(todo.id)}
+                  onChangePriority={(p) => handleUpdateTodo(todo.id, { priority: p })}
                 />
               ))}
 
               {/* Done */}
-              {showDone && doneTodos.length > 0 && (
+              {doneTodos.length > 0 && (
                 <>
-                  <div className="px-4 pt-4 pb-1 text-[10px] font-medium uppercase tracking-wider text-foreground/30">
+                  <div className="px-4 pt-4 pb-1 text-[10px] font-medium uppercase tracking-wider text-text-muted">
                     완료됨 ({doneTodos.length})
                   </div>
                   {doneTodos.map((todo) => (
@@ -356,13 +350,15 @@ export default function TodoPage() {
                       onToggleDone={() => handleToggleDone(todo)}
                       onTogglePin={() => handleTogglePin(todo)}
                       onEdit={() => setEditingTodo(todo)}
+                      onDelete={() => handleDeleteTodo(todo.id)}
+                      onChangePriority={(p) => handleUpdateTodo(todo.id, { priority: p })}
                     />
                   ))}
                 </>
               )}
 
               {pinnedTodos.length === 0 && activeTodos.length === 0 && doneTodos.length === 0 && (
-                <div className="flex flex-col items-center justify-center py-20 text-foreground/40">
+                <div className="flex flex-col items-center justify-center py-20 text-text-muted">
                   <p>Todo가 없습니다</p>
                   <p className="mt-1 text-sm">위 입력란에서 추가해 보세요</p>
                 </div>
@@ -373,27 +369,22 @@ export default function TodoPage() {
       </div>
 
       {/* Edit Modal */}
-      {editingTodo && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/30"
-          onClick={() => setEditingTodo(null)}
-        >
-          <div
-            className="w-[calc(100vw-2rem)] max-w-96 md:w-96 rounded-lg border border-foreground/10 bg-background p-4 shadow-xl"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <h3 className="text-base font-medium">Todo 수정</h3>
-            <div className="mt-3 space-y-3">
-              <input
+      <Dialog open={!!editingTodo} onOpenChange={(v) => !v && setEditingTodo(null)}>
+        {editingTodo && (
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Todo 수정</DialogTitle>
+            </DialogHeader>
+            <div className="space-y-3">
+              <Input
                 defaultValue={editingTodo.title}
                 onBlur={(e) => {
                   if (e.target.value !== editingTodo.title) {
                     handleUpdateTodo(editingTodo.id, { title: e.target.value });
                   }
                 }}
-                className="w-full rounded border border-foreground/10 bg-background px-3 py-2 text-sm outline-none"
               />
-              <textarea
+              <Textarea
                 defaultValue={editingTodo.notes}
                 placeholder="메모"
                 rows={3}
@@ -402,135 +393,54 @@ export default function TodoPage() {
                     handleUpdateTodo(editingTodo.id, { notes: e.target.value });
                   }
                 }}
-                className="w-full rounded border border-foreground/10 bg-background px-3 py-2 text-sm outline-none resize-none"
               />
               <div className="flex gap-2">
                 <div className="flex-1">
-                  <label className="mb-1 block text-xs text-foreground/50">마감일</label>
-                  <input
+                  <label className="mb-1 block text-xs text-text-muted">마감일</label>
+                  <Input
                     type="date"
                     defaultValue={editingTodo.due || ""}
-                    onChange={(e) =>
-                      handleUpdateTodo(editingTodo.id, {
-                        due: e.target.value || null,
-                      })
-                    }
-                    className="w-full rounded border border-foreground/10 bg-background px-2 py-1.5 text-sm outline-none"
+                    onChange={(e) => handleUpdateTodo(editingTodo.id, { due: e.target.value || null })}
                   />
                 </div>
                 <div className="flex-1">
-                  <label className="mb-1 block text-xs text-foreground/50">우선순위</label>
-                  <select
+                  <label className="mb-1 block text-xs text-text-muted">우선순위</label>
+                  <Select
                     defaultValue={editingTodo.priority}
-                    onChange={(e) =>
-                      handleUpdateTodo(editingTodo.id, { priority: e.target.value })
-                    }
-                    className="w-full rounded border border-foreground/10 bg-background px-2 py-1.5 text-sm outline-none"
+                    onValueChange={(v) => handleUpdateTodo(editingTodo.id, { priority: v })}
                   >
-                    <option value="urgent">긴급</option>
-                    <option value="high">높음</option>
-                    <option value="normal">보통</option>
-                    <option value="low">낮음</option>
-                  </select>
+                    <SelectTrigger className="h-9">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="urgent">긴급</SelectItem>
+                      <SelectItem value="high">높음</SelectItem>
+                      <SelectItem value="normal">보통</SelectItem>
+                      <SelectItem value="low">낮음</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
               </div>
             </div>
-            <div className="mt-4 flex justify-between">
-              <button
-                onClick={() => handleDeleteTodo(editingTodo.id)}
-                className="rounded px-3 py-1.5 text-sm text-red-500 hover:bg-red-50"
-              >
+            <DialogFooter className="justify-between">
+              <Button variant="danger" size="sm" onClick={() => handleDeleteTodo(editingTodo.id)}>
                 삭제
-              </button>
-              <button
-                onClick={() => setEditingTodo(null)}
-                className="rounded px-3 py-1.5 text-sm hover:bg-foreground/5"
-              >
+              </Button>
+              <Button variant="ghost" size="sm" onClick={() => setEditingTodo(null)}>
                 닫기
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        )}
+      </Dialog>
     </div>
   );
 }
 
-function TodoRow({
-  todo,
-  isOverdue,
-  onToggleDone,
-  onTogglePin,
-  onEdit,
-}: {
-  todo: TodoItem;
-  isOverdue: boolean;
-  onToggleDone: () => void;
-  onTogglePin: () => void;
-  onEdit: () => void;
-}) {
+export default function TodoPage() {
   return (
-    <div
-      className={`group flex items-center gap-2 px-4 py-2 hover:bg-foreground/[0.03] ${
-        todo.parent_id ? "pl-10" : ""
-      } ${todo.is_pinned && !todo.is_done ? "bg-foreground/[0.02]" : ""}`}
-    >
-      {/* Checkbox */}
-      <button
-        onClick={onToggleDone}
-        className={`flex h-4 w-4 shrink-0 items-center justify-center rounded-full border ${
-          todo.is_done
-            ? "border-foreground/20 bg-foreground/10"
-            : "border-foreground/30 hover:border-foreground/50"
-        }`}
-      >
-        {todo.is_done && (
-          <svg width={10} height={10} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3">
-            <polyline points="20 6 9 17 4 12" />
-          </svg>
-        )}
-      </button>
-
-      {/* Priority flag */}
-      {todo.priority !== "normal" && (
-        <span className={`text-xs ${PRIORITY_COLORS[todo.priority]}`}>
-          {PRIORITY_LABELS[todo.priority]}
-        </span>
-      )}
-
-      {/* Content */}
-      <div className="min-w-0 flex-1 cursor-pointer" onClick={onEdit}>
-        <span
-          className={`text-sm ${
-            todo.is_done ? "text-foreground/30 line-through" : ""
-          }`}
-        >
-          {todo.title}
-        </span>
-      </div>
-
-      {/* Due badge */}
-      {todo.due && !todo.is_done && (
-        <span
-          className={`shrink-0 text-[11px] ${
-            isOverdue ? "text-red-500 font-medium" : "text-foreground/40"
-          }`}
-        >
-          {new Date(todo.due).toLocaleDateString("ko-KR", { month: "numeric", day: "numeric" })}
-        </span>
-      )}
-
-      {/* Pin */}
-      <button
-        onClick={onTogglePin}
-        className={`shrink-0 opacity-0 group-hover:opacity-100 transition-opacity ${
-          todo.is_pinned ? "!opacity-100 text-foreground" : "text-foreground/30"
-        }`}
-      >
-        <svg width={14} height={14} viewBox="0 0 24 24" fill={todo.is_pinned ? "currentColor" : "none"} stroke="currentColor" strokeWidth="2">
-          <path d="M12 17v5" /><path d="M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16h14v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z" />
-        </svg>
-      </button>
-    </div>
+    <Suspense fallback={<div className="flex items-center justify-center h-full text-text-muted">불러오는 중...</div>}>
+      <TodoPageInner />
+    </Suspense>
   );
 }

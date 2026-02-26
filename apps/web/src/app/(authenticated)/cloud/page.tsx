@@ -3,8 +3,35 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { api, apiUpload, apiDownload } from "@/lib/api";
 import { getAccessToken } from "@/lib/auth";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Checkbox } from "@/components/ui/checkbox";
+import {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+} from "@/components/ui/dropdown-menu";
+import { FileIcon } from "@/components/cloud/FileIcon";
+import { BulkActionBar } from "@/components/cloud/BulkActionBar";
+import {
+  ArrowUpDown,
+  FolderPlus,
+  Upload,
+  Folder,
+  Cloud,
+  MoreVertical,
+  Download,
+  Pencil,
+  Trash2,
+  FolderOpen,
+  LayoutGrid,
+  List,
+  Search,
+} from "lucide-react";
 
-interface Folder {
+interface FolderData {
   id: string;
   user_id: string;
   parent_id: string | null;
@@ -28,12 +55,13 @@ interface CloudFile {
 
 interface FolderItem {
   type: "folder" | "file";
-  folder?: Folder;
+  folder?: FolderData;
   file?: CloudFile;
 }
 
 type SortBy = "name" | "size" | "updated_at" | "created_at";
 type SortDir = "asc" | "desc";
+type ViewMode = "list" | "grid";
 
 export default function CloudPage() {
   const [items, setItems] = useState<FolderItem[]>([]);
@@ -43,21 +71,16 @@ export default function CloudPage() {
   const [loading, setLoading] = useState(true);
   const [sortBy, setSortBy] = useState<SortBy>("name");
   const [sortDir, setSortDir] = useState<SortDir>("asc");
-  const [showSortMenu, setShowSortMenu] = useState(false);
-  const [contextMenu, setContextMenu] = useState<{
-    x: number;
-    y: number;
-    item: FolderItem;
-  } | null>(null);
   const [renaming, setRenaming] = useState<{ id: string; type: "folder" | "file"; name: string } | null>(null);
   const [showNewFolder, setShowNewFolder] = useState(false);
   const [newFolderName, setNewFolderName] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState<CloudFile[] | null>(null);
   const [dragOver, setDragOver] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [viewMode, setViewMode] = useState<ViewMode>("list");
 
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const sortMenuRef = useRef<HTMLDivElement>(null);
 
   const currentFolderID = path[path.length - 1].id;
   const token = getAccessToken();
@@ -83,21 +106,11 @@ export default function CloudPage() {
   useEffect(() => {
     setSearchResults(null);
     setSearchQuery("");
+    setSelectedIds(new Set());
     loadFolder();
   }, [loadFolder]);
 
-  useEffect(() => {
-    const handleClick = (e: MouseEvent) => {
-      setContextMenu(null);
-      if (sortMenuRef.current && !sortMenuRef.current.contains(e.target as Node)) {
-        setShowSortMenu(false);
-      }
-    };
-    document.addEventListener("click", handleClick);
-    return () => document.removeEventListener("click", handleClick);
-  }, []);
-
-  const navigateToFolder = (folder: Folder) => {
+  const navigateToFolder = (folder: FolderData) => {
     setPath((prev) => [...prev, { id: folder.id, name: folder.name }]);
   };
 
@@ -152,6 +165,34 @@ export default function CloudPage() {
     }
   };
 
+  const handleBulkDelete = async () => {
+    if (!token) return;
+    for (const item of displayItems) {
+      const id = item.type === "folder" ? item.folder!.id : item.file!.id;
+      if (!selectedIds.has(id)) continue;
+      try {
+        if (item.type === "folder") {
+          await api(`/cloud/folders/${id}`, { method: "DELETE", token });
+        } else {
+          await api(`/cloud/files/${id}`, { method: "DELETE", token });
+        }
+      } catch (err) {
+        console.error("Delete failed:", err);
+      }
+    }
+    setSelectedIds(new Set());
+    loadFolder();
+  };
+
+  const handleBulkDownload = async () => {
+    for (const item of displayItems) {
+      if (item.type !== "file" || !item.file) continue;
+      const id = item.file.id;
+      if (!selectedIds.has(id)) continue;
+      await handleDownload(item.file);
+    }
+  };
+
   const handleRename = async () => {
     if (!renaming || !token || !renaming.name.trim()) return;
     try {
@@ -180,10 +221,7 @@ export default function CloudPage() {
     try {
       await api("/cloud/folders", {
         method: "POST",
-        body: {
-          name: newFolderName,
-          parent_id: currentFolderID,
-        },
+        body: { name: newFolderName, parent_id: currentFolderID },
         token,
       });
       setShowNewFolder(false);
@@ -216,6 +254,23 @@ export default function CloudPage() {
     handleUpload(e.dataTransfer.files);
   };
 
+  const toggleSelect = (id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const toggleSelectAll = () => {
+    if (selectedIds.size === displayItems.length) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(displayItems.map((i) => (i.type === "folder" ? i.folder!.id : i.file!.id))));
+    }
+  };
+
   const formatSize = (bytes: number) => {
     if (bytes < 1024) return `${bytes} B`;
     if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
@@ -224,21 +279,11 @@ export default function CloudPage() {
   };
 
   const formatDate = (dateStr: string) => {
-    const d = new Date(dateStr);
-    return d.toLocaleDateString("ko-KR", {
+    return new Date(dateStr).toLocaleDateString("ko-KR", {
       year: "numeric",
       month: "short",
       day: "numeric",
     });
-  };
-
-  const getFileIcon = (mimeType: string) => {
-    if (mimeType.startsWith("image/")) return "🖼️";
-    if (mimeType.startsWith("video/")) return "🎬";
-    if (mimeType.startsWith("audio/")) return "🎵";
-    if (mimeType.includes("pdf")) return "📄";
-    if (mimeType.includes("zip") || mimeType.includes("archive")) return "📦";
-    return "📄";
   };
 
   const sortOptions: { value: SortBy; label: string }[] = [
@@ -255,41 +300,38 @@ export default function CloudPage() {
   return (
     <div
       className="flex h-full flex-col"
-      onDragOver={(e) => {
-        e.preventDefault();
-        setDragOver(true);
-      }}
+      onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
       onDragLeave={() => setDragOver(false)}
       onDrop={handleDrop}
     >
-      {/* Header */}
-      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-foreground/10 px-4 md:px-6 py-3">
-        <div className="flex items-center gap-2">
-          {/* Breadcrumb */}
-          <nav className="flex items-center gap-1 text-sm">
-            {path.map((p, i) => (
-              <span key={i} className="flex items-center gap-1">
-                {i > 0 && <span className="text-foreground/30">/</span>}
-                <button
-                  onClick={() => navigateToBreadcrumb(i)}
-                  className={`hover:underline ${
-                    i === path.length - 1
-                      ? "font-medium"
-                      : "text-foreground/60"
-                  }`}
-                >
-                  {p.name}
-                </button>
-              </span>
-            ))}
-          </nav>
-        </div>
+      {/* Toolbar Row 1: Breadcrumb */}
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border px-4 md:px-6 py-2">
+        <nav className="flex items-center gap-1 text-sm">
+          {path.map((p, i) => (
+            <span key={i} className="flex items-center gap-1">
+              {i > 0 && <span className="text-text-muted">/</span>}
+              <button
+                onClick={() => navigateToBreadcrumb(i)}
+                className={`hover:underline ${
+                  i === path.length - 1
+                    ? "font-medium text-text-strong"
+                    : "text-text-secondary"
+                }`}
+              >
+                {p.name}
+              </button>
+            </span>
+          ))}
+        </nav>
+      </div>
 
+      {/* Toolbar Row 2: Actions */}
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border px-4 md:px-6 py-2">
         <div className="flex items-center gap-2">
           {/* Search */}
           <div className="relative">
-            <input
-              type="text"
+            <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-text-muted" />
+            <Input
               placeholder="검색..."
               value={searchQuery}
               onChange={(e) => {
@@ -297,80 +339,74 @@ export default function CloudPage() {
                 if (!e.target.value) setSearchResults(null);
               }}
               onKeyDown={(e) => e.key === "Enter" && handleSearch()}
-              className="h-8 w-full md:w-48 rounded-md border border-foreground/10 bg-background px-3 text-sm outline-none focus:border-foreground/30"
+              className="h-8 w-full md:w-48 pl-8"
             />
           </div>
 
-          {/* Sort */}
-          <div className="relative" ref={sortMenuRef}>
+          {/* View toggle */}
+          <div className="flex rounded-lg border border-border">
             <button
-              onClick={(e) => {
-                e.stopPropagation();
-                setShowSortMenu(!showSortMenu);
-              }}
-              className="flex h-8 items-center gap-1 rounded-md border border-foreground/10 px-2 text-sm hover:bg-foreground/5"
+              onClick={() => setViewMode("list")}
+              className={`flex h-8 w-8 items-center justify-center rounded-l-lg ${
+                viewMode === "list" ? "bg-surface-accent text-text-strong" : "text-text-muted hover:bg-surface-accent"
+              }`}
             >
-              <SortIcon size={14} />
-              <span className="hidden md:inline">정렬</span>
+              <List size={14} />
             </button>
-            {showSortMenu && (
-              <div className="absolute right-0 top-full z-10 mt-1 w-40 rounded-md border border-foreground/10 bg-background py-1 shadow-lg">
-                {sortOptions.map((opt) => (
-                  <button
-                    key={opt.value}
-                    onClick={() => {
-                      if (sortBy === opt.value) {
-                        setSortDir(sortDir === "asc" ? "desc" : "asc");
-                      } else {
-                        setSortBy(opt.value);
-                        setSortDir(opt.value === "name" ? "asc" : "desc");
-                      }
-                      setShowSortMenu(false);
-                    }}
-                    className={`flex w-full items-center justify-between px-3 py-1.5 text-sm hover:bg-foreground/5 ${
-                      sortBy === opt.value ? "font-medium" : ""
-                    }`}
-                  >
-                    {opt.label}
-                    {sortBy === opt.value && (
-                      <span className="text-xs text-foreground/50">
-                        {sortDir === "asc" ? "↑" : "↓"}
-                      </span>
-                    )}
-                  </button>
-                ))}
-                <div className="my-1 border-t border-foreground/10" />
-                <button
-                  onClick={() => {
-                    setSortBy("name");
-                    setSortDir("asc");
-                    setShowSortMenu(false);
-                  }}
-                  className="w-full px-3 py-1.5 text-left text-sm text-foreground/50 hover:bg-foreground/5"
-                >
-                  기본 정렬로 돌아가기
-                </button>
-              </div>
-            )}
+            <button
+              onClick={() => setViewMode("grid")}
+              className={`flex h-8 w-8 items-center justify-center rounded-r-lg ${
+                viewMode === "grid" ? "bg-surface-accent text-text-strong" : "text-text-muted hover:bg-surface-accent"
+              }`}
+            >
+              <LayoutGrid size={14} />
+            </button>
           </div>
+        </div>
 
-          {/* New Folder */}
-          <button
-            onClick={() => setShowNewFolder(true)}
-            className="flex h-8 items-center gap-1 rounded-md border border-foreground/10 px-2 text-sm hover:bg-foreground/5"
-          >
-            <FolderPlusIcon size={14} />
+        <div className="flex items-center gap-2">
+          {/* Sort */}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" size="sm" className="gap-1.5">
+                <ArrowUpDown size={14} />
+                <span className="hidden md:inline">정렬</span>
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              {sortOptions.map((opt) => (
+                <DropdownMenuItem
+                  key={opt.value}
+                  onClick={() => {
+                    if (sortBy === opt.value) {
+                      setSortDir(sortDir === "asc" ? "desc" : "asc");
+                    } else {
+                      setSortBy(opt.value);
+                      setSortDir(opt.value === "name" ? "asc" : "desc");
+                    }
+                  }}
+                  className="justify-between"
+                >
+                  {opt.label}
+                  {sortBy === opt.value && (
+                    <span className="text-xs text-text-muted">
+                      {sortDir === "asc" ? "↑" : "↓"}
+                    </span>
+                  )}
+                </DropdownMenuItem>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
+
+          <Button variant="ghost" size="sm" onClick={() => setShowNewFolder(true)} className="gap-1.5">
+            <FolderPlus size={14} />
             <span className="hidden md:inline">새 폴더</span>
-          </button>
+          </Button>
 
-          {/* Upload */}
-          <button
-            onClick={() => fileInputRef.current?.click()}
-            className="flex h-8 items-center gap-1 rounded-md bg-foreground px-2 md:px-3 text-sm text-background hover:opacity-90"
-          >
-            <UploadIcon size={14} />
+          <Button variant="primary" size="sm" onClick={() => fileInputRef.current?.click()} className="gap-1.5">
+            <Upload size={14} />
             <span className="hidden md:inline">업로드</span>
-          </button>
+          </Button>
           <input
             ref={fileInputRef}
             type="file"
@@ -383,65 +419,57 @@ export default function CloudPage() {
 
       {/* New Folder Input */}
       {showNewFolder && (
-        <div className="flex items-center gap-2 border-b border-foreground/10 bg-foreground/[0.02] px-6 py-2">
-          <FolderIcon size={16} />
-          <input
+        <div className="flex items-center gap-2 border-b border-border bg-surface-accent/50 px-6 py-2">
+          <Folder size={16} className="text-text-muted" />
+          <Input
             autoFocus
-            type="text"
             placeholder="폴더 이름"
             value={newFolderName}
             onChange={(e) => setNewFolderName(e.target.value)}
             onKeyDown={(e) => {
               if (e.key === "Enter") handleCreateFolder();
-              if (e.key === "Escape") {
-                setShowNewFolder(false);
-                setNewFolderName("");
-              }
+              if (e.key === "Escape") { setShowNewFolder(false); setNewFolderName(""); }
             }}
-            className="h-7 flex-1 rounded border border-foreground/10 bg-background px-2 text-sm outline-none focus:border-foreground/30"
+            className="h-7 flex-1"
           />
-          <button
-            onClick={handleCreateFolder}
-            className="rounded px-2 py-1 text-xs font-medium hover:bg-foreground/5"
-          >
-            만들기
-          </button>
-          <button
-            onClick={() => {
-              setShowNewFolder(false);
-              setNewFolderName("");
-            }}
-            className="rounded px-2 py-1 text-xs text-foreground/50 hover:bg-foreground/5"
-          >
+          <Button size="sm" onClick={handleCreateFolder}>만들기</Button>
+          <Button variant="ghost" size="sm" onClick={() => { setShowNewFolder(false); setNewFolderName(""); }}>
             취소
-          </button>
+          </Button>
         </div>
       )}
 
       {/* Search indicator */}
       {searchResults !== null && (
-        <div className="flex items-center gap-2 border-b border-foreground/10 bg-foreground/[0.02] px-6 py-2 text-sm">
-          <span className="text-foreground/60">
+        <div className="flex items-center gap-2 border-b border-border bg-surface-accent/50 px-6 py-2 text-sm">
+          <span className="text-text-secondary">
             &quot;{searchQuery}&quot; 검색 결과: {searchResults.length}건
           </span>
           <button
-            onClick={() => {
-              setSearchQuery("");
-              setSearchResults(null);
-            }}
-            className="text-foreground/40 hover:text-foreground"
+            onClick={() => { setSearchQuery(""); setSearchResults(null); }}
+            className="text-text-muted hover:text-text-primary"
           >
             ✕
           </button>
         </div>
       )}
 
+      {/* Bulk action bar */}
+      {selectedIds.size > 0 && (
+        <BulkActionBar
+          count={selectedIds.size}
+          onDownload={handleBulkDownload}
+          onDelete={handleBulkDelete}
+          onClear={() => setSelectedIds(new Set())}
+        />
+      )}
+
       {/* Drop overlay */}
       {dragOver && (
         <div className="absolute inset-0 z-20 flex items-center justify-center bg-background/80">
-          <div className="rounded-xl border-2 border-dashed border-foreground/20 p-12 text-center">
-            <UploadIcon size={48} />
-            <p className="mt-2 text-foreground/60">여기에 파일을 놓으세요</p>
+          <div className="rounded-xl border-2 border-dashed border-primary/40 p-12 text-center">
+            <Upload size={48} className="mx-auto text-primary" />
+            <p className="mt-2 text-text-secondary">여기에 파일을 놓으세요</p>
           </div>
         </div>
       )}
@@ -449,12 +477,12 @@ export default function CloudPage() {
       {/* File list */}
       <div className="flex-1 overflow-auto">
         {loading ? (
-          <div className="flex items-center justify-center py-20 text-foreground/40">
+          <div className="flex items-center justify-center py-20 text-text-muted">
             불러오는 중...
           </div>
         ) : displayItems.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-20 text-foreground/40">
-            <CloudEmptyIcon size={48} />
+          <div className="flex flex-col items-center justify-center py-20 text-text-muted">
+            <Cloud size={48} className="text-border" />
             <p className="mt-3">
               {searchResults !== null ? "검색 결과가 없습니다" : "폴더가 비어 있습니다"}
             </p>
@@ -462,13 +490,20 @@ export default function CloudPage() {
               <p className="mt-1 text-sm">파일을 업로드하거나 폴더를 만들어 보세요</p>
             )}
           </div>
-        ) : (
+        ) : viewMode === "list" ? (
           <table className="w-full text-sm">
             <thead>
-              <tr className="border-b border-foreground/10 text-left text-foreground/50">
-                <th className="px-4 md:px-6 py-2 font-normal">이름</th>
+              <tr className="border-b border-border text-left text-text-muted">
+                <th className="w-10 px-4 md:px-6 py-2 font-normal">
+                  <Checkbox
+                    checked={selectedIds.size === displayItems.length && displayItems.length > 0}
+                    onCheckedChange={toggleSelectAll}
+                  />
+                </th>
+                <th className="px-2 py-2 font-normal">이름</th>
                 <th className="hidden md:table-cell px-4 py-2 font-normal w-28">크기</th>
                 <th className="hidden md:table-cell px-4 py-2 font-normal w-36">수정한 날짜</th>
+                <th className="w-10 px-2 py-2 font-normal"></th>
               </tr>
             </thead>
             <tbody>
@@ -476,58 +511,49 @@ export default function CloudPage() {
                 const id = item.type === "folder" ? item.folder!.id : item.file!.id;
                 const name = item.type === "folder" ? item.folder!.name : item.file!.name;
                 const isRenaming = renaming?.id === id;
+                const isSelected = selectedIds.has(id);
 
                 return (
                   <tr
                     key={id}
-                    className="border-b border-foreground/5 hover:bg-foreground/[0.03] cursor-default"
-                    onContextMenu={(e) => {
-                      e.preventDefault();
-                      setContextMenu({ x: e.clientX, y: e.clientY, item });
-                    }}
+                    className={`border-b border-border/50 hover:bg-surface-accent/50 cursor-default ${
+                      isSelected ? "bg-primary/5" : ""
+                    }`}
                     onDoubleClick={() => {
-                      if (item.type === "folder" && item.folder) {
-                        navigateToFolder(item.folder);
-                      } else if (item.type === "file" && item.file) {
-                        handleDownload(item.file);
-                      }
+                      if (item.type === "folder" && item.folder) navigateToFolder(item.folder);
+                      else if (item.type === "file" && item.file) handleDownload(item.file);
                     }}
                   >
                     <td className="px-4 md:px-6 py-2">
+                      <Checkbox
+                        checked={isSelected}
+                        onCheckedChange={() => toggleSelect(id)}
+                      />
+                    </td>
+                    <td className="px-2 py-2">
                       <div className="flex items-center gap-2">
                         {item.type === "folder" ? (
-                          <FolderIcon size={16} />
+                          <Folder size={16} className="text-text-muted shrink-0" />
                         ) : (
-                          <span className="text-base leading-none">
-                            {getFileIcon(item.file!.mime_type)}
-                          </span>
+                          <FileIcon mimeType={item.file!.mime_type} size={16} className="text-text-muted shrink-0" />
                         )}
                         {isRenaming ? (
-                          <input
+                          <Input
                             autoFocus
-                            type="text"
                             value={renaming.name}
-                            onChange={(e) =>
-                              setRenaming({ ...renaming, name: e.target.value })
-                            }
+                            onChange={(e) => setRenaming({ ...renaming, name: e.target.value })}
                             onKeyDown={(e) => {
                               if (e.key === "Enter") handleRename();
                               if (e.key === "Escape") setRenaming(null);
                             }}
                             onBlur={handleRename}
-                            className="h-6 rounded border border-foreground/10 bg-background px-1 text-sm outline-none"
+                            className="h-6 text-sm"
                           />
                         ) : (
                           <span
-                            className={
-                              item.type === "folder"
-                                ? "cursor-pointer hover:underline"
-                                : ""
-                            }
+                            className={item.type === "folder" ? "cursor-pointer hover:underline text-text-strong" : "text-text-primary"}
                             onClick={() => {
-                              if (item.type === "folder" && item.folder) {
-                                navigateToFolder(item.folder);
-                              }
+                              if (item.type === "folder" && item.folder) navigateToFolder(item.folder);
                             }}
                           >
                             {name}
@@ -535,121 +561,86 @@ export default function CloudPage() {
                         )}
                       </div>
                     </td>
-                    <td className="hidden md:table-cell px-4 py-2 text-foreground/50">
+                    <td className="hidden md:table-cell px-4 py-2 text-text-muted">
                       {item.type === "file" ? formatSize(item.file!.size_bytes) : "—"}
                     </td>
-                    <td className="hidden md:table-cell px-4 py-2 text-foreground/50">
-                      {formatDate(
-                        item.type === "folder"
-                          ? item.folder!.updated_at
-                          : item.file!.updated_at
-                      )}
+                    <td className="hidden md:table-cell px-4 py-2 text-text-muted">
+                      {formatDate(item.type === "folder" ? item.folder!.updated_at : item.file!.updated_at)}
+                    </td>
+                    <td className="px-2 py-2">
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <button className="flex h-7 w-7 items-center justify-center rounded-lg text-text-muted hover:bg-surface-accent">
+                            <MoreVertical size={14} />
+                          </button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          {item.type === "folder" && item.folder && (
+                            <DropdownMenuItem onClick={() => navigateToFolder(item.folder!)}>
+                              <FolderOpen size={14} /> 열기
+                            </DropdownMenuItem>
+                          )}
+                          {item.type === "file" && item.file && (
+                            <DropdownMenuItem onClick={() => handleDownload(item.file!)}>
+                              <Download size={14} /> 다운로드
+                            </DropdownMenuItem>
+                          )}
+                          <DropdownMenuItem
+                            onClick={() => {
+                              const itemId = item.type === "folder" ? item.folder!.id : item.file!.id;
+                              const itemName = item.type === "folder" ? item.folder!.name : item.file!.name;
+                              setRenaming({ id: itemId, type: item.type, name: itemName });
+                            }}
+                          >
+                            <Pencil size={14} /> 이름 변경
+                          </DropdownMenuItem>
+                          <DropdownMenuSeparator />
+                          <DropdownMenuItem
+                            onClick={() => handleDelete(item)}
+                            className="text-error focus:text-error"
+                          >
+                            <Trash2 size={14} /> 삭제
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
                     </td>
                   </tr>
                 );
               })}
             </tbody>
           </table>
-        )}
-      </div>
-
-      {/* Context Menu */}
-      {contextMenu && (
-        <div
-          className="fixed z-50 min-w-[160px] rounded-md border border-foreground/10 bg-background py-1 shadow-lg"
-          style={{ left: contextMenu.x, top: contextMenu.y }}
-        >
-          {contextMenu.item.type === "folder" && contextMenu.item.folder && (
-            <button
-              onClick={() => {
-                navigateToFolder(contextMenu.item.folder!);
-                setContextMenu(null);
-              }}
-              className="flex w-full px-3 py-1.5 text-sm hover:bg-foreground/5"
-            >
-              열기
-            </button>
-          )}
-          {contextMenu.item.type === "file" && contextMenu.item.file && (
-            <button
-              onClick={() => {
-                handleDownload(contextMenu.item.file!);
-                setContextMenu(null);
-              }}
-              className="flex w-full px-3 py-1.5 text-sm hover:bg-foreground/5"
-            >
-              다운로드
-            </button>
-          )}
-          <button
-            onClick={() => {
-              const item = contextMenu.item;
+        ) : (
+          /* Grid view */
+          <div className="grid grid-cols-[repeat(auto-fill,minmax(120px,1fr))] md:grid-cols-[repeat(auto-fill,minmax(140px,1fr))] gap-3 p-4">
+            {displayItems.map((item) => {
               const id = item.type === "folder" ? item.folder!.id : item.file!.id;
               const name = item.type === "folder" ? item.folder!.name : item.file!.name;
-              setRenaming({ id, type: item.type, name });
-              setContextMenu(null);
-            }}
-            className="flex w-full px-3 py-1.5 text-sm hover:bg-foreground/5"
-          >
-            이름 변경
-          </button>
-          <div className="my-1 border-t border-foreground/10" />
-          <button
-            onClick={() => {
-              handleDelete(contextMenu.item);
-              setContextMenu(null);
-            }}
-            className="flex w-full px-3 py-1.5 text-sm text-red-500 hover:bg-foreground/5"
-          >
-            삭제
-          </button>
-        </div>
-      )}
+              const isSelected = selectedIds.has(id);
+
+              return (
+                <div
+                  key={id}
+                  className={`group relative flex flex-col items-center gap-2 rounded-lg border p-3 cursor-default transition-colors ${
+                    isSelected ? "border-primary bg-primary/5" : "border-border hover:bg-surface-accent/50"
+                  }`}
+                  onClick={() => toggleSelect(id)}
+                  onDoubleClick={() => {
+                    if (item.type === "folder" && item.folder) navigateToFolder(item.folder);
+                    else if (item.type === "file" && item.file) handleDownload(item.file);
+                  }}
+                >
+                  {item.type === "folder" ? (
+                    <Folder size={32} className="text-text-muted" />
+                  ) : (
+                    <FileIcon mimeType={item.file!.mime_type} size={32} className="text-text-muted" />
+                  )}
+                  <span className="w-full truncate text-center text-xs text-text-primary">{name}</span>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
     </div>
-  );
-}
-
-// Icons
-
-function SortIcon({ size = 24 }: { size?: number }) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <path d="m3 16 4 4 4-4" /><line x1="7" x2="7" y1="20" y2="4" />
-      <path d="m21 8-4-4-4 4" /><line x1="17" x2="17" y1="4" y2="20" />
-    </svg>
-  );
-}
-
-function FolderIcon({ size = 24 }: { size?: number }) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/>
-    </svg>
-  );
-}
-
-function FolderPlusIcon({ size = 24 }: { size?: number }) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M12 10v6"/><path d="M9 13h6"/>
-      <path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/>
-    </svg>
-  );
-}
-
-function UploadIcon({ size = 24 }: { size?: number }) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-      <polyline points="17 8 12 3 7 8"/><line x1="12" x2="12" y1="3" y2="15"/>
-    </svg>
-  );
-}
-
-function CloudEmptyIcon({ size = 24 }: { size?: number }) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="text-foreground/20">
-      <path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z"/>
-    </svg>
   );
 }
