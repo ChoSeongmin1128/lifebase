@@ -45,6 +45,7 @@ export default function SettingsPage() {
   };
 
   const get = (key: string, fallback: string = "") => settings[key] ?? fallback;
+  const dndEnabled = get("dnd_enabled", "true") === "true";
 
   const handleThemeChange = (value: "light" | "dark" | "system") => {
     setTheme(value);
@@ -221,12 +222,33 @@ export default function SettingsPage() {
                   </div>
                 </SettingRow>
                 <Separator />
+                <SettingRow label="방해 금지">
+                  <div className="flex gap-1">
+                    {[
+                      { value: "true", label: "켜짐" },
+                      { value: "false", label: "꺼짐" },
+                    ].map((opt) => (
+                      <Button
+                        key={opt.value}
+                        variant={get("dnd_enabled", "true") === opt.value ? "primary" : "ghost"}
+                        size="sm"
+                        onClick={() => updateSetting("dnd_enabled", opt.value)}
+                      >
+                        {opt.label}
+                      </Button>
+                    ))}
+                  </div>
+                </SettingRow>
+                <Separator />
                 <SettingRow label="방해 금지 시작">
                   <Select
                     value={get("dnd_start", "23")}
                     onValueChange={(v) => updateSetting("dnd_start", v)}
                   >
-                    <SelectTrigger className="w-24 h-8 text-xs">
+                    <SelectTrigger
+                      disabled={!dndEnabled}
+                      className={`h-8 w-24 text-xs ${!dndEnabled ? "opacity-50" : ""}`}
+                    >
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
@@ -244,7 +266,10 @@ export default function SettingsPage() {
                     value={get("dnd_end", "7")}
                     onValueChange={(v) => updateSetting("dnd_end", v)}
                   >
-                    <SelectTrigger className="w-24 h-8 text-xs">
+                    <SelectTrigger
+                      disabled={!dndEnabled}
+                      className={`h-8 w-24 text-xs ${!dndEnabled ? "opacity-50" : ""}`}
+                    >
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
@@ -267,6 +292,7 @@ export default function SettingsPage() {
                         key={opt.value}
                         variant={get("dnd_urgent_only", "false") === opt.value ? "primary" : "ghost"}
                         size="sm"
+                        disabled={!dndEnabled}
                         onClick={() => updateSetting("dnd_urgent_only", opt.value)}
                       >
                         {opt.label}

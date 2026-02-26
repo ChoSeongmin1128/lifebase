@@ -118,6 +118,10 @@ function buildCalendarUrl(view: CalendarViewMode, date: Date): string {
   }
 }
 
+function toDateStr(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
 export default function CalendarPage() {
   const router = useRouter();
   const params = useParams();
@@ -222,7 +226,7 @@ export default function CalendarPage() {
       {/* Header */}
       <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border px-4 md:px-6 py-3">
         <div className="flex items-center gap-2 md:gap-3">
-          <Button variant="secondary" size="sm" onClick={goToday}>오늘</Button>
+          <Button variant="secondary" size="sm" className="rounded-full" onClick={goToday}>오늘</Button>
           <Button variant="ghost" size="icon-sm" onClick={() => navigate(-1)}>
             <ChevronLeft size={16} />
           </Button>
@@ -241,7 +245,7 @@ export default function CalendarPage() {
       </div>
 
       {/* Content */}
-      <div className="flex-1 overflow-auto">
+      <div className="flex-1 min-h-0 overflow-auto">
         {loading && events.length === 0 ? (
           <div className="flex items-center justify-center py-20 text-text-muted">불러오는 중...</div>
         ) : view === "year-compact" ? (
@@ -319,7 +323,7 @@ export default function CalendarPage() {
   );
 }
 
-/* ===== Month View ===== */
+/* ===== Month View with Spanning Bars ===== */
 function MonthView({
   currentDate, events, calendars, onEventClick,
 }: {
@@ -335,6 +339,7 @@ function MonthView({
   const daysInMonth = new Date(year, month + 1, 0).getDate();
   const today = new Date();
 
+  // Build grid of dates (null = empty cell)
   const weeks: (number | null)[][] = [];
   let week: (number | null)[] = [];
   for (let i = 0; i < startOffset; i++) week.push(null);
@@ -347,17 +352,85 @@ function MonthView({
     weeks.push(week);
   }
 
-  const getEventsForDay = (day: number) => {
+  const calMap = new Map(calendars.map((c) => [c.id, c]));
+  const weekdays = ["일", "월", "화", "수", "목", "금", "토"];
+
+  // Multi-day events: compute spanning bars per week row
+  const multiDayEvents = events.filter((e) => {
+    const startD = e.start_time.split("T")[0];
+    const endD = e.end_time.split("T")[0];
+    return e.is_all_day || startD !== endD;
+  });
+
+  const singleDayEvents = events.filter((e) => {
+    const startD = e.start_time.split("T")[0];
+    const endD = e.end_time.split("T")[0];
+    return !e.is_all_day && startD === endD;
+  });
+
+  // For each week, compute spanning bar segments
+  function getWeekSpanBars(weekDays: (number | null)[], weekIdx: number) {
+    const bars: { event: EventData; startCol: number; endCol: number; lane: number }[] = [];
+    const lanes: string[][] = []; // each lane tracks which event IDs occupy it
+
+    for (const evt of multiDayEvents) {
+      const evtStart = evt.start_time.split("T")[0];
+      const evtEnd = evt.end_time.split("T")[0];
+
+      // Find overlap with this week's date range
+      let startCol = -1;
+      let endCol = -1;
+      for (let col = 0; col < 7; col++) {
+        const day = weekDays[col];
+        if (day === null) continue;
+        const dateStr = `${year}-${String(month + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+        if (dateStr >= evtStart && dateStr <= evtEnd) {
+          if (startCol === -1) startCol = col;
+          endCol = col;
+        }
+      }
+
+      if (startCol === -1) continue;
+
+      // Assign to a lane (max 3 lanes visible)
+      let assignedLane = -1;
+      for (let l = 0; l < lanes.length; l++) {
+        const occupied = lanes[l].some((id) => {
+          const bar = bars.find((b) => b.event.id === id && b.lane === l);
+          if (!bar) return false;
+          return !(endCol < bar.startCol || startCol > bar.endCol);
+        });
+        if (!occupied) {
+          assignedLane = l;
+          lanes[l].push(evt.id);
+          break;
+        }
+      }
+      if (assignedLane === -1 && lanes.length < 3) {
+        assignedLane = lanes.length;
+        lanes.push([evt.id]);
+      }
+      if (assignedLane === -1) continue; // overflow
+
+      bars.push({ event: evt, startCol, endCol, lane: assignedLane });
+    }
+
+    return bars;
+  }
+
+  function getSingleDayEvents(day: number) {
+    const dateStr = `${year}-${String(month + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+    return singleDayEvents.filter((e) => e.start_time.split("T")[0] === dateStr);
+  }
+
+  function countAllEventsForDay(day: number) {
     const dateStr = `${year}-${String(month + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
     return events.filter((e) => {
       const start = e.start_time.split("T")[0];
       const end = e.end_time.split("T")[0];
       return dateStr >= start && dateStr <= end;
-    });
-  };
-
-  const calMap = new Map(calendars.map((c) => [c.id, c]));
-  const weekdays = ["일", "월", "화", "수", "목", "금", "토"];
+    }).length;
+  }
 
   return (
     <div className="flex h-full flex-col">
@@ -375,17 +448,24 @@ function MonthView({
         ))}
       </div>
       <div className="grid flex-1 grid-cols-7" style={{ gridTemplateRows: `repeat(${weeks.length}, 1fr)` }}>
-        {weeks.map((weekDays, wi) =>
-          weekDays.map((day, di) => {
+        {weeks.map((weekDays, wi) => {
+          const spanBars = getWeekSpanBars(weekDays, wi);
+          const spanBarHeight = Math.max(spanBars.length > 0 ? (Math.max(...spanBars.map((b) => b.lane)) + 1) * 18 : 0, 0);
+
+          return weekDays.map((day, di) => {
             const isToday = day !== null && year === today.getFullYear() && month === today.getMonth() && day === today.getDate();
-            const dayEvents = day ? getEventsForDay(day) : [];
+            const singleEvents = day ? getSingleDayEvents(day) : [];
+            const totalCount = day ? countAllEventsForDay(day) : 0;
             const idx = wi * 7 + di;
+
+            // Spanning bars that start on this column
+            const barsStartingHere = spanBars.filter((b) => b.startCol === di);
 
             return (
               <div
                 key={idx}
                 className={cn(
-                  "min-h-[60px] md:min-h-[80px] border-b border-r border-border/50 p-1",
+                  "relative min-h-[60px] md:min-h-[80px] border-b border-r border-border/50 p-1 overflow-hidden",
                   day === null && "bg-surface-accent/30"
                 )}
               >
@@ -399,27 +479,48 @@ function MonthView({
                     >
                       {day}
                     </div>
-                    <div className="space-y-0.5">
-                      {dayEvents.slice(0, 3).map((e, ei) => {
+
+                    {/* Spanning bars */}
+                    {barsStartingHere.map((bar) => {
+                      const spanCols = bar.endCol - bar.startCol + 1;
+                      const cal = calMap.get(bar.event.calendar_id);
+                      return (
+                        <div
+                          key={bar.event.id}
+                          className="absolute left-0.5 cursor-pointer truncate rounded px-1 text-[10px] leading-[16px] text-white z-10"
+                          style={{
+                            top: `${26 + bar.lane * 18}px`,
+                            width: `calc(${spanCols * 100}% - 4px)`,
+                            backgroundColor: getEventColor(bar.event.color_id, cal?.color_id ?? null),
+                          }}
+                          onClick={() => onEventClick(bar.event)}
+                        >
+                          {bar.event.title || "(제목 없음)"}
+                        </div>
+                      );
+                    })}
+
+                    {/* Single-day events */}
+                    <div className="space-y-0.5" style={{ marginTop: `${spanBarHeight}px` }}>
+                      {singleEvents.slice(0, 2).map((e) => {
                         const cal = calMap.get(e.calendar_id);
                         return (
                           <div
                             key={e.id}
                             onClick={() => onEventClick(e)}
-                            className={cn(
-                              "cursor-pointer truncate rounded px-1 py-0.5 text-[10px] leading-tight text-white",
-                              ei === 2 && "hidden md:block"
-                            )}
-                            style={{ backgroundColor: getEventColor(e.color_id, cal?.color_id ?? null) }}
+                            className="flex items-center gap-1 cursor-pointer truncate px-0.5 text-[10px] leading-tight text-text-primary"
                           >
-                            {e.title || "(제목 없음)"}
+                            <div
+                              className="h-1.5 w-1.5 shrink-0 rounded-full"
+                              style={{ backgroundColor: getEventColor(e.color_id, cal?.color_id ?? null) }}
+                            />
+                            <span className="truncate">{e.title || "(제목 없음)"}</span>
                           </div>
                         );
                       })}
-                      {dayEvents.length > 2 && (
-                        <div className="text-[10px] text-text-muted px-1">
-                          <span className="md:hidden">+{dayEvents.length - 2}</span>
-                          <span className="hidden md:inline">{dayEvents.length > 3 ? `+${dayEvents.length - 3}` : ""}</span>
+                      {totalCount > 3 && (
+                        <div className="text-[10px] text-text-muted px-0.5">
+                          +{totalCount - 3}
                         </div>
                       )}
                     </div>
@@ -427,14 +528,14 @@ function MonthView({
                 )}
               </div>
             );
-          })
-        )}
+          });
+        })}
       </div>
     </div>
   );
 }
 
-/* ===== Week View ===== */
+/* ===== Week View with All-day Area + 30min Spacer ===== */
 function WeekView({
   currentDate, events, calendars, days, onEventClick,
 }: {
@@ -454,11 +555,13 @@ function WeekView({
   });
 
   const today = new Date();
-  const hours = Array.from({ length: 16 }, (_, i) => i + 7);
+  const startHour = 7; // Default start hour (configurable in settings)
+  const endHour = 23;
+  const hours = Array.from({ length: endHour - startHour }, (_, i) => i + startHour);
   const calMap = new Map(calendars.map((c) => [c.id, c]));
 
   const getEventsForDay = (date: Date) => {
-    const dateStr = date.toISOString().split("T")[0];
+    const dateStr = toDateStr(date);
     return events.filter((e) => {
       const start = e.start_time.split("T")[0];
       const end = e.end_time.split("T")[0];
@@ -466,10 +569,23 @@ function WeekView({
     });
   };
 
+  // Separate all-day and timed events
+  const getAllDayEvents = (date: Date) => {
+    return getEventsForDay(date).filter((e) => e.is_all_day);
+  };
+
+  const getTimedEvents = (date: Date) => {
+    return getEventsForDay(date).filter((e) => !e.is_all_day);
+  };
+
+  // Check if any day has all-day events
+  const hasAnyAllDay = dayDates.some((d) => getAllDayEvents(d).length > 0);
+
   const weekdays = ["일", "월", "화", "수", "목", "금", "토"];
 
   return (
     <div className="flex h-full flex-col">
+      {/* Day headers */}
       <div className="flex border-b border-border">
         <div className="w-10 md:w-14 shrink-0" />
         {dayDates.map((d, i) => {
@@ -489,8 +605,41 @@ function WeekView({
           );
         })}
       </div>
+
+      {/* All-day events area */}
+      {hasAnyAllDay && (
+        <div className="flex border-b border-border">
+          <div className="w-10 md:w-14 shrink-0 flex items-center justify-end pr-2">
+            <span className="text-[10px] text-text-muted">종일</span>
+          </div>
+          {dayDates.map((d, i) => {
+            const allDayEvts = getAllDayEvents(d);
+            return (
+              <div key={i} className="flex-1 border-l border-border/50 px-0.5 py-1 space-y-0.5">
+                {allDayEvts.map((e) => {
+                  const cal = calMap.get(e.calendar_id);
+                  return (
+                    <div
+                      key={e.id}
+                      className="cursor-pointer truncate rounded px-1 py-0.5 text-[10px] leading-tight text-white"
+                      style={{ backgroundColor: getEventColor(e.color_id, cal?.color_id ?? null) }}
+                      onClick={() => onEventClick(e)}
+                    >
+                      {e.title || "(제목 없음)"}
+                    </div>
+                  );
+                })}
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Time grid */}
       <div className="flex flex-1 min-h-0 overflow-auto">
         <div className="w-10 md:w-14 shrink-0">
+          {/* 30min spacer before first hour */}
+          <div className="relative h-6" />
           {hours.map((h) => (
             <div key={h} className="relative h-12">
               <span className="absolute -top-2 right-2 text-[10px] text-text-muted">
@@ -500,20 +649,21 @@ function WeekView({
           ))}
         </div>
         {dayDates.map((d, di) => {
-          const dayEvents = getEventsForDay(d).filter((e) => !e.is_all_day);
-          // Simple overlap grouping
+          const dayEvents = getTimedEvents(d);
           const positioned = positionEvents(dayEvents);
 
           return (
             <div key={di} className="relative flex-1 border-l border-border/50">
+              {/* 30min spacer with dashed line */}
+              <div className="h-6 border-b border-dashed border-border/40" />
               {hours.map((h) => (
                 <div key={h} className="h-12 border-b border-border/30" />
               ))}
               {positioned.map(({ event, column, totalColumns }) => {
-                const startHour = new Date(event.start_time).getHours() + new Date(event.start_time).getMinutes() / 60;
-                const endHour = new Date(event.end_time).getHours() + new Date(event.end_time).getMinutes() / 60;
-                const top = (startHour - 7) * 48;
-                const height = Math.max((endHour - startHour) * 48, 20);
+                const startH = new Date(event.start_time).getHours() + new Date(event.start_time).getMinutes() / 60;
+                const endH = new Date(event.end_time).getHours() + new Date(event.end_time).getMinutes() / 60;
+                const top = (startH - startHour) * 48 + 24; // +24 for 30min spacer
+                const height = Math.max((endH - startH) * 48, 20);
                 const cal = calMap.get(event.calendar_id);
                 const width = `calc(${100 / totalColumns}% - 2px)`;
                 const left = `calc(${(column / totalColumns) * 100}% + 1px)`;

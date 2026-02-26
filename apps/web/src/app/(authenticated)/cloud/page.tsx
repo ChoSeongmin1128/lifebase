@@ -491,7 +491,14 @@ export default function CloudPage() {
             )}
           </div>
         ) : viewMode === "list" ? (
-          <table className="w-full text-sm">
+          <table className="w-full text-sm" style={{ tableLayout: "fixed" }}>
+            <colgroup>
+              <col className="w-10" />
+              <col />
+              <col className="hidden md:table-column" style={{ width: "112px" }} />
+              <col className="hidden md:table-column" style={{ width: "144px" }} />
+              <col className="w-10" />
+            </colgroup>
             <thead>
               <tr className="border-b border-border text-left text-text-muted">
                 <th className="w-10 px-4 md:px-6 py-2 font-normal">
@@ -500,9 +507,9 @@ export default function CloudPage() {
                     onCheckedChange={toggleSelectAll}
                   />
                 </th>
-                <th className="px-2 py-2 font-normal">이름</th>
-                <th className="hidden md:table-cell px-4 py-2 font-normal w-28">크기</th>
-                <th className="hidden md:table-cell px-4 py-2 font-normal w-36">수정한 날짜</th>
+                <th className="px-2 py-2 font-normal border-r border-border/30">이름</th>
+                <th className="hidden md:table-cell px-4 py-2 font-normal border-r border-border/30">크기</th>
+                <th className="hidden md:table-cell px-4 py-2 font-normal border-r border-border/30">수정한 날짜</th>
                 <th className="w-10 px-2 py-2 font-normal"></th>
               </tr>
             </thead>
