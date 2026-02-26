@@ -16,13 +16,15 @@ type CreateTodoInput struct {
 }
 
 type UpdateTodoInput struct {
-	Title    *string `json:"title"`
-	Notes    *string `json:"notes"`
-	Due      *string `json:"due"`
-	Priority *string `json:"priority"`
-	IsDone   *bool   `json:"is_done"`
-	IsPinned *bool   `json:"is_pinned"`
-	ParentID *string `json:"parent_id"`
+	Title     *string `json:"title"`
+	Notes     *string `json:"notes"`
+	Due       *string `json:"due"`
+	Priority  *string `json:"priority"`
+	IsDone    *bool   `json:"is_done"`
+	IsPinned  *bool   `json:"is_pinned"`
+	ParentID  *string `json:"parent_id"`
+	ListID    *string `json:"list_id"`
+	SortOrder *int    `json:"sort_order"`
 }
 
 type TodoUseCase interface {

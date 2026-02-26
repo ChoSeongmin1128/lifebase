@@ -167,6 +167,17 @@ func (uc *todoUseCase) UpdateTodo(ctx context.Context, userID, todoID string, in
 	if input.ParentID != nil {
 		todo.ParentID = input.ParentID
 	}
+	if input.ListID != nil {
+		// Verify target list exists and belongs to user
+		_, err := uc.lists.FindByID(ctx, userID, *input.ListID)
+		if err != nil {
+			return nil, fmt.Errorf("target list not found")
+		}
+		todo.ListID = *input.ListID
+	}
+	if input.SortOrder != nil {
+		todo.SortOrder = *input.SortOrder
+	}
 
 	todo.UpdatedAt = time.Now()
 

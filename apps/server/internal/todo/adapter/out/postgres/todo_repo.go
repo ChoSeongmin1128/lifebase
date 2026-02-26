@@ -146,9 +146,9 @@ func (r *todoRepo) ListByList(ctx context.Context, userID, listID string, includ
 
 func (r *todoRepo) Update(ctx context.Context, todo *domain.Todo) error {
 	_, err := r.db.Exec(ctx,
-		`UPDATE todos SET title = $3, notes = $4, due = $5, priority = $6, is_done = $7, is_pinned = $8, sort_order = $9, done_at = $10, parent_id = $11, updated_at = $12
+		`UPDATE todos SET list_id = $3, title = $4, notes = $5, due = $6, priority = $7, is_done = $8, is_pinned = $9, sort_order = $10, done_at = $11, parent_id = $12, updated_at = $13
 		 WHERE id = $1 AND user_id = $2 AND deleted_at IS NULL`,
-		todo.ID, todo.UserID, todo.Title, todo.Notes, todo.Due, todo.Priority,
+		todo.ID, todo.UserID, todo.ListID, todo.Title, todo.Notes, todo.Due, todo.Priority,
 		todo.IsDone, todo.IsPinned, todo.SortOrder, todo.DoneAt, todo.ParentID, todo.UpdatedAt,
 	)
 	return err

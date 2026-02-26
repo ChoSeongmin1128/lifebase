@@ -7,19 +7,22 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuSeparator,
+  DropdownMenuSub,
+  DropdownMenuSubTrigger,
+  DropdownMenuSubContent,
 } from "@/components/ui/dropdown-menu";
 import { PriorityFlag } from "./PriorityFlag";
 import {
   MoreVertical,
   Pencil,
   Flag,
-  CalendarDays,
   Trash2,
   GripVertical,
   Pin,
   ChevronRight,
   ChevronDown,
   Plus,
+  ArrowRightLeft,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -38,6 +41,11 @@ interface TodoItem {
   created_at: string;
 }
 
+interface TodoList {
+  id: string;
+  name: string;
+}
+
 interface TodoRowProps {
   todo: TodoItem;
   depth?: number;
@@ -45,6 +53,8 @@ interface TodoRowProps {
   hasChildren?: boolean;
   isCollapsed?: boolean;
   childCount?: { total: number; done: number };
+  showDragHandle?: boolean;
+  lists?: TodoList[];
   onToggleCollapse?: () => void;
   onToggleDone: () => void;
   onTogglePin: () => void;
@@ -52,6 +62,7 @@ interface TodoRowProps {
   onDelete: () => void;
   onChangePriority: (priority: string) => void;
   onAddSubtask?: () => void;
+  onMoveToList?: (listId: string) => void;
 }
 
 export function TodoRow({
@@ -61,6 +72,8 @@ export function TodoRow({
   hasChildren,
   isCollapsed,
   childCount,
+  showDragHandle,
+  lists,
   onToggleCollapse,
   onToggleDone,
   onTogglePin,
@@ -68,6 +81,7 @@ export function TodoRow({
   onDelete,
   onChangePriority,
   onAddSubtask,
+  onMoveToList,
 }: TodoRowProps) {
   return (
     <div
@@ -79,7 +93,11 @@ export function TodoRow({
       style={{ paddingLeft: `${depth * 24 + 16}px` }}
     >
       {/* Drag handle */}
-      <GripVertical size={14} className="shrink-0 text-text-muted opacity-0 group-hover:opacity-50 cursor-grab" />
+      {showDragHandle ? (
+        <GripVertical size={14} className="shrink-0 text-text-muted opacity-0 group-hover:opacity-50 cursor-grab" />
+      ) : (
+        <div className="w-[14px] shrink-0" />
+      )}
 
       {/* Collapse chevron (for parents) */}
       {hasChildren ? (
@@ -170,6 +188,22 @@ export function TodoRow({
               <Plus size={14} /> 하위 Todo 추가
             </DropdownMenuItem>
           )}
+          {onMoveToList && lists && lists.length > 1 && (
+            <DropdownMenuSub>
+              <DropdownMenuSubTrigger>
+                <ArrowRightLeft size={14} /> 다른 목록으로 이동
+              </DropdownMenuSubTrigger>
+              <DropdownMenuSubContent>
+                {lists
+                  .filter((l) => l.id !== todo.list_id)
+                  .map((l) => (
+                    <DropdownMenuItem key={l.id} onClick={() => onMoveToList(l.id)}>
+                      {l.name}
+                    </DropdownMenuItem>
+                  ))}
+              </DropdownMenuSubContent>
+            </DropdownMenuSub>
+          )}
           <DropdownMenuSeparator />
           <DropdownMenuItem onClick={() => onChangePriority("urgent")} className="text-error">
             <Flag size={14} /> 긴급
@@ -182,10 +216,6 @@ export function TodoRow({
           </DropdownMenuItem>
           <DropdownMenuItem onClick={() => onChangePriority("low")} className="text-text-muted">
             <Flag size={14} /> 낮음
-          </DropdownMenuItem>
-          <DropdownMenuSeparator />
-          <DropdownMenuItem>
-            <CalendarDays size={14} /> 마감일 설정
           </DropdownMenuItem>
           <DropdownMenuSeparator />
           <DropdownMenuItem onClick={onDelete} className="text-error focus:text-error">

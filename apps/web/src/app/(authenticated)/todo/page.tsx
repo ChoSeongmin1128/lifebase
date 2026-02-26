@@ -348,6 +348,8 @@ function TodoPageInner() {
           hasChildren={hasChildren}
           isCollapsed={isCollapsed}
           childCount={childCount}
+          showDragHandle={sortBy === "manual"}
+          lists={lists}
           onToggleCollapse={() => toggleCollapse(todo.id)}
           onToggleDone={() => handleToggleDone(todo)}
           onTogglePin={() => handleTogglePin(todo)}
@@ -355,6 +357,7 @@ function TodoPageInner() {
           onDelete={() => handleDeleteTodo(todo.id)}
           onChangePriority={(p) => handleUpdateTodo(todo.id, { priority: p })}
           onAddSubtask={depth < 1 ? () => { setCreateParentId(todo.id); setShowCreateDialog(true); } : undefined}
+          onMoveToList={(listId) => handleUpdateTodo(todo.id, { list_id: listId })}
         />
       </div>
     );
