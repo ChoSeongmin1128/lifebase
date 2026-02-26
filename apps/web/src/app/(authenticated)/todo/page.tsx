@@ -18,6 +18,7 @@ import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@
 import { Textarea } from "@/components/ui/textarea";
 import { TodoToolbar, type TodoSortBy, type TodoFilterMode } from "@/components/todo/TodoToolbar";
 import { TodoRow } from "@/components/todo/TodoRow";
+import { CreateTodoDialog } from "@/components/todo/CreateTodoDialog";
 import { Plus } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -102,7 +103,6 @@ function TodoPageInner() {
 
   const [todos, setTodos] = useState<TodoItem[]>([]);
   const [loading, setLoading] = useState(true);
-  const [newTodoTitle, setNewTodoTitle] = useState("");
   const [newListName, setNewListName] = useState("");
   const [showNewList, setShowNewList] = useState(false);
   const [editingTodo, setEditingTodo] = useState<TodoItem | null>(null);
@@ -110,9 +110,9 @@ function TodoPageInner() {
   const [sortBy, setSortBy] = useState<TodoSortBy>("due");
   const [filter, setFilter] = useState<TodoFilterMode>("all");
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
-  const [addingSubtaskFor, setAddingSubtaskFor] = useState<string | null>(null);
-  const [subtaskTitle, setSubtaskTitle] = useState("");
   const [creating, setCreating] = useState(false);
+  const [showCreateDialog, setShowCreateDialog] = useState(false);
+  const [createParentId, setCreateParentId] = useState<string | undefined>();
 
   const token = getAccessToken();
 
@@ -192,33 +192,37 @@ function TodoPageInner() {
     }
   };
 
-  const handleCreateTodo = async (parentId?: string) => {
+  const handleCreateTodo = async (data: {
+    title: string;
+    due: string | null;
+    priority: string;
+    notes: string;
+    parentId?: string;
+  }) => {
     if (!token || !activeListId || creating) return;
-    const title = parentId ? subtaskTitle : newTodoTitle;
-    if (!title.trim()) return;
     setCreating(true);
     try {
       await api("/todo", {
         method: "POST",
         body: {
           list_id: activeListId,
-          title,
-          ...(parentId ? { parent_id: parentId } : {}),
+          title: data.title,
+          notes: data.notes,
+          due: data.due,
+          priority: data.priority,
+          ...(data.parentId ? { parent_id: data.parentId } : {}),
         },
         token,
       });
-      if (parentId) {
-        setSubtaskTitle("");
-        setAddingSubtaskFor(null);
-        // Ensure parent is expanded
+      if (data.parentId) {
         setCollapsed((prev) => {
           const next = new Set(prev);
-          next.delete(parentId);
+          next.delete(data.parentId!);
           return next;
         });
-      } else {
-        setNewTodoTitle("");
       }
+      setShowCreateDialog(false);
+      setCreateParentId(undefined);
       loadTodos();
     } catch (err) {
       console.error("Create todo failed:", err);
@@ -350,28 +354,8 @@ function TodoPageInner() {
           onEdit={() => setEditingTodo(todo)}
           onDelete={() => handleDeleteTodo(todo.id)}
           onChangePriority={(p) => handleUpdateTodo(todo.id, { priority: p })}
-          onAddSubtask={depth < 2 ? () => { setAddingSubtaskFor(todo.id); setSubtaskTitle(""); } : undefined}
+          onAddSubtask={depth < 1 ? () => { setCreateParentId(todo.id); setShowCreateDialog(true); } : undefined}
         />
-        {/* Inline subtask input */}
-        {addingSubtaskFor === todo.id && (
-          <div
-            className="flex items-center gap-2 py-1.5 border-b border-border/30"
-            style={{ paddingLeft: `${(depth + 1) * 24 + 16}px` }}
-          >
-            <Plus size={12} className="text-text-muted shrink-0" />
-            <Input
-              autoFocus
-              placeholder="하위 Todo 추가..."
-              value={subtaskTitle}
-              onChange={(e) => setSubtaskTitle(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") handleCreateTodo(todo.id);
-                if (e.key === "Escape") { setAddingSubtaskFor(null); setSubtaskTitle(""); }
-              }}
-              className="h-7 border-0 bg-transparent px-0 text-sm focus:border-0"
-            />
-          </div>
-        )}
       </div>
     );
   };
@@ -472,17 +456,14 @@ function TodoPageInner() {
           onFilterChange={setFilter}
         />
 
-        {/* New todo input */}
-        <div className="flex items-center gap-2 border-b border-border px-4 py-2">
-          <Plus size={14} className="text-text-muted" />
-          <Input
-            placeholder="새 Todo 추가..."
-            value={newTodoTitle}
-            onChange={(e) => setNewTodoTitle(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && handleCreateTodo()}
-            className="h-8 border-0 bg-transparent px-0 focus:border-0"
-          />
-        </div>
+        {/* Add todo button */}
+        <button
+          onClick={() => { setCreateParentId(undefined); setShowCreateDialog(true); }}
+          className="flex items-center gap-2 border-b border-border px-4 py-2.5 text-sm text-text-muted hover:bg-surface-accent/50 transition-colors w-full"
+        >
+          <Plus size={14} />
+          새 Todo 추가...
+        </button>
 
         {/* Todo list */}
         <div className="flex-1 overflow-auto">
@@ -523,13 +504,25 @@ function TodoPageInner() {
               {pinnedFlat.length === 0 && activeFlat.length === 0 && doneFlat.length === 0 && (
                 <div className="flex flex-col items-center justify-center py-20 text-text-muted">
                   <p>Todo가 없습니다</p>
-                  <p className="mt-1 text-sm">위 입력란에서 추가해 보세요</p>
+                  <p className="mt-1 text-sm">위 버튼으로 추가해 보세요</p>
                 </div>
               )}
             </div>
           )}
         </div>
       </div>
+
+      {/* Create Modal */}
+      <CreateTodoDialog
+        open={showCreateDialog}
+        onOpenChange={(v) => {
+          setShowCreateDialog(v);
+          if (!v) setCreateParentId(undefined);
+        }}
+        onSubmit={handleCreateTodo}
+        parentId={createParentId}
+        disabled={creating}
+      />
 
       {/* Edit Modal */}
       <Dialog open={!!editingTodo} onOpenChange={(v) => !v && setEditingTodo(null)}>
