@@ -19,6 +19,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { TodoToolbar, type TodoSortBy, type TodoFilterMode } from "@/components/todo/TodoToolbar";
 import { TodoRow } from "@/components/todo/TodoRow";
 import { CreateTodoDialog } from "@/components/todo/CreateTodoDialog";
+import { DndContext, closestCenter, type DragEndEvent, PointerSensor, useSensor, useSensors } from "@dnd-kit/core";
+import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { Plus } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -296,6 +298,10 @@ function TodoPageInner() {
     });
   };
 
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
+  );
+
   const isOverdue = (due: string | null) => {
     if (!due) return false;
     return new Date(due) < new Date(new Date().toDateString());
@@ -322,6 +328,42 @@ function TodoPageInner() {
   const pinnedFlat = flattenTree(pinnedRoots, collapsed);
   const activeFlat = flattenTree(activeRoots, collapsed);
   const doneFlat = flattenTree(doneRoots, collapsed);
+
+  const allFlatIds = [...pinnedFlat, ...activeFlat, ...doneFlat].map((f) => f.todo.id);
+
+  const handleDragEnd = async (event: DragEndEvent) => {
+    const { active, over } = event;
+    if (!over || active.id === over.id || !token) return;
+
+    const allFlat = [...pinnedFlat, ...activeFlat, ...doneFlat];
+    const oldIndex = allFlat.findIndex((f) => f.todo.id === active.id);
+    const newIndex = allFlat.findIndex((f) => f.todo.id === over.id);
+    if (oldIndex === -1 || newIndex === -1) return;
+
+    // Reorder and assign sequential sort_order
+    const sorted = allFlat.map((f) => f.todo);
+    const [moved] = sorted.splice(oldIndex, 1);
+    sorted.splice(newIndex, 0, moved);
+
+    // Optimistic UI update
+    const updatedTodos = todos.map((t) => {
+      const idx = sorted.findIndex((s) => s.id === t.id);
+      return idx !== -1 ? { ...t, sort_order: idx } : t;
+    });
+    setTodos(updatedTodos);
+
+    // Persist to server
+    try {
+      await api(`/todo/${active.id}`, {
+        method: "PATCH",
+        body: { sort_order: newIndex },
+        token,
+      });
+    } catch (err) {
+      console.error("Reorder failed:", err);
+      loadTodos();
+    }
+  };
 
   // Count children for collapsed parents
   const childCountMap = new Map<string, { total: number; done: number }>();
@@ -479,38 +521,42 @@ function TodoPageInner() {
               <p>목록을 선택하거나 만들어 주세요</p>
             </div>
           ) : (
-            <div>
-              {/* Pinned */}
-              {pinnedFlat.length > 0 && (
-                <>
-                  <div className="px-4 pt-3 pb-1 text-[10px] font-medium uppercase tracking-wider text-text-muted">
-                    고정됨
-                  </div>
-                  {pinnedFlat.map(renderTodoRow)}
-                  <div className="mx-4"><Separator /></div>
-                </>
-              )}
+            <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+              <SortableContext items={allFlatIds} strategy={verticalListSortingStrategy}>
+                <div>
+                  {/* Pinned */}
+                  {pinnedFlat.length > 0 && (
+                    <>
+                      <div className="px-4 pt-3 pb-1 text-[10px] font-medium uppercase tracking-wider text-text-muted">
+                        고정됨
+                      </div>
+                      {pinnedFlat.map(renderTodoRow)}
+                      <div className="mx-4"><Separator /></div>
+                    </>
+                  )}
 
-              {/* Active */}
-              {activeFlat.map(renderTodoRow)}
+                  {/* Active */}
+                  {activeFlat.map(renderTodoRow)}
 
-              {/* Done */}
-              {doneFlat.length > 0 && (
-                <>
-                  <div className="px-4 pt-4 pb-1 text-[10px] font-medium uppercase tracking-wider text-text-muted">
-                    완료됨 ({doneFlat.length})
-                  </div>
-                  {doneFlat.map(renderTodoRow)}
-                </>
-              )}
+                  {/* Done */}
+                  {doneFlat.length > 0 && (
+                    <>
+                      <div className="px-4 pt-4 pb-1 text-[10px] font-medium uppercase tracking-wider text-text-muted">
+                        완료됨 ({doneFlat.length})
+                      </div>
+                      {doneFlat.map(renderTodoRow)}
+                    </>
+                  )}
 
-              {pinnedFlat.length === 0 && activeFlat.length === 0 && doneFlat.length === 0 && (
-                <div className="flex flex-col items-center justify-center py-20 text-text-muted">
-                  <p>Todo가 없습니다</p>
-                  <p className="mt-1 text-sm">위 버튼으로 추가해 보세요</p>
+                  {pinnedFlat.length === 0 && activeFlat.length === 0 && doneFlat.length === 0 && (
+                    <div className="flex flex-col items-center justify-center py-20 text-text-muted">
+                      <p>Todo가 없습니다</p>
+                      <p className="mt-1 text-sm">위 버튼으로 추가해 보세요</p>
+                    </div>
+                  )}
                 </div>
-              )}
-            </div>
+              </SortableContext>
+            </DndContext>
           )}
         </div>
       </div>

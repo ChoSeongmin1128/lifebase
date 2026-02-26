@@ -1,5 +1,7 @@
 "use client";
 
+import { useSortable } from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
   DropdownMenu,
@@ -83,18 +85,38 @@ export function TodoRow({
   onAddSubtask,
   onMoveToList,
 }: TodoRowProps) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: todo.id, disabled: !showDragHandle });
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    paddingLeft: `${depth * 24 + 16}px`,
+  };
+
   return (
     <div
+      ref={setNodeRef}
+      style={style}
       className={cn(
         "group flex items-center gap-2 py-2 pr-4 hover:bg-surface-accent/50 transition-colors",
         todo.is_pinned && !todo.is_done && "bg-surface-accent",
-        todo.is_done && "opacity-60"
+        todo.is_done && "opacity-60",
+        isDragging && "opacity-50 bg-surface-accent z-10"
       )}
-      style={{ paddingLeft: `${depth * 24 + 16}px` }}
+      {...attributes}
     >
       {/* Drag handle */}
       {showDragHandle ? (
-        <GripVertical size={14} className="shrink-0 text-text-muted opacity-0 group-hover:opacity-50 cursor-grab" />
+        <button {...listeners} className="shrink-0 text-text-muted opacity-0 group-hover:opacity-50 cursor-grab touch-none">
+          <GripVertical size={14} />
+        </button>
       ) : (
         <div className="w-[14px] shrink-0" />
       )}
