@@ -19,6 +19,8 @@ import (
 	portin "lifebase/internal/auth/port/in"
 	portout "lifebase/internal/auth/port/out"
 	"lifebase/internal/shared/config"
+	tododomain "lifebase/internal/todo/domain"
+	todoportout "lifebase/internal/todo/port/out"
 )
 
 type googleUserInfo struct {
@@ -29,11 +31,12 @@ type googleUserInfo struct {
 }
 
 type authUseCase struct {
-	cfg          *config.Config
-	oauthConfig  *oauth2.Config
-	users        portout.UserRepository
-	googleAccts  portout.GoogleAccountRepository
+	cfg           *config.Config
+	oauthConfig   *oauth2.Config
+	users         portout.UserRepository
+	googleAccts   portout.GoogleAccountRepository
 	refreshTokens portout.RefreshTokenRepository
+	todoLists     todoportout.TodoListRepository
 }
 
 func NewAuthUseCase(
@@ -41,6 +44,7 @@ func NewAuthUseCase(
 	users portout.UserRepository,
 	googleAccts portout.GoogleAccountRepository,
 	refreshTokens portout.RefreshTokenRepository,
+	todoLists todoportout.TodoListRepository,
 ) portin.AuthUseCase {
 	oauthConfig := &oauth2.Config{
 		ClientID:     cfg.Google.ClientID,
@@ -62,6 +66,7 @@ func NewAuthUseCase(
 		users:         users,
 		googleAccts:   googleAccts,
 		refreshTokens: refreshTokens,
+		todoLists:     todoLists,
 	}
 }
 
@@ -157,6 +162,20 @@ func (uc *authUseCase) findOrCreateUser(ctx context.Context, info *googleUserInf
 	if err := uc.users.Create(ctx, user); err != nil {
 		return nil, err
 	}
+
+	// Create default todo list for new user
+	if uc.todoLists != nil {
+		defaultList := &tododomain.TodoList{
+			ID:        uuid.New().String(),
+			UserID:    user.ID,
+			Name:      "할 일",
+			SortOrder: 0,
+			CreatedAt: now,
+			UpdatedAt: now,
+		}
+		_ = uc.todoLists.Create(ctx, defaultList)
+	}
+
 	return user, nil
 }
 

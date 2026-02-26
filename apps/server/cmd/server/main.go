@@ -100,7 +100,7 @@ func main() {
 	inviteRepo := sharingpg.NewInviteRepo(dbpool)
 
 	// Use Cases
-	authUC := authusecase.NewAuthUseCase(cfg, userRepo, googleAccountRepo, refreshTokenRepo)
+	authUC := authusecase.NewAuthUseCase(cfg, userRepo, googleAccountRepo, refreshTokenRepo, todoListRepo)
 	cloudUC := cloudusecase.NewCloudUseCase(folderRepo, fileRepo, storage, asynqClient)
 	galleryUC := galleryusecase.NewGalleryUseCase(mediaRepo)
 	calendarUC := calendarusecase.NewCalendarUseCase(calendarRepo, eventRepo, reminderRepo)
