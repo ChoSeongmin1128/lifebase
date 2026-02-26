@@ -4,6 +4,7 @@ import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { api } from "@/lib/api";
 import { setTokens } from "@/lib/auth";
+import { Button } from "@/components/ui/button";
 
 function CallbackContent() {
   const router = useRouter();
@@ -39,13 +40,10 @@ function CallbackContent() {
     return (
       <div className="flex min-h-screen items-center justify-center">
         <div className="flex flex-col items-center gap-4">
-          <p className="text-red-500">인증 코드가 없습니다.</p>
-          <button
-            onClick={() => router.replace("/")}
-            className="rounded-lg border border-foreground/10 px-4 py-2 transition-colors hover:bg-foreground/5"
-          >
+          <p className="text-error">인증 코드가 없습니다.</p>
+          <Button variant="secondary" onClick={() => router.replace("/")}>
             돌아가기
-          </button>
+          </Button>
         </div>
       </div>
     );
@@ -55,13 +53,10 @@ function CallbackContent() {
     return (
       <div className="flex min-h-screen items-center justify-center">
         <div className="flex flex-col items-center gap-4">
-          <p className="text-red-500">{error}</p>
-          <button
-            onClick={() => router.replace("/")}
-            className="rounded-lg border border-foreground/10 px-4 py-2 transition-colors hover:bg-foreground/5"
-          >
+          <p className="text-error">{error}</p>
+          <Button variant="secondary" onClick={() => router.replace("/")}>
             돌아가기
-          </button>
+          </Button>
         </div>
       </div>
     );
@@ -69,7 +64,7 @@ function CallbackContent() {
 
   return (
     <div className="flex min-h-screen items-center justify-center">
-      <p className="text-foreground/60">로그인 중...</p>
+      <p className="text-text-muted">로그인 중...</p>
     </div>
   );
 }
@@ -79,7 +74,7 @@ export default function AuthCallback() {
     <Suspense
       fallback={
         <div className="flex min-h-screen items-center justify-center">
-          <p className="text-foreground/60">로그인 중...</p>
+          <p className="text-text-muted">로그인 중...</p>
         </div>
       }
     >
