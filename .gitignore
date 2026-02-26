@@ -29,6 +29,7 @@ apps/server/server
 
 # Rust / Tauri
 apps/desktop/target/
+apps/desktop/gen/
 Cargo.lock
 
 # Build outputs
