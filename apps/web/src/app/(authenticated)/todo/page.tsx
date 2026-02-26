@@ -42,6 +42,49 @@ interface TodoItem {
   created_at: string;
 }
 
+interface TodoNode extends TodoItem {
+  children: TodoNode[];
+}
+
+function buildTree(todos: TodoItem[]): TodoNode[] {
+  const map = new Map<string, TodoNode>();
+  const roots: TodoNode[] = [];
+
+  for (const todo of todos) {
+    map.set(todo.id, { ...todo, children: [] });
+  }
+
+  for (const todo of todos) {
+    const node = map.get(todo.id)!;
+    if (todo.parent_id && map.has(todo.parent_id)) {
+      map.get(todo.parent_id)!.children.push(node);
+    } else {
+      roots.push(node);
+    }
+  }
+
+  return roots;
+}
+
+function flattenTree(
+  nodes: TodoNode[],
+  collapsed: Set<string>,
+): { todo: TodoNode; depth: number }[] {
+  const result: { todo: TodoNode; depth: number }[] = [];
+
+  function walk(items: TodoNode[], depth: number) {
+    for (const node of items) {
+      result.push({ todo: node, depth });
+      if (node.children.length > 0 && !collapsed.has(node.id)) {
+        walk(node.children, depth + 1);
+      }
+    }
+  }
+
+  walk(nodes, 0);
+  return result;
+}
+
 function TodoPageInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -66,16 +109,40 @@ function TodoPageInner() {
   const [searchQuery, setSearchQuery] = useState("");
   const [sortBy, setSortBy] = useState<TodoSortBy>("due");
   const [filter, setFilter] = useState<TodoFilterMode>("all");
+  const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
+  const [addingSubtaskFor, setAddingSubtaskFor] = useState<string | null>(null);
+  const [subtaskTitle, setSubtaskTitle] = useState("");
 
   const token = getAccessToken();
+
+  // First list is the default list (undeletable)
+  const defaultListId = lists.length > 0 ? lists[0].id : null;
 
   const loadLists = useCallback(async () => {
     if (!token) return;
     try {
       const data = await api<{ lists: TodoList[] }>("/todo/lists", { token });
-      setLists(data.lists || []);
-      if (data.lists?.length > 0 && !activeListId) {
-        setActiveListId(data.lists[0].id);
+      const fetchedLists = data.lists || [];
+
+      // Auto-create default list if none exist
+      if (fetchedLists.length === 0) {
+        try {
+          const list = await api<TodoList>("/todo/lists", {
+            method: "POST",
+            body: { name: "내 할일" },
+            token,
+          });
+          setLists([list]);
+          setActiveListId(list.id);
+          return;
+        } catch {
+          // ignore
+        }
+      }
+
+      setLists(fetchedLists);
+      if (fetchedLists.length > 0 && !activeListId) {
+        setActiveListId(fetchedLists[0].id);
       }
     } catch {
       setLists([]);
@@ -119,15 +186,32 @@ function TodoPageInner() {
     }
   };
 
-  const handleCreateTodo = async () => {
-    if (!token || !newTodoTitle.trim() || !activeListId) return;
+  const handleCreateTodo = async (parentId?: string) => {
+    if (!token || !activeListId) return;
+    const title = parentId ? subtaskTitle : newTodoTitle;
+    if (!title.trim()) return;
     try {
       await api("/todo", {
         method: "POST",
-        body: { list_id: activeListId, title: newTodoTitle },
+        body: {
+          list_id: activeListId,
+          title,
+          ...(parentId ? { parent_id: parentId } : {}),
+        },
         token,
       });
-      setNewTodoTitle("");
+      if (parentId) {
+        setSubtaskTitle("");
+        setAddingSubtaskFor(null);
+        // Ensure parent is expanded
+        setCollapsed((prev) => {
+          const next = new Set(prev);
+          next.delete(parentId);
+          return next;
+        });
+      } else {
+        setNewTodoTitle("");
+      }
       loadTodos();
     } catch (err) {
       console.error("Create todo failed:", err);
@@ -176,6 +260,29 @@ function TodoPageInner() {
     }
   };
 
+  const handleDeleteList = async (listId: string) => {
+    if (!token || listId === defaultListId) return;
+    try {
+      await api(`/todo/lists/${listId}`, { method: "DELETE", token });
+      setLists((prev) => prev.filter((l) => l.id !== listId));
+      if (activeListId === listId && lists.length > 1) {
+        const remaining = lists.filter((l) => l.id !== listId);
+        if (remaining.length > 0) setActiveListId(remaining[0].id);
+      }
+    } catch (err) {
+      console.error("Delete list failed:", err);
+    }
+  };
+
+  const toggleCollapse = (todoId: string) => {
+    setCollapsed((prev) => {
+      const next = new Set(prev);
+      if (next.has(todoId)) next.delete(todoId);
+      else next.add(todoId);
+      return next;
+    });
+  };
+
   const isOverdue = (due: string | null) => {
     if (!due) return false;
     return new Date(due) < new Date(new Date().toDateString());
@@ -191,9 +298,74 @@ function TodoPageInner() {
   if (filter === "has_priority") filteredTodos = filteredTodos.filter((t) => t.priority !== "normal");
   if (filter === "done") filteredTodos = filteredTodos.filter((t) => t.is_done);
 
-  const pinnedTodos = filteredTodos.filter((t) => t.is_pinned && !t.is_done);
-  const activeTodos = filteredTodos.filter((t) => !t.is_pinned && !t.is_done);
-  const doneTodos = filteredTodos.filter((t) => t.is_done);
+  // Build tree structure
+  const tree = buildTree(filteredTodos);
+
+  // Separate pinned/active/done at root level, then flatten with children
+  const pinnedRoots = tree.filter((t) => t.is_pinned && !t.is_done);
+  const activeRoots = tree.filter((t) => !t.is_pinned && !t.is_done);
+  const doneRoots = tree.filter((t) => t.is_done);
+
+  const pinnedFlat = flattenTree(pinnedRoots, collapsed);
+  const activeFlat = flattenTree(activeRoots, collapsed);
+  const doneFlat = flattenTree(doneRoots, collapsed);
+
+  // Count children for collapsed parents
+  const childCountMap = new Map<string, { total: number; done: number }>();
+  for (const todo of todos) {
+    if (todo.parent_id) {
+      const existing = childCountMap.get(todo.parent_id) || { total: 0, done: 0 };
+      existing.total++;
+      if (todo.is_done) existing.done++;
+      childCountMap.set(todo.parent_id, existing);
+    }
+  }
+
+  const renderTodoRow = ({ todo, depth }: { todo: TodoNode; depth: number }) => {
+    const hasChildren = todo.children.length > 0 || childCountMap.has(todo.id);
+    const isCollapsed = collapsed.has(todo.id);
+    const childCount = childCountMap.get(todo.id);
+
+    return (
+      <div key={todo.id}>
+        <TodoRow
+          todo={todo}
+          depth={depth}
+          isOverdue={isOverdue(todo.due)}
+          hasChildren={hasChildren}
+          isCollapsed={isCollapsed}
+          childCount={childCount}
+          onToggleCollapse={() => toggleCollapse(todo.id)}
+          onToggleDone={() => handleToggleDone(todo)}
+          onTogglePin={() => handleTogglePin(todo)}
+          onEdit={() => setEditingTodo(todo)}
+          onDelete={() => handleDeleteTodo(todo.id)}
+          onChangePriority={(p) => handleUpdateTodo(todo.id, { priority: p })}
+          onAddSubtask={depth < 2 ? () => { setAddingSubtaskFor(todo.id); setSubtaskTitle(""); } : undefined}
+        />
+        {/* Inline subtask input */}
+        {addingSubtaskFor === todo.id && (
+          <div
+            className="flex items-center gap-2 py-1.5 border-b border-border/30"
+            style={{ paddingLeft: `${(depth + 1) * 24 + 16}px` }}
+          >
+            <Plus size={12} className="text-text-muted shrink-0" />
+            <Input
+              autoFocus
+              placeholder="하위 Todo 추가..."
+              value={subtaskTitle}
+              onChange={(e) => setSubtaskTitle(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") handleCreateTodo(todo.id);
+                if (e.key === "Escape") { setAddingSubtaskFor(null); setSubtaskTitle(""); }
+              }}
+              className="h-7 border-0 bg-transparent px-0 text-sm focus:border-0"
+            />
+          </div>
+        )}
+      </div>
+    );
+  };
 
   return (
     <div className="flex h-full flex-col md:flex-row">
@@ -201,19 +373,34 @@ function TodoPageInner() {
       <div className="hidden md:block w-56 shrink-0 border-r border-border overflow-auto">
         <div className="p-3">
           <h2 className="mb-2 text-xs font-medium text-text-muted uppercase tracking-wider">목록</h2>
-          {lists.map((list) => (
-            <button
-              key={list.id}
-              onClick={() => setActiveListId(list.id)}
-              className={cn(
-                "mb-0.5 flex w-full items-center justify-between rounded-lg px-3 py-2 text-sm transition-colors",
-                activeListId === list.id
-                  ? "border-l-2 border-primary bg-surface-accent font-medium text-text-strong"
-                  : "text-text-secondary hover:bg-surface-accent/50"
-              )}
-            >
-              <span className="truncate">{list.name}</span>
-            </button>
+          {lists.map((list, index) => (
+            <div key={list.id} className="group/list relative">
+              <button
+                onClick={() => setActiveListId(list.id)}
+                className={cn(
+                  "mb-0.5 flex w-full items-center justify-between rounded-lg px-3 py-2 text-sm transition-colors",
+                  activeListId === list.id
+                    ? "border-l-2 border-primary bg-surface-accent font-medium text-text-strong"
+                    : "text-text-secondary hover:bg-surface-accent/50"
+                )}
+              >
+                <span className="truncate">{list.name}</span>
+                {/* Delete button (not for default list) */}
+                {index !== 0 && (
+                  <span
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      if (confirm(`"${list.name}" 목록을 삭제하시겠습니까?`)) {
+                        handleDeleteList(list.id);
+                      }
+                    }}
+                    className="ml-1 hidden text-text-muted hover:text-error group-hover/list:inline-block text-xs"
+                  >
+                    ×
+                  </span>
+                )}
+              </button>
+            </div>
           ))}
           {showNewList ? (
             <div className="mt-1 flex gap-1">
@@ -301,63 +488,30 @@ function TodoPageInner() {
           ) : (
             <div>
               {/* Pinned */}
-              {pinnedTodos.length > 0 && (
+              {pinnedFlat.length > 0 && (
                 <>
                   <div className="px-4 pt-3 pb-1 text-[10px] font-medium uppercase tracking-wider text-text-muted">
                     고정됨
                   </div>
-                  {pinnedTodos.map((todo) => (
-                    <TodoRow
-                      key={todo.id}
-                      todo={todo}
-                      isOverdue={isOverdue(todo.due)}
-                      onToggleDone={() => handleToggleDone(todo)}
-                      onTogglePin={() => handleTogglePin(todo)}
-                      onEdit={() => setEditingTodo(todo)}
-                      onDelete={() => handleDeleteTodo(todo.id)}
-                      onChangePriority={(p) => handleUpdateTodo(todo.id, { priority: p })}
-                    />
-                  ))}
+                  {pinnedFlat.map(renderTodoRow)}
                   <div className="mx-4"><Separator /></div>
                 </>
               )}
 
               {/* Active */}
-              {activeTodos.map((todo) => (
-                <TodoRow
-                  key={todo.id}
-                  todo={todo}
-                  isOverdue={isOverdue(todo.due)}
-                  onToggleDone={() => handleToggleDone(todo)}
-                  onTogglePin={() => handleTogglePin(todo)}
-                  onEdit={() => setEditingTodo(todo)}
-                  onDelete={() => handleDeleteTodo(todo.id)}
-                  onChangePriority={(p) => handleUpdateTodo(todo.id, { priority: p })}
-                />
-              ))}
+              {activeFlat.map(renderTodoRow)}
 
               {/* Done */}
-              {doneTodos.length > 0 && (
+              {doneFlat.length > 0 && (
                 <>
                   <div className="px-4 pt-4 pb-1 text-[10px] font-medium uppercase tracking-wider text-text-muted">
-                    완료됨 ({doneTodos.length})
+                    완료됨 ({doneFlat.length})
                   </div>
-                  {doneTodos.map((todo) => (
-                    <TodoRow
-                      key={todo.id}
-                      todo={todo}
-                      isOverdue={false}
-                      onToggleDone={() => handleToggleDone(todo)}
-                      onTogglePin={() => handleTogglePin(todo)}
-                      onEdit={() => setEditingTodo(todo)}
-                      onDelete={() => handleDeleteTodo(todo.id)}
-                      onChangePriority={(p) => handleUpdateTodo(todo.id, { priority: p })}
-                    />
-                  ))}
+                  {doneFlat.map(renderTodoRow)}
                 </>
               )}
 
-              {pinnedTodos.length === 0 && activeTodos.length === 0 && doneTodos.length === 0 && (
+              {pinnedFlat.length === 0 && activeFlat.length === 0 && doneFlat.length === 0 && (
                 <div className="flex flex-col items-center justify-center py-20 text-text-muted">
                   <p>Todo가 없습니다</p>
                   <p className="mt-1 text-sm">위 입력란에서 추가해 보세요</p>

@@ -58,6 +58,16 @@ func (uc *todoUseCase) DeleteList(ctx context.Context, userID, listID string) er
 	if err != nil {
 		return fmt.Errorf("list not found")
 	}
+
+	// Protect default list (first list by sort_order)
+	allLists, err := uc.lists.ListByUser(ctx, userID)
+	if err != nil {
+		return fmt.Errorf("list lookup: %w", err)
+	}
+	if len(allLists) > 0 && allLists[0].ID == listID {
+		return fmt.Errorf("cannot delete default list")
+	}
+
 	return uc.lists.Delete(ctx, listID)
 }
 

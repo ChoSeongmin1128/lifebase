@@ -374,7 +374,7 @@ function MonthView({
           </div>
         ))}
       </div>
-      <div className="grid flex-1 grid-cols-7 grid-rows-[repeat(auto-fill,minmax(0,1fr))]">
+      <div className="grid flex-1 grid-cols-7" style={{ gridTemplateRows: `repeat(${weeks.length}, 1fr)` }}>
         {weeks.map((weekDays, wi) =>
           weekDays.map((day, di) => {
             const isToday = day !== null && year === today.getFullYear() && month === today.getMonth() && day === today.getDate();
@@ -489,7 +489,7 @@ function WeekView({
           );
         })}
       </div>
-      <div className="flex flex-1 overflow-auto">
+      <div className="flex flex-1 min-h-0 overflow-auto">
         <div className="w-10 md:w-14 shrink-0">
           {hours.map((h) => (
             <div key={h} className="relative h-12">
