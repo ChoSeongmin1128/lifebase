@@ -340,7 +340,35 @@ function TodoPageInner() {
     const newIndex = allFlat.findIndex((f) => f.todo.id === over.id);
     if (oldIndex === -1 || newIndex === -1) return;
 
-    // Reorder and assign sequential sort_order
+    const activeItem = allFlat[oldIndex];
+    const overItem = allFlat[newIndex];
+
+    // Determine target parent based on drop position's depth
+    // - dropping onto a depth-0 item → becomes root (parent_id = null)
+    // - dropping onto a depth-1 item → same parent as that item
+    let newParentId: string | null = null;
+    if (overItem.depth === 1) {
+      newParentId = overItem.todo.parent_id;
+    } else if (overItem.depth === 0) {
+      // If active is a child and dropping right after a root that has children,
+      // check the item below: if it's depth-1 child of overItem, stay as child
+      if (newIndex < allFlat.length - 1) {
+        const nextItem = allFlat[newIndex + 1];
+        if (nextItem.depth === 1 && nextItem.todo.parent_id === overItem.todo.id && activeItem.depth === 1) {
+          newParentId = overItem.todo.id;
+        }
+      }
+    }
+
+    // Don't allow nesting beyond 2 levels (child can't become parent's parent)
+    // A root item dropped onto a child position: only if it has no children itself
+    if (newParentId && activeItem.todo.children && activeItem.todo.children.length > 0) {
+      newParentId = null; // Can't nest a parent under another parent
+    }
+
+    const parentChanged = (activeItem.todo.parent_id ?? null) !== newParentId;
+
+    // Reorder: compute new sort_order among siblings
     const sorted = allFlat.map((f) => f.todo);
     const [moved] = sorted.splice(oldIndex, 1);
     sorted.splice(newIndex, 0, moved);
@@ -348,17 +376,31 @@ function TodoPageInner() {
     // Optimistic UI update
     const updatedTodos = todos.map((t) => {
       const idx = sorted.findIndex((s) => s.id === t.id);
+      if (t.id === String(active.id)) {
+        return {
+          ...t,
+          sort_order: idx !== -1 ? idx : t.sort_order,
+          parent_id: newParentId,
+        };
+      }
       return idx !== -1 ? { ...t, sort_order: idx } : t;
     });
     setTodos(updatedTodos);
 
     // Persist to server
     try {
+      const body: Record<string, unknown> = { sort_order: newIndex };
+      if (parentChanged) {
+        // Send "" for root (Go *string nil = no change, "" = clear parent)
+        body.parent_id = newParentId ?? "";
+      }
       await api(`/todo/${active.id}`, {
         method: "PATCH",
-        body: { sort_order: newIndex },
+        body,
         token,
       });
+      // Reload to get consistent tree state
+      if (parentChanged) loadTodos();
     } catch (err) {
       console.error("Reorder failed:", err);
       loadTodos();

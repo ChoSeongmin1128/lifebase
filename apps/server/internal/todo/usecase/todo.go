@@ -165,7 +165,12 @@ func (uc *todoUseCase) UpdateTodo(ctx context.Context, userID, todoID string, in
 		todo.IsPinned = *input.IsPinned
 	}
 	if input.ParentID != nil {
-		todo.ParentID = input.ParentID
+		if *input.ParentID == "" {
+			// Empty string means "move to root"
+			todo.ParentID = nil
+		} else {
+			todo.ParentID = input.ParentID
+		}
 	}
 	if input.ListID != nil {
 		// Verify target list exists and belongs to user
