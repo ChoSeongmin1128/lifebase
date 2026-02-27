@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense } from "react";
+import { Suspense, useState } from "react";
 import { usePathname } from "next/navigation";
 import Image from "next/image";
 import {
@@ -11,6 +11,7 @@ import {
   Settings,
   LogOut,
   PanelLeft,
+  ChevronRight,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { SidebarItem } from "./SidebarItem";
@@ -32,6 +33,7 @@ interface SidebarProps {
 
 export function Sidebar({ expanded, onToggle, onLogout }: SidebarProps) {
   const pathname = usePathname();
+  const [cloudSubnavOpen, setCloudSubnavOpen] = useState(false);
 
   return (
     <aside
@@ -63,6 +65,7 @@ export function Sidebar({ expanded, onToggle, onLogout }: SidebarProps) {
       <nav className="flex-1 py-2 space-y-0.5">
         {NAV_ITEMS.map(({ href, label, icon: Icon }) => {
           const isActive = pathname.startsWith(href);
+          const isCloudItem = href === "/cloud";
           return (
             <div key={href}>
               <SidebarItem
@@ -71,8 +74,27 @@ export function Sidebar({ expanded, onToggle, onLogout }: SidebarProps) {
                 icon={<Icon size={18} />}
                 isActive={isActive}
                 expanded={expanded}
+                onClick={isCloudItem ? (event) => {
+                  if (isActive) {
+                    event.preventDefault();
+                    setCloudSubnavOpen((prev) => !prev);
+                  } else {
+                    setCloudSubnavOpen(false);
+                  }
+                } : () => {
+                  setCloudSubnavOpen(false);
+                }}
+                endIcon={isCloudItem ? (
+                  <ChevronRight
+                    size={14}
+                    className={cn(
+                      "transition-transform duration-200",
+                      cloudSubnavOpen && isActive ? "rotate-90" : ""
+                    )}
+                  />
+                ) : undefined}
               />
-              {href === "/cloud" && isActive && expanded && (
+              {isCloudItem && isActive && expanded && cloudSubnavOpen && (
                 <Suspense fallback={null}>
                   <CloudSubnav />
                 </Suspense>

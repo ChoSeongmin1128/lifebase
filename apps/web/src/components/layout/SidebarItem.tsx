@@ -9,12 +9,15 @@ interface SidebarItemProps {
   icon: React.ReactNode;
   isActive: boolean;
   expanded: boolean;
+  onClick?: React.MouseEventHandler<HTMLAnchorElement>;
+  endIcon?: React.ReactNode;
 }
 
-export function SidebarItem({ href, label, icon, isActive, expanded }: SidebarItemProps) {
+export function SidebarItem({ href, label, icon, isActive, expanded, onClick, endIcon }: SidebarItemProps) {
   return (
     <Link
       href={href}
+      onClick={onClick}
       className={cn(
         "flex items-center gap-3 mx-1.5 px-2.5 py-2 rounded-lg text-sm transition-colors",
         isActive
@@ -31,6 +34,7 @@ export function SidebarItem({ href, label, icon, isActive, expanded }: SidebarIt
       >
         {label}
       </span>
+      {expanded && endIcon ? <span className="ml-auto shrink-0">{endIcon}</span> : null}
     </Link>
   );
 }

@@ -4,22 +4,24 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { File, Clock, Users, Star, Trash2 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { CLOUD_SECTION_ITEMS, parseCloudSection } from "@/lib/cloud-sections";
 
-const SUBNAV_ITEMS = [
-  { section: "", label: "내 파일", icon: File },
-  { section: "recent", label: "최근", icon: Clock },
-  { section: "shared", label: "공유됨", icon: Users },
-  { section: "starred", label: "중요", icon: Star },
-  { section: "trash", label: "휴지통", icon: Trash2 },
-] as const;
+const ICONS = {
+  "": File,
+  recent: Clock,
+  shared: Users,
+  starred: Star,
+  trash: Trash2,
+} as const;
 
 export function CloudSubnav() {
   const searchParams = useSearchParams();
-  const currentSection = searchParams.get("section") || "";
+  const currentSection = parseCloudSection(searchParams.get("section"));
 
   return (
     <div className="ml-8 mr-1.5 space-y-0.5 pb-1">
-      {SUBNAV_ITEMS.map(({ section, label, icon: Icon }) => {
+      {CLOUD_SECTION_ITEMS.map(({ section, label }) => {
+        const Icon = ICONS[section];
         const isActive = currentSection === section;
         const href = section ? `/cloud?section=${section}` : "/cloud";
         return (

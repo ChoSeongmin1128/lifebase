@@ -369,7 +369,7 @@ function MonthView({
   });
 
   // For each week, compute spanning bar segments
-  function getWeekSpanBars(weekDays: (number | null)[], weekIdx: number) {
+  function getWeekSpanBars(weekDays: (number | null)[]) {
     const bars: { event: EventData; startCol: number; endCol: number; lane: number }[] = [];
     const lanes: string[][] = []; // each lane tracks which event IDs occupy it
 
@@ -449,7 +449,7 @@ function MonthView({
       </div>
       <div className="grid flex-1 grid-cols-7" style={{ gridTemplateRows: `repeat(${weeks.length}, 1fr)` }}>
         {weeks.map((weekDays, wi) => {
-          const spanBars = getWeekSpanBars(weekDays, wi);
+          const spanBars = getWeekSpanBars(weekDays);
           const spanBarHeight = Math.max(spanBars.length > 0 ? (Math.max(...spanBars.map((b) => b.lane)) + 1) * 18 : 0, 0);
 
           return weekDays.map((day, di) => {
