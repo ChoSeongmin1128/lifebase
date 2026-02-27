@@ -27,7 +27,6 @@ import {
   type DragMoveEvent,
   type DragOverEvent,
   type DragEndEvent,
-  type DragCancelEvent,
   PointerSensor,
   useSensor,
   useSensors,
@@ -41,7 +40,6 @@ import {
   getProjection,
   computeReorderChanges,
   type TodoItem,
-  type TodoNode,
   type FlattenedItem,
 } from "@/lib/todo/dnd-tree";
 
@@ -61,10 +59,14 @@ function TodoPageInner() {
 
   const setActiveListId = useCallback((id: string) => {
     setActiveListIdState(id);
-    if (id) {
-      router.replace(`/todo?list=${id}`, { scroll: false });
+  }, []);
+
+  useEffect(() => {
+    if (!activeListId) return;
+    if (listFromUrl !== activeListId) {
+      router.replace(`/todo?list=${activeListId}`, { scroll: false });
     }
-  }, [router]);
+  }, [activeListId, listFromUrl, router]);
 
   const [todos, setTodos] = useState<TodoItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -112,16 +114,14 @@ function TodoPageInner() {
       setLists(fetchedLists);
       setActiveListIdState((prev) => {
         if (!prev && fetchedLists.length > 0) {
-          const firstId = fetchedLists[0].id;
-          router.replace(`/todo?list=${firstId}`, { scroll: false });
-          return firstId;
+          return fetchedLists[0].id;
         }
         return prev;
       });
     } catch {
       setLists([]);
     }
-  }, [token, setActiveListId, router]);
+  }, [token, setActiveListId]);
 
   const loadTodos = useCallback(async () => {
     if (!token || !activeListId) return;
@@ -365,7 +365,7 @@ function TodoPageInner() {
     }
   }, [token, allFlat, todos, loadTodos]);
 
-  const handleDragCancel = useCallback((_event: DragCancelEvent) => {
+  const handleDragCancel = useCallback(() => {
     setDragActiveId(null);
     setDragOverId(null);
     setOffsetLeft(0);
