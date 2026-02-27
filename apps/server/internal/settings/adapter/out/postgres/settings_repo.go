@@ -5,6 +5,8 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+
+	"lifebase/internal/settings/domain"
 )
 
 type SettingsRepo struct {
@@ -15,16 +17,7 @@ func NewSettingsRepo(db *pgxpool.Pool) *SettingsRepo {
 	return &SettingsRepo{db: db}
 }
 
-func (r *SettingsRepo) Get(ctx context.Context, userID, key string) (string, error) {
-	var value string
-	err := r.db.QueryRow(ctx,
-		`SELECT value FROM user_settings WHERE user_id = $1 AND key = $2`,
-		userID, key,
-	).Scan(&value)
-	return value, err
-}
-
-func (r *SettingsRepo) GetAll(ctx context.Context, userID string) (map[string]string, error) {
+func (r *SettingsRepo) ListByUser(ctx context.Context, userID string) ([]domain.Setting, error) {
 	rows, err := r.db.Query(ctx,
 		`SELECT key, value FROM user_settings WHERE user_id = $1`, userID)
 	if err != nil {
@@ -32,13 +25,17 @@ func (r *SettingsRepo) GetAll(ctx context.Context, userID string) (map[string]st
 	}
 	defer rows.Close()
 
-	settings := make(map[string]string)
+	settings := make([]domain.Setting, 0)
 	for rows.Next() {
 		var k, v string
 		if err := rows.Scan(&k, &v); err != nil {
 			return nil, err
 		}
-		settings[k] = v
+		settings = append(settings, domain.Setting{
+			UserID: userID,
+			Key:    k,
+			Value:  v,
+		})
 	}
 	return settings, nil
 }
@@ -48,14 +45,6 @@ func (r *SettingsRepo) Set(ctx context.Context, userID, key, value string) error
 		`INSERT INTO user_settings (user_id, key, value, updated_at) VALUES ($1, $2, $3, $4)
 		 ON CONFLICT (user_id, key) DO UPDATE SET value = $3, updated_at = $4`,
 		userID, key, value, time.Now(),
-	)
-	return err
-}
-
-func (r *SettingsRepo) Delete(ctx context.Context, userID, key string) error {
-	_, err := r.db.Exec(ctx,
-		`DELETE FROM user_settings WHERE user_id = $1 AND key = $2`,
-		userID, key,
 	)
 	return err
 }

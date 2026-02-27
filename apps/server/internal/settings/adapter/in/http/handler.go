@@ -4,23 +4,23 @@ import (
 	"encoding/json"
 	"net/http"
 
-	settingspg "lifebase/internal/settings/adapter/out/postgres"
+	portin "lifebase/internal/settings/port/in"
 	"lifebase/internal/shared/middleware"
 	"lifebase/internal/shared/response"
 )
 
 type SettingsHandler struct {
-	repo *settingspg.SettingsRepo
+	settings portin.SettingsUseCase
 }
 
-func NewSettingsHandler(repo *settingspg.SettingsRepo) *SettingsHandler {
-	return &SettingsHandler{repo: repo}
+func NewSettingsHandler(settings portin.SettingsUseCase) *SettingsHandler {
+	return &SettingsHandler{settings: settings}
 }
 
 func (h *SettingsHandler) GetAll(w http.ResponseWriter, r *http.Request) {
 	userID := middleware.GetUserID(r.Context())
 
-	settings, err := h.repo.GetAll(r.Context(), userID)
+	settings, err := h.settings.GetAll(r.Context(), userID)
 	if err != nil {
 		response.Error(w, http.StatusInternalServerError, "GET_FAILED", err.Error())
 		return
@@ -36,11 +36,9 @@ func (h *SettingsHandler) Update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	for key, value := range req {
-		if err := h.repo.Set(r.Context(), userID, key, value); err != nil {
-			response.Error(w, http.StatusInternalServerError, "UPDATE_FAILED", err.Error())
-			return
-		}
+	if err := h.settings.Update(r.Context(), userID, req); err != nil {
+		response.Error(w, http.StatusInternalServerError, "UPDATE_FAILED", err.Error())
+		return
 	}
 	response.NoContent(w)
 }

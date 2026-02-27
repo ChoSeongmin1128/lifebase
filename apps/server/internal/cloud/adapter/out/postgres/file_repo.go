@@ -69,6 +69,23 @@ func (r *fileRepo) ListByFolder(ctx context.Context, userID string, folderID *st
 	return scanFiles(rows)
 }
 
+func (r *fileRepo) ListRecent(ctx context.Context, userID string, limit int) ([]*domain.File, error) {
+	if limit <= 0 {
+		limit = 50
+	}
+	rows, err := r.db.Query(ctx,
+		`SELECT id, user_id, folder_id, name, mime_type, size_bytes, storage_path, thumb_status, taken_at, created_at, updated_at, deleted_at
+		 FROM files WHERE user_id = $1 AND deleted_at IS NULL
+		 ORDER BY updated_at DESC
+		 LIMIT $2`, userID, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	return scanFiles(rows)
+}
+
 func (r *fileRepo) Update(ctx context.Context, file *domain.File) error {
 	_, err := r.db.Exec(ctx,
 		`UPDATE files SET folder_id = $2, name = $3, updated_at = $4 WHERE id = $1`,
@@ -83,6 +100,19 @@ func (r *fileRepo) SoftDelete(ctx context.Context, userID, id string) error {
 		id, userID, time.Now(),
 	)
 	return err
+}
+
+func (r *fileRepo) FindTrashedByID(ctx context.Context, userID, id string) (*domain.File, error) {
+	var f domain.File
+	err := r.db.QueryRow(ctx,
+		`SELECT id, user_id, folder_id, name, mime_type, size_bytes, storage_path, thumb_status, taken_at, created_at, updated_at, deleted_at
+		 FROM files WHERE id = $1 AND user_id = $2 AND deleted_at IS NOT NULL`, id, userID,
+	).Scan(&f.ID, &f.UserID, &f.FolderID, &f.Name, &f.MimeType, &f.SizeBytes,
+		&f.StoragePath, &f.ThumbStatus, &f.TakenAt, &f.CreatedAt, &f.UpdatedAt, &f.DeletedAt)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, fmt.Errorf("file not found")
+	}
+	return &f, err
 }
 
 func (r *fileRepo) Restore(ctx context.Context, userID, id string) error {
@@ -117,6 +147,23 @@ func (r *fileRepo) UpdateStorageUsed(ctx context.Context, userID string, delta i
 		userID, delta, time.Now(),
 	)
 	return err
+}
+
+func (r *fileRepo) ExistsByName(ctx context.Context, userID string, folderID *string, name string) (bool, error) {
+	var count int
+	var err error
+	if folderID == nil {
+		err = r.db.QueryRow(ctx,
+			`SELECT COUNT(*) FROM files WHERE user_id = $1 AND folder_id IS NULL AND name = $2 AND deleted_at IS NULL`,
+			userID, name,
+		).Scan(&count)
+	} else {
+		err = r.db.QueryRow(ctx,
+			`SELECT COUNT(*) FROM files WHERE user_id = $1 AND folder_id = $2 AND name = $3 AND deleted_at IS NULL`,
+			userID, *folderID, name,
+		).Scan(&count)
+	}
+	return count > 0, err
 }
 
 func (r *fileRepo) Search(ctx context.Context, userID, query string, limit int) ([]*domain.File, error) {

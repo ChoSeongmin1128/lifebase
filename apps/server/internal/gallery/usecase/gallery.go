@@ -3,7 +3,7 @@ package usecase
 import (
 	"context"
 
-	"lifebase/internal/cloud/domain"
+	"lifebase/internal/gallery/domain"
 	portin "lifebase/internal/gallery/port/in"
 	portout "lifebase/internal/gallery/port/out"
 )
@@ -16,7 +16,7 @@ func NewGalleryUseCase(media portout.MediaRepository) portin.GalleryUseCase {
 	return &galleryUseCase{media: media}
 }
 
-func (uc *galleryUseCase) ListMedia(ctx context.Context, userID string, mediaType string, sortBy string, sortDir string, cursor string, limit int) ([]*domain.File, string, error) {
+func (uc *galleryUseCase) ListMedia(ctx context.Context, userID string, mediaType string, sortBy string, sortDir string, cursor string, limit int) ([]*domain.Media, string, error) {
 	if limit <= 0 || limit > 100 {
 		limit = 50
 	}

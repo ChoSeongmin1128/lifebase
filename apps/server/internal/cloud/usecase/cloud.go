@@ -3,34 +3,39 @@ package usecase
 import (
 	"context"
 	"fmt"
-	"log/slog"
+	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/hibiken/asynq"
 
 	"lifebase/internal/cloud/domain"
 	portin "lifebase/internal/cloud/port/in"
 	portout "lifebase/internal/cloud/port/out"
-	"lifebase/internal/worker"
 )
 
 type cloudUseCase struct {
 	folders portout.FolderRepository
 	files   portout.FileRepository
+	shared  portout.SharedRepository
+	stars   portout.StarRepository
 	storage portout.FileStorage
-	queue   *asynq.Client
+	queue   portout.ThumbnailQueue
 }
 
 func NewCloudUseCase(
 	folders portout.FolderRepository,
 	files portout.FileRepository,
+	shared portout.SharedRepository,
+	stars portout.StarRepository,
 	storage portout.FileStorage,
-	queue *asynq.Client,
+	queue portout.ThumbnailQueue,
 ) portin.CloudUseCase {
 	return &cloudUseCase{
 		folders: folders,
 		files:   files,
+		shared:  shared,
+		stars:   stars,
 		storage: storage,
 		queue:   queue,
 	}
@@ -124,6 +129,33 @@ func (uc *cloudUseCase) DeleteFolder(ctx context.Context, userID, folderID strin
 
 // Files
 
+// resolveFileName returns a unique name within the folder using Google Drive style:
+// "file.txt" → "file (1).txt" → "file (2).txt" → ...
+func (uc *cloudUseCase) resolveFileName(ctx context.Context, userID string, folderID *string, name string) (string, error) {
+	exists, err := uc.files.ExistsByName(ctx, userID, folderID, name)
+	if err != nil {
+		return "", err
+	}
+	if !exists {
+		return name, nil
+	}
+
+	ext := filepath.Ext(name)
+	stem := strings.TrimSuffix(name, ext)
+
+	for i := 1; i <= 10000; i++ {
+		candidate := fmt.Sprintf("%s (%d)%s", stem, i, ext)
+		exists, err := uc.files.ExistsByName(ctx, userID, folderID, candidate)
+		if err != nil {
+			return "", err
+		}
+		if !exists {
+			return candidate, nil
+		}
+	}
+	return "", fmt.Errorf("could not resolve unique filename for %q", name)
+}
+
 func (uc *cloudUseCase) UploadFile(ctx context.Context, userID string, folderID *string, name string, mimeType string, size int64, data []byte) (*domain.File, error) {
 	if folderID != nil {
 		folder, err := uc.folders.FindByID(ctx, userID, *folderID)
@@ -131,6 +163,12 @@ func (uc *cloudUseCase) UploadFile(ctx context.Context, userID string, folderID 
 			return nil, fmt.Errorf("folder not found")
 		}
 	}
+
+	resolvedName, err := uc.resolveFileName(ctx, userID, folderID, name)
+	if err != nil {
+		return nil, fmt.Errorf("resolve filename: %w", err)
+	}
+	name = resolvedName
 
 	fileID := uuid.New().String()
 	storagePath, err := uc.storage.Save(userID, fileID, data)
@@ -163,12 +201,12 @@ func (uc *cloudUseCase) UploadFile(ctx context.Context, userID string, folderID 
 
 	// Enqueue thumbnail generation
 	if uc.queue != nil {
-		task, err := worker.NewThumbnailTask(fileID, userID, storagePath, mimeType)
-		if err == nil {
-			if _, err := uc.queue.Enqueue(task, asynq.Queue("thumbnails")); err != nil {
-				slog.Warn("failed to enqueue thumbnail task", "file_id", fileID, "error", err)
-			}
-		}
+		_ = uc.queue.EnqueueThumbnail(ctx, portout.ThumbnailTask{
+			FileID:      fileID,
+			UserID:      userID,
+			StoragePath: storagePath,
+			MimeType:    mimeType,
+		})
 	}
 
 	return file, nil
@@ -252,6 +290,21 @@ func (uc *cloudUseCase) RestoreItem(ctx context.Context, userID, itemID, itemTyp
 	case "folder":
 		return uc.folders.Restore(ctx, userID, itemID)
 	case "file":
+		file, err := uc.files.FindTrashedByID(ctx, userID, itemID)
+		if err != nil {
+			return fmt.Errorf("file not found in trash")
+		}
+		resolvedName, err := uc.resolveFileName(ctx, userID, file.FolderID, file.Name)
+		if err != nil {
+			return fmt.Errorf("resolve filename: %w", err)
+		}
+		if resolvedName != file.Name {
+			file.Name = resolvedName
+			file.UpdatedAt = time.Now()
+			if err := uc.files.Update(ctx, file); err != nil {
+				return fmt.Errorf("rename on restore: %w", err)
+			}
+		}
 		return uc.files.Restore(ctx, userID, itemID)
 	default:
 		return fmt.Errorf("invalid item type: %s", itemType)
@@ -281,8 +334,108 @@ func (uc *cloudUseCase) EmptyTrash(ctx context.Context, userID string) error {
 	return nil
 }
 
+// Views
+
+func (uc *cloudUseCase) ListRecent(ctx context.Context, userID string) ([]portin.FolderItem, error) {
+	files, err := uc.files.ListRecent(ctx, userID, 100)
+	if err != nil {
+		return nil, err
+	}
+	return toFileItems(files), nil
+}
+
+func (uc *cloudUseCase) ListShared(ctx context.Context, userID string) ([]portin.FolderItem, error) {
+	folders, err := uc.shared.ListSharedFolders(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+	return toFolderItems(folders), nil
+}
+
+func (uc *cloudUseCase) ListStarred(ctx context.Context, userID string) ([]portin.FolderItem, error) {
+	refs, err := uc.stars.List(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+
+	items := make([]portin.FolderItem, 0, len(refs))
+	for _, ref := range refs {
+		switch ref.ItemType {
+		case "folder":
+			folder, err := uc.folders.FindByID(ctx, userID, ref.ItemID)
+			if err == nil && folder != nil {
+				items = append(items, portin.FolderItem{Type: "folder", Folder: folder})
+			}
+		case "file":
+			file, err := uc.files.FindByID(ctx, userID, ref.ItemID)
+			if err == nil && file != nil {
+				items = append(items, portin.FolderItem{Type: "file", File: file})
+			}
+		}
+	}
+	return items, nil
+}
+
+// Stars
+
+func (uc *cloudUseCase) ListStars(ctx context.Context, userID string) ([]portin.StarItem, error) {
+	refs, err := uc.stars.List(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]portin.StarItem, 0, len(refs))
+	for _, ref := range refs {
+		out = append(out, portin.StarItem{
+			ID:   ref.ItemID,
+			Type: ref.ItemType,
+		})
+	}
+	return out, nil
+}
+
+func (uc *cloudUseCase) StarItem(ctx context.Context, userID, itemID, itemType string) error {
+	switch itemType {
+	case "folder":
+		folder, err := uc.folders.FindByID(ctx, userID, itemID)
+		if err != nil || folder == nil {
+			return fmt.Errorf("folder not found")
+		}
+	case "file":
+		file, err := uc.files.FindByID(ctx, userID, itemID)
+		if err != nil || file == nil {
+			return fmt.Errorf("file not found")
+		}
+	default:
+		return fmt.Errorf("invalid item type: %s", itemType)
+	}
+	return uc.stars.Set(ctx, userID, itemID, itemType)
+}
+
+func (uc *cloudUseCase) UnstarItem(ctx context.Context, userID, itemID, itemType string) error {
+	if itemType != "folder" && itemType != "file" {
+		return fmt.Errorf("invalid item type: %s", itemType)
+	}
+	return uc.stars.Unset(ctx, userID, itemID, itemType)
+}
+
 // Search
 
 func (uc *cloudUseCase) Search(ctx context.Context, userID, query string) ([]*domain.File, error) {
 	return uc.files.Search(ctx, userID, query, 50)
+}
+
+func toFolderItems(folders []*domain.Folder) []portin.FolderItem {
+	items := make([]portin.FolderItem, 0, len(folders))
+	for _, f := range folders {
+		items = append(items, portin.FolderItem{Type: "folder", Folder: f})
+	}
+	return items
+}
+
+func toFileItems(files []*domain.File) []portin.FolderItem {
+	items := make([]portin.FolderItem, 0, len(files))
+	for _, f := range files {
+		items = append(items, portin.FolderItem{Type: "file", File: f})
+	}
+	return items
 }

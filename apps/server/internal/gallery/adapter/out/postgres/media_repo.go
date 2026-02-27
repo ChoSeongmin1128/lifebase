@@ -7,7 +7,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"lifebase/internal/cloud/domain"
+	"lifebase/internal/gallery/domain"
 )
 
 type mediaRepo struct {
@@ -18,7 +18,7 @@ func NewMediaRepo(db *pgxpool.Pool) *mediaRepo {
 	return &mediaRepo{db: db}
 }
 
-func (r *mediaRepo) ListMedia(ctx context.Context, userID string, mimePrefix string, sortBy string, sortDir string, cursor string, limit int) ([]*domain.File, error) {
+func (r *mediaRepo) ListMedia(ctx context.Context, userID string, mimePrefix string, sortBy string, sortDir string, cursor string, limit int) ([]*domain.Media, error) {
 	column := "created_at"
 	switch sortBy {
 	case "taken_at":
@@ -76,10 +76,10 @@ func (r *mediaRepo) ListMedia(ctx context.Context, userID string, mimePrefix str
 	return scanFiles(rows)
 }
 
-func scanFiles(rows pgx.Rows) ([]*domain.File, error) {
-	var files []*domain.File
+func scanFiles(rows pgx.Rows) ([]*domain.Media, error) {
+	var files []*domain.Media
 	for rows.Next() {
-		var f domain.File
+		var f domain.Media
 		if err := rows.Scan(&f.ID, &f.UserID, &f.FolderID, &f.Name, &f.MimeType, &f.SizeBytes,
 			&f.StoragePath, &f.ThumbStatus, &f.TakenAt, &f.CreatedAt, &f.UpdatedAt, &f.DeletedAt); err != nil {
 			return nil, err

@@ -3,6 +3,7 @@ package usecase
 import (
 	"context"
 	"fmt"
+	"sort"
 	"testing"
 
 	"lifebase/internal/todo/domain"
@@ -39,6 +40,12 @@ func (m *mockListRepo) ListByUser(_ context.Context, userID string) ([]*domain.T
 			result = append(result, l)
 		}
 	}
+	sort.Slice(result, func(i, j int) bool {
+		if result[i].SortOrder == result[j].SortOrder {
+			return result[i].Name < result[j].Name
+		}
+		return result[i].SortOrder < result[j].SortOrder
+	})
 	return result, nil
 }
 
@@ -108,6 +115,57 @@ func (m *mockTodoRepo) CountPinned(_ context.Context, userID, listID string) (in
 		}
 	}
 	return count, nil
+}
+
+func (m *mockTodoRepo) FindChildrenByParentID(_ context.Context, userID, parentID string) ([]*domain.Todo, error) {
+	var result []*domain.Todo
+	for _, t := range m.todos {
+		if t.UserID == userID && t.ParentID != nil && *t.ParentID == parentID {
+			result = append(result, t)
+		}
+	}
+	return result, nil
+}
+
+func (m *mockTodoRepo) SoftDeleteByParentID(_ context.Context, userID, parentID string) error {
+	for id, t := range m.todos {
+		if t.UserID == userID && t.ParentID != nil && *t.ParentID == parentID {
+			delete(m.todos, id)
+		}
+	}
+	return nil
+}
+
+func (m *mockTodoRepo) UpdateBatch(_ context.Context, todos []*domain.Todo) error {
+	for _, t := range todos {
+		existing, ok := m.todos[t.ID]
+		if !ok {
+			continue
+		}
+		existing.ParentID = t.ParentID
+		existing.SortOrder = t.SortOrder
+		existing.UpdatedAt = t.UpdatedAt
+	}
+	return nil
+}
+
+func (m *mockTodoRepo) NextSortOrder(_ context.Context, userID, listID string, parentID *string) (int, error) {
+	max := -1
+	for _, t := range m.todos {
+		if t.UserID != userID || t.ListID != listID {
+			continue
+		}
+		if parentID == nil && t.ParentID != nil {
+			continue
+		}
+		if parentID != nil && (t.ParentID == nil || *t.ParentID != *parentID) {
+			continue
+		}
+		if t.SortOrder > max {
+			max = t.SortOrder
+		}
+	}
+	return max + 1, nil
 }
 
 // Tests
@@ -242,6 +300,10 @@ func TestCreateList_And_Delete(t *testing.T) {
 	uc := NewTodoUseCase(listRepo, todoRepo)
 
 	ctx := context.Background()
+	_, err := uc.CreateList(ctx, "user1", "Default")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
 	list, err := uc.CreateList(ctx, "user1", "Shopping")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -251,8 +313,8 @@ func TestCreateList_And_Delete(t *testing.T) {
 	}
 
 	lists, _ := uc.ListLists(ctx, "user1")
-	if len(lists) != 1 {
-		t.Errorf("expected 1 list, got %d", len(lists))
+	if len(lists) != 2 {
+		t.Errorf("expected 2 lists, got %d", len(lists))
 	}
 
 	err = uc.DeleteList(ctx, "user1", list.ID)
@@ -261,7 +323,7 @@ func TestCreateList_And_Delete(t *testing.T) {
 	}
 
 	lists, _ = uc.ListLists(ctx, "user1")
-	if len(lists) != 0 {
-		t.Errorf("expected 0 lists after delete, got %d", len(lists))
+	if len(lists) != 1 {
+		t.Errorf("expected 1 list after delete, got %d", len(lists))
 	}
 }

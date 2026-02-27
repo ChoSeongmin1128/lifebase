@@ -12,6 +12,11 @@ type FolderItem struct {
 	File   *domain.File   `json:"file,omitempty"`
 }
 
+type StarItem struct {
+	ID   string `json:"id"`
+	Type string `json:"type"`
+}
+
 type CloudUseCase interface {
 	// Folders
 	CreateFolder(ctx context.Context, userID string, parentID *string, name string) (*domain.Folder, error)
@@ -33,6 +38,16 @@ type CloudUseCase interface {
 	ListTrash(ctx context.Context, userID string) ([]FolderItem, error)
 	RestoreItem(ctx context.Context, userID, itemID, itemType string) error
 	EmptyTrash(ctx context.Context, userID string) error
+
+	// Views
+	ListRecent(ctx context.Context, userID string) ([]FolderItem, error)
+	ListShared(ctx context.Context, userID string) ([]FolderItem, error)
+	ListStarred(ctx context.Context, userID string) ([]FolderItem, error)
+
+	// Stars
+	ListStars(ctx context.Context, userID string) ([]StarItem, error)
+	StarItem(ctx context.Context, userID, itemID, itemType string) error
+	UnstarItem(ctx context.Context, userID, itemID, itemType string) error
 
 	// Search
 	Search(ctx context.Context, userID, query string) ([]*domain.File, error)

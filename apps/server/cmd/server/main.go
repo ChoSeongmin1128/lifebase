@@ -16,12 +16,15 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	authhttp "lifebase/internal/auth/adapter/in/http"
+	authbootstrap "lifebase/internal/auth/adapter/out/bootstrap"
+	authgoogle "lifebase/internal/auth/adapter/out/google"
 	authpg "lifebase/internal/auth/adapter/out/postgres"
 	authusecase "lifebase/internal/auth/usecase"
 	calendarhttp "lifebase/internal/calendar/adapter/in/http"
 	calendarpg "lifebase/internal/calendar/adapter/out/postgres"
 	calendarusecase "lifebase/internal/calendar/usecase"
 	cloudhttp "lifebase/internal/cloud/adapter/in/http"
+	cloudasynq "lifebase/internal/cloud/adapter/out/asynq"
 	"lifebase/internal/cloud/adapter/out/filesystem"
 	cloudpg "lifebase/internal/cloud/adapter/out/postgres"
 	cloudusecase "lifebase/internal/cloud/usecase"
@@ -30,15 +33,16 @@ import (
 	galleryusecase "lifebase/internal/gallery/usecase"
 	settingshttp "lifebase/internal/settings/adapter/in/http"
 	settingspg "lifebase/internal/settings/adapter/out/postgres"
+	settingsusecase "lifebase/internal/settings/usecase"
+	"lifebase/internal/shared/config"
+	"lifebase/internal/shared/middleware"
+	"lifebase/internal/shared/response"
 	sharinghttp "lifebase/internal/sharing/adapter/in/http"
 	sharingpg "lifebase/internal/sharing/adapter/out/postgres"
 	sharingusecase "lifebase/internal/sharing/usecase"
 	todohttp "lifebase/internal/todo/adapter/in/http"
 	todopg "lifebase/internal/todo/adapter/out/postgres"
 	todousecase "lifebase/internal/todo/usecase"
-	"lifebase/internal/shared/config"
-	"lifebase/internal/shared/middleware"
-	"lifebase/internal/shared/response"
 	"lifebase/internal/worker"
 )
 
@@ -69,6 +73,8 @@ func main() {
 	refreshTokenRepo := authpg.NewRefreshTokenRepo(dbpool)
 	folderRepo := cloudpg.NewFolderRepo(dbpool)
 	fileRepo := cloudpg.NewFileRepo(dbpool)
+	cloudSharedRepo := cloudpg.NewSharedRepo(dbpool)
+	starRepo := cloudpg.NewStarRepo(dbpool)
 
 	// Storage
 	storage := filesystem.NewLocalStorage(cfg.Storage.DataPath)
@@ -100,20 +106,34 @@ func main() {
 	inviteRepo := sharingpg.NewInviteRepo(dbpool)
 
 	// Use Cases
-	authUC := authusecase.NewAuthUseCase(cfg, userRepo, googleAccountRepo, refreshTokenRepo, todoListRepo)
-	cloudUC := cloudusecase.NewCloudUseCase(folderRepo, fileRepo, storage, asynqClient)
+	authOAuthClient := authgoogle.NewOAuthClient(cfg.Google.ClientID, cfg.Google.ClientSecret, cfg.Server.WebOrigin+"/auth/callback")
+	authBootstrapper := authbootstrap.NewTodoBootstrapper(todoListRepo)
+	authUC := authusecase.NewAuthUseCase(
+		authusecase.JWTOptions{
+			Secret:        cfg.JWT.Secret,
+			AccessExpiry:  cfg.JWT.AccessExpiry,
+			RefreshExpiry: cfg.JWT.RefreshExpiry,
+		},
+		userRepo,
+		googleAccountRepo,
+		refreshTokenRepo,
+		authOAuthClient,
+		authBootstrapper,
+	)
+	thumbnailQueue := cloudasynq.NewThumbnailQueue(asynqClient)
+	cloudUC := cloudusecase.NewCloudUseCase(folderRepo, fileRepo, cloudSharedRepo, starRepo, storage, thumbnailQueue)
 	galleryUC := galleryusecase.NewGalleryUseCase(mediaRepo)
 	calendarUC := calendarusecase.NewCalendarUseCase(calendarRepo, eventRepo, reminderRepo)
 	todoUC := todousecase.NewTodoUseCase(todoListRepo, todoItemRepo)
 	sharingUC := sharingusecase.NewSharingUseCase(shareRepo, inviteRepo)
+	settingsUC := settingsusecase.NewSettingsUseCase(settingspg.NewSettingsRepo(dbpool))
 
 	// Handlers
 	authHandler := authhttp.NewAuthHandler(authUC)
 	cloudHandler := cloudhttp.NewCloudHandler(cloudUC)
 	galleryHandler := galleryhttp.NewGalleryHandler(galleryUC, cfg.Storage.ThumbPath)
 	calendarHandler := calendarhttp.NewCalendarHandler(calendarUC)
-	settingsRepoInst := settingspg.NewSettingsRepo(dbpool)
-	settingsHandler := settingshttp.NewSettingsHandler(settingsRepoInst)
+	settingsHandler := settingshttp.NewSettingsHandler(settingsUC)
 	todoHandler := todohttp.NewTodoHandler(todoUC)
 	sharingHandler := sharinghttp.NewSharingHandler(sharingUC)
 
@@ -186,6 +206,16 @@ func main() {
 				r.Get("/trash", cloudHandler.ListTrash)
 				r.Post("/trash/restore", cloudHandler.RestoreItem)
 				r.Delete("/trash", cloudHandler.EmptyTrash)
+
+				// Views
+				r.Get("/recent", cloudHandler.ListRecent)
+				r.Get("/shared", cloudHandler.ListShared)
+				r.Get("/starred", cloudHandler.ListStarred)
+
+				// Stars
+				r.Get("/stars", cloudHandler.ListStars)
+				r.Post("/stars", cloudHandler.StarItem)
+				r.Delete("/stars", cloudHandler.UnstarItem)
 
 				// Search
 				r.Get("/search", cloudHandler.SearchFiles)

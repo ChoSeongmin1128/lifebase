@@ -284,6 +284,90 @@ func (h *CloudHandler) EmptyTrash(w http.ResponseWriter, r *http.Request) {
 	response.NoContent(w)
 }
 
+// Views
+
+func (h *CloudHandler) ListRecent(w http.ResponseWriter, r *http.Request) {
+	userID := middleware.GetUserID(r.Context())
+
+	items, err := h.cloud.ListRecent(r.Context(), userID)
+	if err != nil {
+		response.Error(w, http.StatusInternalServerError, "LIST_FAILED", err.Error())
+		return
+	}
+	response.JSON(w, http.StatusOK, map[string]any{"items": items})
+}
+
+func (h *CloudHandler) ListShared(w http.ResponseWriter, r *http.Request) {
+	userID := middleware.GetUserID(r.Context())
+
+	items, err := h.cloud.ListShared(r.Context(), userID)
+	if err != nil {
+		response.Error(w, http.StatusInternalServerError, "LIST_FAILED", err.Error())
+		return
+	}
+	response.JSON(w, http.StatusOK, map[string]any{"items": items})
+}
+
+func (h *CloudHandler) ListStarred(w http.ResponseWriter, r *http.Request) {
+	userID := middleware.GetUserID(r.Context())
+
+	items, err := h.cloud.ListStarred(r.Context(), userID)
+	if err != nil {
+		response.Error(w, http.StatusInternalServerError, "LIST_FAILED", err.Error())
+		return
+	}
+	response.JSON(w, http.StatusOK, map[string]any{"items": items})
+}
+
+// Stars
+
+func (h *CloudHandler) ListStars(w http.ResponseWriter, r *http.Request) {
+	userID := middleware.GetUserID(r.Context())
+
+	items, err := h.cloud.ListStars(r.Context(), userID)
+	if err != nil {
+		response.Error(w, http.StatusInternalServerError, "LIST_FAILED", err.Error())
+		return
+	}
+	response.JSON(w, http.StatusOK, map[string]any{"stars": items})
+}
+
+func (h *CloudHandler) StarItem(w http.ResponseWriter, r *http.Request) {
+	userID := middleware.GetUserID(r.Context())
+	var req struct {
+		ID   string `json:"id"`
+		Type string `json:"type"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.ID == "" || req.Type == "" {
+		response.Error(w, http.StatusBadRequest, "INVALID_REQUEST", "id and type are required")
+		return
+	}
+
+	if err := h.cloud.StarItem(r.Context(), userID, req.ID, req.Type); err != nil {
+		response.Error(w, http.StatusBadRequest, "STAR_FAILED", err.Error())
+		return
+	}
+	response.NoContent(w)
+}
+
+func (h *CloudHandler) UnstarItem(w http.ResponseWriter, r *http.Request) {
+	userID := middleware.GetUserID(r.Context())
+	var req struct {
+		ID   string `json:"id"`
+		Type string `json:"type"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.ID == "" || req.Type == "" {
+		response.Error(w, http.StatusBadRequest, "INVALID_REQUEST", "id and type are required")
+		return
+	}
+
+	if err := h.cloud.UnstarItem(r.Context(), userID, req.ID, req.Type); err != nil {
+		response.Error(w, http.StatusBadRequest, "UNSTAR_FAILED", err.Error())
+		return
+	}
+	response.NoContent(w)
+}
+
 // Search
 
 func (h *CloudHandler) SearchFiles(w http.ResponseWriter, r *http.Request) {
