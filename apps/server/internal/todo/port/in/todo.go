@@ -27,6 +27,12 @@ type UpdateTodoInput struct {
 	SortOrder *int    `json:"sort_order"`
 }
 
+type ReorderItem struct {
+	ID        string  `json:"id"`
+	ParentID  *string `json:"parent_id"`
+	SortOrder int     `json:"sort_order"`
+}
+
 type TodoUseCase interface {
 	// Lists
 	CreateList(ctx context.Context, userID, name string) (*domain.TodoList, error)
@@ -40,4 +46,5 @@ type TodoUseCase interface {
 	ListTodos(ctx context.Context, userID, listID string, includeDone bool) ([]*domain.Todo, error)
 	UpdateTodo(ctx context.Context, userID, todoID string, input UpdateTodoInput) (*domain.Todo, error)
 	DeleteTodo(ctx context.Context, userID, todoID string) error
+	ReorderTodos(ctx context.Context, userID string, items []ReorderItem) error
 }

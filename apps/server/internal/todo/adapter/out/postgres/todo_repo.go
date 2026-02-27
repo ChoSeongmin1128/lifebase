@@ -170,3 +170,71 @@ func (r *todoRepo) CountPinned(ctx context.Context, userID, listID string) (int,
 	).Scan(&count)
 	return count, err
 }
+
+func (r *todoRepo) FindChildrenByParentID(ctx context.Context, userID, parentID string) ([]*domain.Todo, error) {
+	rows, err := r.db.Query(ctx,
+		`SELECT id, list_id, user_id, parent_id, google_id, title, notes, due, priority, is_done, is_pinned, sort_order, done_at, created_at, updated_at, deleted_at
+		 FROM todos WHERE user_id = $1 AND parent_id = $2 AND deleted_at IS NULL
+		 ORDER BY sort_order ASC`, userID, parentID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var todos []*domain.Todo
+	for rows.Next() {
+		var t domain.Todo
+		if err := rows.Scan(&t.ID, &t.ListID, &t.UserID, &t.ParentID, &t.GoogleID,
+			&t.Title, &t.Notes, &t.Due, &t.Priority,
+			&t.IsDone, &t.IsPinned, &t.SortOrder, &t.DoneAt,
+			&t.CreatedAt, &t.UpdatedAt, &t.DeletedAt); err != nil {
+			return nil, err
+		}
+		todos = append(todos, &t)
+	}
+	return todos, nil
+}
+
+func (r *todoRepo) SoftDeleteByParentID(ctx context.Context, userID, parentID string) error {
+	_, err := r.db.Exec(ctx,
+		`UPDATE todos SET deleted_at = $3 WHERE user_id = $1 AND parent_id = $2 AND deleted_at IS NULL`,
+		userID, parentID, time.Now(),
+	)
+	return err
+}
+
+func (r *todoRepo) UpdateBatch(ctx context.Context, todos []*domain.Todo) error {
+	batch := &pgx.Batch{}
+	for _, t := range todos {
+		batch.Queue(
+			`UPDATE todos SET parent_id = $3, sort_order = $4, updated_at = $5 WHERE id = $1 AND user_id = $2 AND deleted_at IS NULL`,
+			t.ID, t.UserID, t.ParentID, t.SortOrder, t.UpdatedAt,
+		)
+	}
+	br := r.db.SendBatch(ctx, batch)
+	defer br.Close()
+
+	for range todos {
+		if _, err := br.Exec(); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (r *todoRepo) NextSortOrder(ctx context.Context, userID, listID string, parentID *string) (int, error) {
+	var maxOrder int
+	var err error
+	if parentID == nil {
+		err = r.db.QueryRow(ctx,
+			`SELECT COALESCE(MAX(sort_order), -1) + 1 FROM todos WHERE user_id = $1 AND list_id = $2 AND parent_id IS NULL AND deleted_at IS NULL`,
+			userID, listID,
+		).Scan(&maxOrder)
+	} else {
+		err = r.db.QueryRow(ctx,
+			`SELECT COALESCE(MAX(sort_order), -1) + 1 FROM todos WHERE user_id = $1 AND list_id = $2 AND parent_id = $3 AND deleted_at IS NULL`,
+			userID, listID, *parentID,
+		).Scan(&maxOrder)
+	}
+	return maxOrder, err
+}

@@ -52,6 +52,110 @@ interface MediaFile {
 type ViewMode = "grid" | "list" | "date";
 type MediaType = "all" | "image" | "video";
 type SortBy = "taken_at" | "created_at" | "name" | "size";
+type ThumbSize = "small" | "medium";
+
+type ThumbnailImageProps =
+  | {
+      fileId: string;
+      size: ThumbSize;
+      token: string | null;
+      alt: string;
+      className?: string;
+      sizes?: string;
+      fallback?: React.ReactNode;
+      fill: true;
+      width?: never;
+      height?: never;
+    }
+  | {
+      fileId: string;
+      size: ThumbSize;
+      token: string | null;
+      alt: string;
+      className?: string;
+      sizes?: string;
+      fallback?: React.ReactNode;
+      fill?: false;
+      width: number;
+      height: number;
+    };
+
+function ThumbnailImage(props: ThumbnailImageProps) {
+  const { fileId, size, token, alt, className, sizes, fallback } = props;
+  const [src, setSrc] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!token) {
+      setSrc(null);
+      return;
+    }
+
+    const controller = new AbortController();
+    let objectURL: string | null = null;
+    let active = true;
+
+    const load = async () => {
+      try {
+        const res = await fetch(`${API_URL}/api/v1/gallery/thumbnails/${fileId}/${size}`, {
+          headers: { Authorization: `Bearer ${token}` },
+          signal: controller.signal,
+        });
+        if (!res.ok) {
+          throw new Error(`thumbnail request failed: ${res.status}`);
+        }
+
+        const blob = await res.blob();
+        objectURL = URL.createObjectURL(blob);
+        if (active) {
+          setSrc(objectURL);
+        }
+      } catch {
+        if (active) {
+          setSrc(null);
+        }
+      }
+    };
+
+    load();
+
+    return () => {
+      active = false;
+      controller.abort();
+      if (objectURL) {
+        URL.revokeObjectURL(objectURL);
+      }
+    };
+  }, [fileId, size, token]);
+
+  if (!src) {
+    return <>{fallback ?? null}</>;
+  }
+
+  if (props.fill) {
+    return (
+      <Image
+        src={src}
+        alt={alt}
+        fill
+        unoptimized
+        sizes={sizes}
+        className={className}
+      />
+    );
+  }
+
+  return (
+    <Image
+      src={src}
+      alt={alt}
+      width={props.width}
+      height={props.height}
+      unoptimized
+      sizes={sizes}
+      className={className}
+    />
+  );
+}
 
 export default function GalleryPage() {
   const [items, setItems] = useState<MediaFile[]>([]);
@@ -116,9 +220,6 @@ export default function GalleryPage() {
     return () => observer.disconnect();
   }, [nextCursor, loadingMore, loadMedia]);
 
-  const thumbUrl = (fileId: string, size: "small" | "medium") =>
-    `${API_URL}/api/v1/gallery/thumbnails/${fileId}/${size}`;
-
   const formatSize = (bytes: number) => {
     if (bytes < 1024) return `${bytes} B`;
     if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
@@ -164,13 +265,19 @@ export default function GalleryPage() {
         onClick={() => setSelectedFile(file)}
       >
         {file.thumb_status === "done" ? (
-          <Image
-            src={thumbUrl(file.id, "small")}
+          <ThumbnailImage
+            fileId={file.id}
+            size="small"
+            token={token}
             alt={file.name}
             fill
-            unoptimized
             sizes="(max-width: 768px) 33vw, (max-width: 1280px) 16vw, 150px"
             className="object-cover"
+            fallback={
+              <div className="flex h-full w-full items-center justify-center">
+                <ThumbStatusIcon status="failed" />
+              </div>
+            }
           />
         ) : (
           <div className="flex h-full w-full items-center justify-center">
@@ -298,13 +405,19 @@ export default function GalleryPage() {
                     <td className="px-2 py-1">
                       <div className="relative h-8 w-8 overflow-hidden rounded bg-surface-accent">
                         {file.thumb_status === "done" ? (
-                          <Image
-                            src={thumbUrl(file.id, "small")}
+                          <ThumbnailImage
+                            fileId={file.id}
+                            size="small"
+                            token={token}
                             alt=""
                             fill
-                            unoptimized
                             sizes="32px"
                             className="object-cover"
+                            fallback={
+                              <div className="flex h-full w-full items-center justify-center">
+                                <ThumbStatusIcon status="failed" />
+                              </div>
+                            }
                           />
                         ) : (
                           <div className="flex h-full w-full items-center justify-center">
@@ -365,14 +478,20 @@ export default function GalleryPage() {
                 <X size={16} />
               </button>
               {selectedFile.thumb_status === "done" ? (
-                <Image
-                  src={thumbUrl(selectedFile.id, "medium")}
+                <ThumbnailImage
+                  fileId={selectedFile.id}
+                  size="medium"
+                  token={token}
                   alt={selectedFile.name}
                   width={1200}
                   height={1200}
-                  unoptimized
                   sizes="90vw"
                   className="max-h-[85vh] w-auto rounded-lg object-contain"
+                  fallback={
+                    <div className="flex h-64 w-64 items-center justify-center rounded-lg bg-surface text-text-muted">
+                      썸네일 없음
+                    </div>
+                  }
                 />
               ) : (
                 <div className="flex h-64 w-64 items-center justify-center rounded-lg bg-surface text-text-muted">

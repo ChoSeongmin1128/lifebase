@@ -56,6 +56,8 @@ interface TodoRowProps {
   isCollapsed?: boolean;
   childCount?: { total: number; done: number };
   showDragHandle?: boolean;
+  isDragging?: boolean;
+  isOverlay?: boolean;
   lists?: TodoList[];
   onToggleCollapse?: () => void;
   onToggleDone: () => void;
@@ -75,6 +77,8 @@ export function TodoRow({
   isCollapsed,
   childCount,
   showDragHandle,
+  isDragging,
+  isOverlay,
   lists,
   onToggleCollapse,
   onToggleDone,
@@ -85,36 +89,39 @@ export function TodoRow({
   onAddSubtask,
   onMoveToList,
 }: TodoRowProps) {
-  const {
-    attributes,
-    listeners,
-    setNodeRef,
-    transform,
-    transition,
-    isDragging,
-  } = useSortable({ id: todo.id, disabled: !showDragHandle });
+  const sortable = useSortable({ id: todo.id, disabled: !showDragHandle || isOverlay });
 
-  const style = {
-    transform: CSS.Transform.toString(transform),
-    transition,
-    paddingLeft: `${depth * 24 + 16}px`,
-  };
+  const style = isOverlay
+    ? { paddingLeft: `${depth * 24 + 16}px` }
+    : {
+        transform: CSS.Transform.toString(sortable.transform),
+        transition: sortable.transition,
+        paddingLeft: `${depth * 24 + 16}px`,
+      };
 
   return (
     <div
-      ref={setNodeRef}
+      ref={isOverlay ? undefined : sortable.setNodeRef}
       style={style}
       className={cn(
-        "group flex items-center gap-2 py-2 pr-4 hover:bg-surface-accent/50 transition-colors",
-        todo.is_pinned && !todo.is_done && "bg-surface-accent",
+        "group flex items-center gap-2 py-2 pr-4 transition-colors",
+        !isOverlay && "hover:bg-surface-accent/50",
+        todo.is_pinned && !todo.is_done && !isOverlay && "bg-surface-accent",
         todo.is_done && "opacity-60",
-        isDragging && "opacity-50 bg-surface-accent z-10"
+        isDragging && !isOverlay && "opacity-30",
+        isOverlay && "rounded-lg bg-surface shadow-lg border border-border opacity-90",
       )}
-      {...attributes}
+      {...(isOverlay ? {} : sortable.attributes)}
     >
       {/* Drag handle */}
       {showDragHandle ? (
-        <button {...listeners} className="shrink-0 text-text-muted opacity-0 group-hover:opacity-50 cursor-grab touch-none">
+        <button
+          {...(isOverlay ? {} : sortable.listeners)}
+          className={cn(
+            "shrink-0 text-text-muted cursor-grab touch-none",
+            isOverlay ? "opacity-50" : "opacity-0 group-hover:opacity-50",
+          )}
+        >
           <GripVertical size={14} />
         </button>
       ) : (
@@ -172,79 +179,84 @@ export function TodoRow({
         </span>
       )}
 
-      {/* Add subtask button */}
-      {onAddSubtask && !todo.is_done && (
-        <button
-          onClick={onAddSubtask}
-          className="shrink-0 text-text-muted opacity-0 group-hover:opacity-100 transition-opacity hover:text-primary"
-          title="하위 Todo 추가"
-        >
-          <Plus size={14} />
-        </button>
-      )}
+      {/* Overlay mode: skip interactive buttons */}
+      {isOverlay ? null : (
+        <>
+          {/* Add subtask button */}
+          {onAddSubtask && !todo.is_done && (
+            <button
+              onClick={onAddSubtask}
+              className="shrink-0 text-text-muted opacity-0 group-hover:opacity-100 transition-opacity hover:text-primary"
+              title="하위 Todo 추가"
+            >
+              <Plus size={14} />
+            </button>
+          )}
 
-      {/* Pin */}
-      <button
-        onClick={onTogglePin}
-        className={cn(
-          "shrink-0 transition-opacity",
-          todo.is_pinned ? "text-primary" : "text-text-muted opacity-0 group-hover:opacity-100"
-        )}
-      >
-        <Pin size={14} fill={todo.is_pinned ? "currentColor" : "none"} />
-      </button>
-
-      {/* More menu */}
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <button className="shrink-0 text-text-muted opacity-0 group-hover:opacity-100 transition-opacity">
-            <MoreVertical size={14} />
+          {/* Pin */}
+          <button
+            onClick={onTogglePin}
+            className={cn(
+              "shrink-0 transition-opacity",
+              todo.is_pinned ? "text-primary" : "text-text-muted opacity-0 group-hover:opacity-100"
+            )}
+          >
+            <Pin size={14} fill={todo.is_pinned ? "currentColor" : "none"} />
           </button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="end">
-          <DropdownMenuItem onClick={onEdit}>
-            <Pencil size={14} /> 수정
-          </DropdownMenuItem>
-          {onAddSubtask && (
-            <DropdownMenuItem onClick={onAddSubtask}>
-              <Plus size={14} /> 하위 Todo 추가
-            </DropdownMenuItem>
-          )}
-          {onMoveToList && lists && lists.length > 1 && (
-            <DropdownMenuSub>
-              <DropdownMenuSubTrigger>
-                <ArrowRightLeft size={14} /> 다른 목록으로 이동
-              </DropdownMenuSubTrigger>
-              <DropdownMenuSubContent>
-                {lists
-                  .filter((l) => l.id !== todo.list_id)
-                  .map((l) => (
-                    <DropdownMenuItem key={l.id} onClick={() => onMoveToList(l.id)}>
-                      {l.name}
-                    </DropdownMenuItem>
-                  ))}
-              </DropdownMenuSubContent>
-            </DropdownMenuSub>
-          )}
-          <DropdownMenuSeparator />
-          <DropdownMenuItem onClick={() => onChangePriority("urgent")} className="text-error">
-            <Flag size={14} /> 긴급
-          </DropdownMenuItem>
-          <DropdownMenuItem onClick={() => onChangePriority("high")} className="text-caution">
-            <Flag size={14} /> 높음
-          </DropdownMenuItem>
-          <DropdownMenuItem onClick={() => onChangePriority("normal")}>
-            <Flag size={14} /> 보통
-          </DropdownMenuItem>
-          <DropdownMenuItem onClick={() => onChangePriority("low")} className="text-text-muted">
-            <Flag size={14} /> 낮음
-          </DropdownMenuItem>
-          <DropdownMenuSeparator />
-          <DropdownMenuItem onClick={onDelete} className="text-error focus:text-error">
-            <Trash2 size={14} /> 삭제
-          </DropdownMenuItem>
-        </DropdownMenuContent>
-      </DropdownMenu>
+
+          {/* More menu */}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button className="shrink-0 text-text-muted opacity-0 group-hover:opacity-100 transition-opacity">
+                <MoreVertical size={14} />
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onClick={onEdit}>
+                <Pencil size={14} /> 수정
+              </DropdownMenuItem>
+              {onAddSubtask && (
+                <DropdownMenuItem onClick={onAddSubtask}>
+                  <Plus size={14} /> 하위 Todo 추가
+                </DropdownMenuItem>
+              )}
+              {onMoveToList && lists && lists.length > 1 && (
+                <DropdownMenuSub>
+                  <DropdownMenuSubTrigger>
+                    <ArrowRightLeft size={14} /> 다른 목록으로 이동
+                  </DropdownMenuSubTrigger>
+                  <DropdownMenuSubContent>
+                    {lists
+                      .filter((l) => l.id !== todo.list_id)
+                      .map((l) => (
+                        <DropdownMenuItem key={l.id} onClick={() => onMoveToList(l.id)}>
+                          {l.name}
+                        </DropdownMenuItem>
+                      ))}
+                  </DropdownMenuSubContent>
+                </DropdownMenuSub>
+              )}
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onClick={() => onChangePriority("urgent")} className="text-error">
+                <Flag size={14} /> 긴급
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => onChangePriority("high")} className="text-caution">
+                <Flag size={14} /> 높음
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => onChangePriority("normal")}>
+                <Flag size={14} /> 보통
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => onChangePriority("low")} className="text-text-muted">
+                <Flag size={14} /> 낮음
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onClick={onDelete} className="text-error focus:text-error">
+                <Trash2 size={14} /> 삭제
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </>
+      )}
     </div>
   );
 }

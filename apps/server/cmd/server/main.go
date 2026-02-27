@@ -219,6 +219,7 @@ func main() {
 				r.Patch("/lists/{listID}", todoHandler.UpdateList)
 				r.Delete("/lists/{listID}", todoHandler.DeleteList)
 
+				r.Patch("/reorder", todoHandler.ReorderTodos)
 				r.Post("/", todoHandler.CreateTodo)
 				r.Get("/", todoHandler.ListTodos)
 				r.Get("/{todoID}", todoHandler.GetTodo)

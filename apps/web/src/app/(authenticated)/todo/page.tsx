@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, Suspense } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { api } from "@/lib/api";
 import { getAccessToken } from "@/lib/auth";
@@ -19,73 +19,36 @@ import { Textarea } from "@/components/ui/textarea";
 import { TodoToolbar, type TodoSortBy, type TodoFilterMode } from "@/components/todo/TodoToolbar";
 import { TodoRow } from "@/components/todo/TodoRow";
 import { CreateTodoDialog } from "@/components/todo/CreateTodoDialog";
-import { DndContext, closestCenter, type DragEndEvent, PointerSensor, useSensor, useSensors } from "@dnd-kit/core";
+import {
+  DndContext,
+  closestCenter,
+  DragOverlay,
+  type DragStartEvent,
+  type DragMoveEvent,
+  type DragOverEvent,
+  type DragEndEvent,
+  type DragCancelEvent,
+  PointerSensor,
+  useSensor,
+  useSensors,
+} from "@dnd-kit/core";
 import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { Plus } from "lucide-react";
 import { cn } from "@/lib/utils";
+import {
+  buildTree,
+  flattenTree,
+  getProjection,
+  computeReorderChanges,
+  type TodoItem,
+  type TodoNode,
+  type FlattenedItem,
+} from "@/lib/todo/dnd-tree";
 
 interface TodoList {
   id: string;
   name: string;
   sort_order: number;
-}
-
-interface TodoItem {
-  id: string;
-  list_id: string;
-  parent_id: string | null;
-  title: string;
-  notes: string;
-  due: string | null;
-  priority: string;
-  is_done: boolean;
-  is_pinned: boolean;
-  sort_order: number;
-  done_at: string | null;
-  created_at: string;
-}
-
-interface TodoNode extends TodoItem {
-  children: TodoNode[];
-}
-
-function buildTree(todos: TodoItem[]): TodoNode[] {
-  const map = new Map<string, TodoNode>();
-  const roots: TodoNode[] = [];
-
-  for (const todo of todos) {
-    map.set(todo.id, { ...todo, children: [] });
-  }
-
-  for (const todo of todos) {
-    const node = map.get(todo.id)!;
-    if (todo.parent_id && map.has(todo.parent_id)) {
-      map.get(todo.parent_id)!.children.push(node);
-    } else {
-      roots.push(node);
-    }
-  }
-
-  return roots;
-}
-
-function flattenTree(
-  nodes: TodoNode[],
-  collapsed: Set<string>,
-): { todo: TodoNode; depth: number }[] {
-  const result: { todo: TodoNode; depth: number }[] = [];
-
-  function walk(items: TodoNode[], depth: number) {
-    for (const node of items) {
-      result.push({ todo: node, depth });
-      if (node.children.length > 0 && !collapsed.has(node.id)) {
-        walk(node.children, depth + 1);
-      }
-    }
-  }
-
-  walk(nodes, 0);
-  return result;
 }
 
 function TodoPageInner() {
@@ -116,9 +79,13 @@ function TodoPageInner() {
   const [showCreateDialog, setShowCreateDialog] = useState(false);
   const [createParentId, setCreateParentId] = useState<string | undefined>();
 
-  const token = getAccessToken();
+  // DnD state
+  const [dragActiveId, setDragActiveId] = useState<string | null>(null);
+  const [dragOverId, setDragOverId] = useState<string | null>(null);
+  const [offsetLeft, setOffsetLeft] = useState(0);
+  const dragSnapshotRef = useRef<TodoItem[]>([]);
 
-  // First list is the default list (undeletable)
+  const token = getAccessToken();
   const defaultListId = lists.length > 0 ? lists[0].id : null;
 
   const loadLists = useCallback(async () => {
@@ -127,7 +94,6 @@ function TodoPageInner() {
       const data = await api<{ lists: TodoList[] }>("/todo/lists", { token });
       const fetchedLists = data.lists || [];
 
-      // Auto-create default list if none exist
       if (fetchedLists.length === 0) {
         try {
           const list = await api<TodoList>("/todo/lists", {
@@ -320,92 +286,93 @@ function TodoPageInner() {
   // Build tree structure
   const tree = buildTree(filteredTodos);
 
-  // Separate pinned/active/done at root level, then flatten with children
+  // Separate pinned/active/done at root level
   const pinnedRoots = tree.filter((t) => t.is_pinned && !t.is_done);
   const activeRoots = tree.filter((t) => !t.is_pinned && !t.is_done);
   const doneRoots = tree.filter((t) => t.is_done);
 
-  const pinnedFlat = flattenTree(pinnedRoots, collapsed);
-  const activeFlat = flattenTree(activeRoots, collapsed);
-  const doneFlat = flattenTree(doneRoots, collapsed);
+  const pinnedFlat = flattenTree(pinnedRoots, collapsed, dragActiveId);
+  const activeFlat = flattenTree(activeRoots, collapsed, dragActiveId);
+  const doneFlat = flattenTree(doneRoots, collapsed, dragActiveId);
 
-  const allFlatIds = [...pinnedFlat, ...activeFlat, ...doneFlat].map((f) => f.todo.id);
+  const allFlat = useMemo(
+    () => [...pinnedFlat, ...activeFlat, ...doneFlat],
+    [pinnedFlat, activeFlat, doneFlat],
+  );
+  const allFlatIds = useMemo(() => allFlat.map((f) => f.id), [allFlat]);
 
-  const handleDragEnd = async (event: DragEndEvent) => {
+  // Projection for current drag
+  const projection = useMemo(() => {
+    if (!dragActiveId || !dragOverId) return null;
+    return getProjection(allFlat, dragActiveId, dragOverId, offsetLeft);
+  }, [allFlat, dragActiveId, dragOverId, offsetLeft]);
+
+  // DnD event handlers
+  const handleDragStart = useCallback((event: DragStartEvent) => {
+    const id = String(event.active.id);
+    setDragActiveId(id);
+    setOffsetLeft(0);
+    dragSnapshotRef.current = [...todos];
+  }, [todos]);
+
+  const handleDragMove = useCallback((event: DragMoveEvent) => {
+    setOffsetLeft(event.delta.x);
+  }, []);
+
+  const handleDragOver = useCallback((event: DragOverEvent) => {
+    setDragOverId(event.over ? String(event.over.id) : null);
+  }, []);
+
+  const handleDragEnd = useCallback(async (event: DragEndEvent) => {
     const { active, over } = event;
-    if (!over || active.id === over.id || !token) return;
+    const currentActiveId = String(active.id);
+    const currentOverId = over ? String(over.id) : null;
 
-    const allFlat = [...pinnedFlat, ...activeFlat, ...doneFlat];
-    const oldIndex = allFlat.findIndex((f) => f.todo.id === active.id);
-    const newIndex = allFlat.findIndex((f) => f.todo.id === over.id);
-    if (oldIndex === -1 || newIndex === -1) return;
+    // Reset drag state
+    setDragActiveId(null);
+    setDragOverId(null);
+    setOffsetLeft(0);
 
-    const activeItem = allFlat[oldIndex];
-    const overItem = allFlat[newIndex];
+    if (!currentOverId || currentActiveId === currentOverId || !token) return;
 
-    // Determine target parent based on drop position's depth
-    // - dropping onto a depth-0 item → becomes root (parent_id = null)
-    // - dropping onto a depth-1 item → same parent as that item
-    let newParentId: string | null = null;
-    if (overItem.depth === 1) {
-      newParentId = overItem.todo.parent_id;
-    } else if (overItem.depth === 0) {
-      // If active is a child and dropping right after a root that has children,
-      // check the item below: if it's depth-1 child of overItem, stay as child
-      if (newIndex < allFlat.length - 1) {
-        const nextItem = allFlat[newIndex + 1];
-        if (nextItem.depth === 1 && nextItem.todo.parent_id === overItem.todo.id && activeItem.depth === 1) {
-          newParentId = overItem.todo.id;
-        }
-      }
-    }
+    const currentProjection = getProjection(allFlat, currentActiveId, currentOverId, event.delta.x);
+    const { changes } = computeReorderChanges(allFlat, currentActiveId, currentOverId, currentProjection);
 
-    // Don't allow nesting beyond 2 levels (child can't become parent's parent)
-    // A root item dropped onto a child position: only if it has no children itself
-    if (newParentId && activeItem.todo.children && activeItem.todo.children.length > 0) {
-      newParentId = null; // Can't nest a parent under another parent
-    }
-
-    const parentChanged = (activeItem.todo.parent_id ?? null) !== newParentId;
-
-    // Reorder: compute new sort_order among siblings
-    const sorted = allFlat.map((f) => f.todo);
-    const [moved] = sorted.splice(oldIndex, 1);
-    sorted.splice(newIndex, 0, moved);
+    if (changes.length === 0) return;
 
     // Optimistic UI update
+    const changeMap = new Map(changes.map((c) => [c.id, c]));
     const updatedTodos = todos.map((t) => {
-      const idx = sorted.findIndex((s) => s.id === t.id);
-      if (t.id === String(active.id)) {
-        return {
-          ...t,
-          sort_order: idx !== -1 ? idx : t.sort_order,
-          parent_id: newParentId,
-        };
+      const change = changeMap.get(t.id);
+      if (change) {
+        return { ...t, parent_id: change.parent_id, sort_order: change.sort_order };
       }
-      return idx !== -1 ? { ...t, sort_order: idx } : t;
+      return t;
     });
     setTodos(updatedTodos);
 
     // Persist to server
     try {
-      const body: Record<string, unknown> = { sort_order: newIndex };
-      if (parentChanged) {
-        // Send "" for root (Go *string nil = no change, "" = clear parent)
-        body.parent_id = newParentId ?? "";
-      }
-      await api(`/todo/${active.id}`, {
+      await api("/todo/reorder", {
         method: "PATCH",
-        body,
+        body: { items: changes },
         token,
       });
-      // Reload to get consistent tree state
-      if (parentChanged) loadTodos();
     } catch (err) {
       console.error("Reorder failed:", err);
+      setTodos(dragSnapshotRef.current);
       loadTodos();
     }
-  };
+  }, [token, allFlat, todos, loadTodos]);
+
+  const handleDragCancel = useCallback((_event: DragCancelEvent) => {
+    setDragActiveId(null);
+    setDragOverId(null);
+    setOffsetLeft(0);
+    if (dragSnapshotRef.current.length > 0) {
+      setTodos(dragSnapshotRef.current);
+    }
+  }, []);
 
   // Count children for collapsed parents
   const childCountMap = new Map<string, { total: number; done: number }>();
@@ -418,13 +385,34 @@ function TodoPageInner() {
     }
   }
 
-  const renderTodoRow = ({ todo, depth }: { todo: TodoNode; depth: number }) => {
+  // Find active todo for DragOverlay
+  const activeTodo = useMemo(() => {
+    if (!dragActiveId) return null;
+    return allFlat.find((f) => f.id === dragActiveId)?.todo ?? null;
+  }, [dragActiveId, allFlat]);
+
+  const projectedDepth = projection?.depth ?? 0;
+
+  const isDndEnabled = sortBy === "manual";
+
+  const renderTodoRow = (item: FlattenedItem) => {
+    const { todo, depth } = item;
     const hasChildren = todo.children.length > 0 || childCountMap.has(todo.id);
     const isCollapsed = collapsed.has(todo.id);
     const childCount = childCountMap.get(todo.id);
+    const isDragging = todo.id === dragActiveId;
+
+    // Show drop indicator when this is the over item during drag
+    const isDropTarget = isDndEnabled && dragActiveId && dragOverId === todo.id && dragActiveId !== todo.id;
 
     return (
       <div key={todo.id}>
+        {isDropTarget && (
+          <div
+            className="h-0.5 bg-primary rounded-full mx-4 my-0"
+            style={{ marginLeft: `${(projection?.depth ?? depth) * 24 + 16}px` }}
+          />
+        )}
         <TodoRow
           todo={todo}
           depth={depth}
@@ -432,7 +420,8 @@ function TodoPageInner() {
           hasChildren={hasChildren}
           isCollapsed={isCollapsed}
           childCount={childCount}
-          showDragHandle={sortBy === "manual"}
+          showDragHandle={isDndEnabled}
+          isDragging={isDragging}
           lists={lists}
           onToggleCollapse={() => toggleCollapse(todo.id)}
           onToggleDone={() => handleToggleDone(todo)}
@@ -446,6 +435,41 @@ function TodoPageInner() {
       </div>
     );
   };
+
+  const todoListContent = (
+    <div>
+      {/* Pinned */}
+      {pinnedFlat.length > 0 && (
+        <>
+          <div className="px-4 pt-3 pb-1 text-[10px] font-medium uppercase tracking-wider text-text-muted">
+            고정됨
+          </div>
+          {pinnedFlat.map(renderTodoRow)}
+          <div className="mx-4"><Separator /></div>
+        </>
+      )}
+
+      {/* Active */}
+      {activeFlat.map(renderTodoRow)}
+
+      {/* Done */}
+      {doneFlat.length > 0 && (
+        <>
+          <div className="px-4 pt-4 pb-1 text-[10px] font-medium uppercase tracking-wider text-text-muted">
+            완료됨 ({doneFlat.length})
+          </div>
+          {doneFlat.map(renderTodoRow)}
+        </>
+      )}
+
+      {pinnedFlat.length === 0 && activeFlat.length === 0 && doneFlat.length === 0 && (
+        <div className="flex flex-col items-center justify-center py-20 text-text-muted">
+          <p>Todo가 없습니다</p>
+          <p className="mt-1 text-sm">위 버튼으로 추가해 보세요</p>
+        </div>
+      )}
+    </div>
+  );
 
   return (
     <div className="flex h-full flex-col md:flex-row">
@@ -465,7 +489,6 @@ function TodoPageInner() {
                 )}
               >
                 <span className="truncate">{list.name}</span>
-                {/* Delete button (not for default list) */}
                 {index !== 0 && (
                   <span
                     onClick={(e) => {
@@ -562,43 +585,41 @@ function TodoPageInner() {
             <div className="flex flex-col items-center justify-center py-20 text-text-muted">
               <p>목록을 선택하거나 만들어 주세요</p>
             </div>
-          ) : (
-            <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+          ) : isDndEnabled ? (
+            <DndContext
+              sensors={sensors}
+              collisionDetection={closestCenter}
+              onDragStart={handleDragStart}
+              onDragMove={handleDragMove}
+              onDragOver={handleDragOver}
+              onDragEnd={handleDragEnd}
+              onDragCancel={handleDragCancel}
+            >
               <SortableContext items={allFlatIds} strategy={verticalListSortingStrategy}>
-                <div>
-                  {/* Pinned */}
-                  {pinnedFlat.length > 0 && (
-                    <>
-                      <div className="px-4 pt-3 pb-1 text-[10px] font-medium uppercase tracking-wider text-text-muted">
-                        고정됨
-                      </div>
-                      {pinnedFlat.map(renderTodoRow)}
-                      <div className="mx-4"><Separator /></div>
-                    </>
-                  )}
-
-                  {/* Active */}
-                  {activeFlat.map(renderTodoRow)}
-
-                  {/* Done */}
-                  {doneFlat.length > 0 && (
-                    <>
-                      <div className="px-4 pt-4 pb-1 text-[10px] font-medium uppercase tracking-wider text-text-muted">
-                        완료됨 ({doneFlat.length})
-                      </div>
-                      {doneFlat.map(renderTodoRow)}
-                    </>
-                  )}
-
-                  {pinnedFlat.length === 0 && activeFlat.length === 0 && doneFlat.length === 0 && (
-                    <div className="flex flex-col items-center justify-center py-20 text-text-muted">
-                      <p>Todo가 없습니다</p>
-                      <p className="mt-1 text-sm">위 버튼으로 추가해 보세요</p>
-                    </div>
-                  )}
-                </div>
+                {todoListContent}
               </SortableContext>
+              <DragOverlay dropAnimation={null}>
+                {activeTodo && (
+                  <TodoRow
+                    todo={activeTodo}
+                    depth={projectedDepth}
+                    isOverdue={isOverdue(activeTodo.due)}
+                    hasChildren={activeTodo.children.length > 0}
+                    isCollapsed={false}
+                    showDragHandle
+                    isOverlay
+                    onToggleCollapse={() => {}}
+                    onToggleDone={() => {}}
+                    onTogglePin={() => {}}
+                    onEdit={() => {}}
+                    onDelete={() => {}}
+                    onChangePriority={() => {}}
+                  />
+                )}
+              </DragOverlay>
             </DndContext>
+          ) : (
+            todoListContent
           )}
         </div>
       </div>

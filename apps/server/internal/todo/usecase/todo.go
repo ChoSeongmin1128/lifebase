@@ -97,6 +97,11 @@ func (uc *todoUseCase) CreateTodo(ctx context.Context, userID string, input port
 		priority = "normal"
 	}
 
+	sortOrder, err := uc.todos.NextSortOrder(ctx, userID, input.ListID, input.ParentID)
+	if err != nil {
+		sortOrder = 0
+	}
+
 	now := time.Now()
 	todo := &domain.Todo{
 		ID:        uuid.New().String(),
@@ -109,7 +114,7 @@ func (uc *todoUseCase) CreateTodo(ctx context.Context, userID string, input port
 		Priority:  priority,
 		IsDone:    false,
 		IsPinned:  false,
-		SortOrder: 0,
+		SortOrder: sortOrder,
 		CreatedAt: now,
 		UpdatedAt: now,
 	}
@@ -151,6 +156,19 @@ func (uc *todoUseCase) UpdateTodo(ctx context.Context, userID, todoID string, in
 		if *input.IsDone {
 			now := time.Now()
 			todo.DoneAt = &now
+
+			// Cascade: mark all children as done
+			children, err := uc.todos.FindChildrenByParentID(ctx, userID, todoID)
+			if err == nil {
+				for _, child := range children {
+					if !child.IsDone {
+						child.IsDone = true
+						child.DoneAt = &now
+						child.UpdatedAt = now
+						_ = uc.todos.Update(ctx, child)
+					}
+				}
+			}
 		} else {
 			todo.DoneAt = nil
 		}
@@ -193,5 +211,22 @@ func (uc *todoUseCase) UpdateTodo(ctx context.Context, userID, todoID string, in
 }
 
 func (uc *todoUseCase) DeleteTodo(ctx context.Context, userID, todoID string) error {
+	// Cascade: soft-delete children first
+	_ = uc.todos.SoftDeleteByParentID(ctx, userID, todoID)
 	return uc.todos.SoftDelete(ctx, userID, todoID)
+}
+
+func (uc *todoUseCase) ReorderTodos(ctx context.Context, userID string, items []portin.ReorderItem) error {
+	now := time.Now()
+	var todos []*domain.Todo
+	for _, item := range items {
+		todos = append(todos, &domain.Todo{
+			ID:        item.ID,
+			UserID:    userID,
+			ParentID:  item.ParentID,
+			SortOrder: item.SortOrder,
+			UpdatedAt: now,
+		})
+	}
+	return uc.todos.UpdateBatch(ctx, todos)
 }

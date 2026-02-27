@@ -158,3 +158,20 @@ func (h *TodoHandler) DeleteTodo(w http.ResponseWriter, r *http.Request) {
 	}
 	response.NoContent(w)
 }
+
+func (h *TodoHandler) ReorderTodos(w http.ResponseWriter, r *http.Request) {
+	userID := middleware.GetUserID(r.Context())
+	var req struct {
+		Items []portin.ReorderItem `json:"items"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || len(req.Items) == 0 {
+		response.Error(w, http.StatusBadRequest, "INVALID_REQUEST", "items array is required")
+		return
+	}
+
+	if err := h.todo.ReorderTodos(r.Context(), userID, req.Items); err != nil {
+		response.Error(w, http.StatusInternalServerError, "REORDER_FAILED", err.Error())
+		return
+	}
+	response.NoContent(w)
+}

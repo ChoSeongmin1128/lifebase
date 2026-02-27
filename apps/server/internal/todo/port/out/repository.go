@@ -21,4 +21,8 @@ type TodoRepository interface {
 	Update(ctx context.Context, todo *domain.Todo) error
 	SoftDelete(ctx context.Context, userID, id string) error
 	CountPinned(ctx context.Context, userID, listID string) (int, error)
+	FindChildrenByParentID(ctx context.Context, userID, parentID string) ([]*domain.Todo, error)
+	SoftDeleteByParentID(ctx context.Context, userID, parentID string) error
+	UpdateBatch(ctx context.Context, todos []*domain.Todo) error
+	NextSortOrder(ctx context.Context, userID, listID string, parentID *string) (int, error)
 }
