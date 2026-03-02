@@ -51,7 +51,7 @@ export function YearCompactView({ year, events, weekStartsOn, onMonthClick }: Ye
             <div className="mb-1 text-sm font-medium text-text-strong">
               {m + 1}월
             </div>
-            <div className="grid min-h-0 flex-1 grid-cols-7 grid-rows-[auto_repeat(6,minmax(0,1fr))] gap-px text-[9px]">
+            <div className="grid min-h-0 flex-1 grid-cols-7 grid-rows-[auto_repeat(6,minmax(0,1fr))] gap-px text-[10px] md:text-[11px]">
               {weekdays.map((d) => (
                 <div key={d} className="text-center text-text-muted">{d}</div>
               ))}
@@ -71,7 +71,7 @@ export function YearCompactView({ year, events, weekStartsOn, onMonthClick }: Ye
                   >
                     <span
                       className={cn(
-                        "inline-flex h-4 w-4 items-center justify-center rounded-full text-[9px]",
+                        "inline-flex h-5 w-5 items-center justify-center rounded-full text-[10px] md:h-6 md:w-6 md:text-[11px]",
                         !cell.inCurrentMonth && !isToday && "text-text-muted",
                         isToday && "bg-primary text-white font-medium"
                       )}

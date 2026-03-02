@@ -40,12 +40,12 @@ export function buildFixedMonthGridWithWeekStart(baseDate: Date, weekStartsOn: n
   const startsOn = normalizeWeekStartsOn(weekStartsOn);
 
   const firstOfMonth = new Date(year, month, 1);
-  const daysInMonth = new Date(year, month + 1, 0).getDate();
   const offset = (firstOfMonth.getDay() - startsOn + 7) % 7;
   const start = new Date(firstOfMonth);
   start.setDate(firstOfMonth.getDate() - offset);
-  // Keep one leading outside week when month fits exactly 4 rows.
-  if (offset + daysInMonth === 28) {
+  // If month starts exactly on configured week start, keep one leading outside week.
+  // This prevents layouts with no previous-month row and two trailing outside rows.
+  if (offset === 0) {
     start.setDate(start.getDate() - 7);
   }
 
