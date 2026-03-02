@@ -557,6 +557,7 @@ export default function CalendarPage() {
           <YearCompactView
             year={currentDate.getFullYear()}
             events={events}
+            weekStartsOn={weekStartsOn}
             onMonthClick={(month) => {
               const date = new Date(currentDate.getFullYear(), month, 1);
               setView("month");

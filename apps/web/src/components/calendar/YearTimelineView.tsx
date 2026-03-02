@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
 
 interface EventData {
@@ -19,10 +20,33 @@ interface YearTimelineViewProps {
 }
 
 const MONTHS = ["1월", "2월", "3월", "4월", "5월", "6월", "7월", "8월", "9월", "10월", "11월", "12월"];
+const HEADER_HEIGHT = 28;
+const MIN_ROW_HEIGHT = 26;
 
 export function YearTimelineView({ year, events, getEventColor, calendars }: YearTimelineViewProps) {
   const today = new Date();
   const calMap = new Map(calendars.map((c) => [c.id, c]));
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const [rowHeight, setRowHeight] = useState(32);
+
+  useEffect(() => {
+    const element = containerRef.current;
+    if (!element) return;
+
+    const recalculate = () => {
+      const availableHeight = element.clientHeight - HEADER_HEIGHT;
+      if (availableHeight <= 0) {
+        setRowHeight(32);
+        return;
+      }
+      setRowHeight(Math.max(Math.floor(availableHeight / 12), MIN_ROW_HEIGHT));
+    };
+
+    recalculate();
+    const observer = new ResizeObserver(recalculate);
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, []);
 
   const eventsByDate = new Map<string, EventData[]>();
   for (const e of events) {
@@ -32,8 +56,8 @@ export function YearTimelineView({ year, events, getEventColor, calendars }: Yea
   }
 
   return (
-    <div className="overflow-auto">
-      <table className="w-full text-[10px] border-collapse" style={{ tableLayout: "fixed" }}>
+    <div ref={containerRef} className="h-full min-h-0 overflow-auto">
+      <table className="h-full w-full min-w-[860px] border-collapse text-[10px]" style={{ tableLayout: "fixed" }}>
         <thead className="sticky top-0 z-10 bg-background">
           <tr>
             <th className="w-12 border-b border-r border-border p-1 text-left text-text-muted font-normal sticky left-0 bg-background">월</th>
@@ -48,7 +72,7 @@ export function YearTimelineView({ year, events, getEventColor, calendars }: Yea
           {MONTHS.map((monthLabel, m) => {
             const daysInMonth = new Date(year, m + 1, 0).getDate();
             return (
-              <tr key={m} className="border-b border-border/50">
+              <tr key={m} className="border-b border-border/50" style={{ height: `${rowHeight}px` }}>
                 <td className="border-r border-border p-1 text-text-secondary font-medium sticky left-0 bg-background">
                   {monthLabel}
                 </td>
@@ -64,7 +88,7 @@ export function YearTimelineView({ year, events, getEventColor, calendars }: Yea
                     <td
                       key={d}
                       className={cn(
-                        "p-px border-r border-border/30 align-top h-6",
+                        "h-full p-px align-top border-r border-border/30",
                         isToday && "bg-primary/10",
                         isWeekend && !isToday && "bg-surface-accent/30"
                       )}
