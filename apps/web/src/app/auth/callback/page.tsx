@@ -22,7 +22,7 @@ function CallbackContent() {
         const data = await exchangeCode({ code, state, app: "web" });
 
         setTokens(data.access_token, data.refresh_token);
-        router.replace("/cloud");
+        router.replace("/home");
       } catch {
         setError("로그인에 실패했습니다. 다시 시도해주세요.");
       } finally {

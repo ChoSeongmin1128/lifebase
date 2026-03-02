@@ -13,7 +13,7 @@ export default function Home() {
 
   useEffect(() => {
     if (isAuthenticated()) {
-      router.replace("/cloud");
+      router.replace("/home");
       return;
     }
   }, [router]);

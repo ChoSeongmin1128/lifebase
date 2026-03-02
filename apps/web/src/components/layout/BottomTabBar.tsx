@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
+  House,
   Cloud,
   Calendar,
   CheckCircle2,
@@ -12,6 +13,7 @@ import {
 import { cn } from "@/lib/utils";
 
 const TAB_ITEMS = [
+  { href: "/home", label: "Home", icon: House },
   { href: "/cloud", label: "Cloud", icon: Cloud },
   { href: "/calendar", label: "Calendar", icon: Calendar },
   { href: "/todo", label: "Todo", icon: CheckCircle2 },

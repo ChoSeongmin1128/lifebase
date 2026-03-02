@@ -1,9 +1,11 @@
 "use client";
 
+import Link from "next/link";
 import { Suspense, useState } from "react";
 import { usePathname } from "next/navigation";
 import Image from "next/image";
 import {
+  House,
   Cloud,
   Calendar,
   CheckCircle2,
@@ -18,6 +20,7 @@ import { SidebarItem } from "./SidebarItem";
 import { CloudSubnav } from "./CloudSubnav";
 
 const NAV_ITEMS = [
+  { href: "/home", label: "Home", icon: House },
   { href: "/cloud", label: "Cloud", icon: Cloud },
   { href: "/calendar", label: "Calendar", icon: Calendar },
   { href: "/todo", label: "Todo", icon: CheckCircle2 },
@@ -50,15 +53,20 @@ export function Sidebar({ expanded, onToggle, onLogout }: SidebarProps) {
         >
           <PanelLeft size={18} />
         </button>
-        <div
-          className={cn(
-            "flex items-center gap-2 transition-all duration-200 overflow-hidden",
-            expanded ? "opacity-100 w-auto" : "opacity-0 w-0"
-          )}
+        <Link
+          href="/home"
+          className="flex items-center gap-2 transition-all duration-200 overflow-hidden"
         >
           <Image src="/logo.svg" alt="LifeBase" width={24} height={24} />
-          <span className="text-sm font-semibold text-text-strong whitespace-nowrap">LifeBase</span>
-        </div>
+          <span
+            className={cn(
+              "text-sm font-semibold text-text-strong whitespace-nowrap transition-all duration-200",
+              expanded ? "opacity-100 w-auto" : "opacity-0 w-0 overflow-hidden"
+            )}
+          >
+            LifeBase
+          </span>
+        </Link>
       </div>
 
       {/* Nav */}
