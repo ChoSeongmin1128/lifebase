@@ -395,11 +395,23 @@ export default function CalendarPage() {
   ): QuickCreateAnchorPoint => {
     const rect = event.currentTarget.getBoundingClientRect();
     const estimatedPopoverWidth = 352;
-    const shouldOpenLeft = rect.right + estimatedPopoverWidth + 12 > window.innerWidth;
+    const edgePadding = 12;
+    const isLeftRegion = rect.left < window.innerWidth * 0.4;
+    let side: "left" | "right" = isLeftRegion ? "right" : "left";
+
+    if (side === "left" && rect.left < estimatedPopoverWidth + edgePadding) {
+      side = "right";
+    } else if (
+      side === "right" &&
+      window.innerWidth - rect.right < estimatedPopoverWidth + edgePadding
+    ) {
+      side = "left";
+    }
+
     return {
-      x: shouldOpenLeft ? rect.left + 4 : rect.right - 4,
+      x: side === "left" ? rect.left + 4 : rect.right - 4,
       y: rect.top + 8,
-      side: shouldOpenLeft ? "left" : "right",
+      side,
     };
   };
 
