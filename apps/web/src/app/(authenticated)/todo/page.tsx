@@ -19,6 +19,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { TodoToolbar, type TodoSortBy, type TodoFilterMode } from "@/components/todo/TodoToolbar";
 import { TodoRow } from "@/components/todo/TodoRow";
 import { CreateTodoDialog } from "@/components/todo/CreateTodoDialog";
+import { useCreateTodo } from "@/features/todo/ui/hooks/useCreateTodo";
 import {
   DndContext,
   closestCenter,
@@ -77,7 +78,6 @@ function TodoPageInner() {
   const [sortBy, setSortBy] = useState<TodoSortBy>("due");
   const [filter, setFilter] = useState<TodoFilterMode>("all");
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
-  const [creating, setCreating] = useState(false);
   const [showCreateDialog, setShowCreateDialog] = useState(false);
   const [createParentId, setCreateParentId] = useState<string | undefined>();
 
@@ -88,6 +88,7 @@ function TodoPageInner() {
   const dragSnapshotRef = useRef<TodoItem[]>([]);
 
   const token = getAccessToken();
+  const { createTodo, creating } = useCreateTodo();
   const defaultListId = lists.length > 0 ? lists[0].id : null;
 
   const loadLists = useCallback(async () => {
@@ -167,20 +168,15 @@ function TodoPageInner() {
     notes: string;
     parentId?: string;
   }) => {
-    if (!token || !activeListId || creating) return;
-    setCreating(true);
+    if (!activeListId || creating) return;
     try {
-      await api("/todo", {
-        method: "POST",
-        body: {
-          list_id: activeListId,
-          title: data.title,
-          notes: data.notes,
-          due: data.due,
-          priority: data.priority,
-          ...(data.parentId ? { parent_id: data.parentId } : {}),
-        },
-        token,
+      await createTodo({
+        listId: activeListId,
+        title: data.title,
+        notes: data.notes,
+        due: data.due,
+        priority: data.priority as "urgent" | "high" | "normal" | "low",
+        parentId: data.parentId,
       });
       if (data.parentId) {
         setCollapsed((prev) => {
@@ -194,8 +190,6 @@ function TodoPageInner() {
       loadTodos();
     } catch (err) {
       console.error("Create todo failed:", err);
-    } finally {
-      setCreating(false);
     }
   };
 

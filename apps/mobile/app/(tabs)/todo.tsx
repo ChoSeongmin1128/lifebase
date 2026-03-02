@@ -10,6 +10,7 @@ import {
 } from "react-native";
 import { api } from "../../lib/api";
 import { getAccessToken } from "../../lib/auth";
+import { useCreateTodo } from "../../features/todo/ui/hooks/useCreateTodo";
 
 type TodoItem = {
   id: string;
@@ -31,6 +32,7 @@ export default function TodoScreen() {
   const [todos, setTodos] = useState<TodoItem[]>([]);
   const [newTitle, setNewTitle] = useState("");
   const [refreshing, setRefreshing] = useState(false);
+  const { createTodo, creating } = useCreateTodo();
 
   const loadLists = useCallback(async () => {
     const token = await getAccessToken();
@@ -94,14 +96,11 @@ export default function TodoScreen() {
   };
 
   const addTodo = async () => {
-    if (!newTitle.trim() || !selectedList) return;
-    const token = await getAccessToken();
-    if (!token) return;
+    if (!newTitle.trim() || !selectedList || creating) return;
     try {
-      await api("/todo", {
-        method: "POST",
-        body: { title: newTitle.trim(), list_id: selectedList },
-        token,
+      await createTodo({
+        listId: selectedList,
+        title: newTitle.trim(),
       });
       setNewTitle("");
       loadTodos();
@@ -154,6 +153,7 @@ export default function TodoScreen() {
           style={styles.input}
           placeholder="새 Todo 추가..."
           value={newTitle}
+          editable={!creating}
           onChangeText={setNewTitle}
           onSubmitEditing={addTodo}
           returnKeyType="done"
