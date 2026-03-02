@@ -11,27 +11,41 @@ function CallbackContent() {
   const searchParams = useSearchParams();
   const [error, setError] = useState<string | null>(null);
   const code = searchParams.get("code");
-  const { exchangeCode } = useAuthFlow();
+  const { exchangeCode, linkGoogleAccount } = useAuthFlow();
 
   useEffect(() => {
     if (!code) return;
 
     const runExchange = async () => {
-      try {
-        const state = sessionStorage.getItem("oauth_state") || undefined;
-        const data = await exchangeCode({ code, state, app: "web" });
+      const state = sessionStorage.getItem("oauth_state") || undefined;
+      const intent = sessionStorage.getItem("oauth_intent");
+      const returnPath = sessionStorage.getItem("oauth_return_path") || "/settings";
 
+      try {
+        if (intent === "link_google_account") {
+          await linkGoogleAccount({ code, state, app: "web" });
+          router.replace(returnPath);
+          return;
+        }
+
+        const data = await exchangeCode({ code, state, app: "web" });
         setTokens(data.access_token, data.refresh_token);
         router.replace("/home");
       } catch {
+        if (intent === "link_google_account") {
+          setError("Google 계정 추가 연결에 실패했습니다. 다시 시도해주세요.");
+          return;
+        }
         setError("로그인에 실패했습니다. 다시 시도해주세요.");
       } finally {
         sessionStorage.removeItem("oauth_state");
+        sessionStorage.removeItem("oauth_intent");
+        sessionStorage.removeItem("oauth_return_path");
       }
     };
 
     runExchange();
-  }, [code, exchangeCode, router]);
+  }, [code, exchangeCode, linkGoogleAccount, router]);
 
   if (!code) {
     return (

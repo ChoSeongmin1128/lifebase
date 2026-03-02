@@ -1,19 +1,27 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { useSettingsActions } from "@/features/settings/ui/hooks/useSettingsActions";
+import { useAuthFlow } from "@/features/auth/ui/hooks/useAuthFlow";
+import type { GoogleAccountSummary } from "@/features/auth/domain/AuthSession";
 import { useThemeContext } from "@/components/providers/ThemeProvider";
+import { useToast } from "@/components/providers/ToastProvider";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@/components/ui/select";
 import { Sun, Moon, Monitor } from "lucide-react";
 
 export default function SettingsPage() {
   const [settings, setSettings] = useState<Record<string, string>>({});
+  const [googleAccounts, setGoogleAccounts] = useState<GoogleAccountSummary[]>([]);
   const [loading, setLoading] = useState(true);
+  const [googleAccountsLoading, setGoogleAccountsLoading] = useState(true);
   const { theme, setTheme } = useThemeContext();
+  const toast = useToast();
   const { getSettings, updateSetting } = useSettingsActions();
+  const { requestAuthUrl, listGoogleAccounts } = useAuthFlow();
 
   const loadSettings = useCallback(async () => {
     setLoading(true);
@@ -27,9 +35,25 @@ export default function SettingsPage() {
     }
   }, [getSettings]);
 
+  const loadGoogleAccounts = useCallback(async () => {
+    setGoogleAccountsLoading(true);
+    try {
+      const accounts = await listGoogleAccounts();
+      setGoogleAccounts(accounts);
+    } catch {
+      setGoogleAccounts([]);
+    } finally {
+      setGoogleAccountsLoading(false);
+    }
+  }, [listGoogleAccounts]);
+
   useEffect(() => {
     loadSettings();
   }, [loadSettings]);
+
+  useEffect(() => {
+    loadGoogleAccounts();
+  }, [loadGoogleAccounts]);
 
   const handleUpdateSetting = async (key: string, value: string) => {
     setSettings((prev) => ({ ...prev, [key]: value }));
@@ -46,6 +70,23 @@ export default function SettingsPage() {
   const handleThemeChange = (value: "light" | "dark" | "system") => {
     setTheme(value);
     handleUpdateSetting("theme", value);
+  };
+
+  const activeGoogleAccountCount = useMemo(
+    () => googleAccounts.filter((account) => account.status === "active").length,
+    [googleAccounts]
+  );
+
+  const handleConnectGoogleAccount = async () => {
+    try {
+      const data = await requestAuthUrl("web");
+      sessionStorage.setItem("oauth_state", data.state);
+      sessionStorage.setItem("oauth_intent", "link_google_account");
+      sessionStorage.setItem("oauth_return_path", "/settings");
+      window.location.href = data.url;
+    } catch {
+      toast.error("Google 계정 연결 요청 실패", "잠시 후 다시 시도해 주세요.");
+    }
   };
 
   return (
@@ -92,8 +133,43 @@ export default function SettingsPage() {
 
               <SettingsCard title="계정">
                 <SettingRow label="Google 계정">
-                  <span className="text-sm text-text-muted">연결됨</span>
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm text-text-muted">
+                      활성 {activeGoogleAccountCount}개 / 총 {googleAccounts.length}개
+                    </span>
+                    <Button size="sm" variant="secondary" onClick={handleConnectGoogleAccount}>
+                      계정 추가 연결
+                    </Button>
+                  </div>
                 </SettingRow>
+                <Separator />
+                <div className="space-y-2">
+                  {googleAccountsLoading ? (
+                    <p className="text-sm text-text-muted">Google 계정 정보를 불러오는 중...</p>
+                  ) : googleAccounts.length === 0 ? (
+                    <p className="text-sm text-text-muted">연결된 Google 계정이 없습니다.</p>
+                  ) : (
+                    googleAccounts.map((account) => (
+                      <div
+                        key={account.id}
+                        className="flex items-center justify-between rounded-md border border-border/70 px-3 py-2"
+                      >
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-medium text-text-strong">{account.google_email}</p>
+                          <p className="text-xs text-text-muted">
+                            연결일: {new Date(account.connected_at).toLocaleDateString("ko-KR")}
+                          </p>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          {account.is_primary ? <Badge variant="primary">기본</Badge> : null}
+                          <Badge variant={getGoogleAccountStatusBadgeVariant(account.status)}>
+                            {getGoogleAccountStatusLabel(account.status)}
+                          </Badge>
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
               </SettingsCard>
             </TabsContent>
 
@@ -372,4 +448,20 @@ function SettingRow({ label, children }: { label: string; children: React.ReactN
       {children}
     </div>
   );
+}
+
+function getGoogleAccountStatusLabel(status: string): string {
+  if (status === "active") return "정상";
+  if (status === "reauth_required") return "재인증 필요";
+  if (status === "revoked") return "해지됨";
+  return status;
+}
+
+function getGoogleAccountStatusBadgeVariant(
+  status: string
+): "default" | "primary" | "error" | "warning" | "success" {
+  if (status === "active") return "success";
+  if (status === "reauth_required") return "warning";
+  if (status === "revoked") return "error";
+  return "default";
 }
