@@ -9,6 +9,14 @@ import { isAuthenticated } from "@/features/auth/infrastructure/token-auth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Textarea } from "@/components/ui/textarea";
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import {
   DropdownMenu,
   DropdownMenuTrigger,
@@ -75,6 +83,10 @@ function CloudPageInner() {
   const [newFileName, setNewFileName] = useState("");
   const [newFileExtension, setNewFileExtension] = useState<"md" | "txt">("md");
   const [creatingFile, setCreatingFile] = useState(false);
+  const [editorOpen, setEditorOpen] = useState(false);
+  const [editingFile, setEditingFile] = useState<CloudFile | null>(null);
+  const [editorContent, setEditorContent] = useState("");
+  const [savingContent, setSavingContent] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState<CloudFile[] | null>(null);
   const [dragOver, setDragOver] = useState(false);
@@ -106,8 +118,13 @@ function CloudPageInner() {
   }, []);
 
   const syncFolderUrl = useCallback(
-    (folderId: string | null) => {
-      router.replace(buildCloudHref(section, folderId), { scroll: false });
+    (folderId: string | null, mode: "push" | "replace" = "replace") => {
+      const href = buildCloudHref(section, folderId);
+      if (mode === "push") {
+        router.push(href, { scroll: false });
+        return;
+      }
+      router.replace(href, { scroll: false });
     },
     [buildCloudHref, router, section],
   );
@@ -189,7 +206,7 @@ function CloudPageInner() {
   const navigateToFolder = (folder: FolderData) => {
     if (!isMyFilesSection) return;
     setPath((prev) => [...prev, { id: folder.id, name: folder.name }]);
-    syncFolderUrl(folder.id);
+    syncFolderUrl(folder.id, "push");
   };
 
   const navigateToBreadcrumb = (index: number) => {
@@ -197,7 +214,7 @@ function CloudPageInner() {
     setPath((prev) => {
       const next = prev.slice(0, index + 1);
       const nextFolderId = next[next.length - 1]?.id ?? null;
-      syncFolderUrl(nextFolderId);
+      syncFolderUrl(nextFolderId, "push");
       return next;
     });
   };
@@ -221,11 +238,44 @@ function CloudPageInner() {
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = filename;
+      a.download = filename && filename !== "download" ? filename : file.name;
       a.click();
       URL.revokeObjectURL(url);
     } catch (err) {
       console.error("Download failed:", err);
+    }
+  };
+
+  const isEditableTextFile = (file: CloudFile) => {
+    const lowerName = file.name.toLowerCase();
+    if (lowerName.endsWith(".md") || lowerName.endsWith(".txt")) return true;
+    return file.mime_type.startsWith("text/");
+  };
+
+  const openTextEditor = async (file: CloudFile) => {
+    if (!authed || !isMyFilesSection || !isEditableTextFile(file)) return;
+    try {
+      const content = await cloud.getTextFileContent(file.id);
+      setEditingFile(file);
+      setEditorContent(content);
+      setEditorOpen(true);
+    } catch (err) {
+      console.error("Open editor failed:", err);
+    }
+  };
+
+  const saveTextEditor = async () => {
+    if (!editingFile || savingContent) return;
+    setSavingContent(true);
+    try {
+      await cloud.updateTextFileContent(editingFile.id, editorContent);
+      setEditorOpen(false);
+      setEditingFile(null);
+      await loadItems();
+    } catch (err) {
+      console.error("Save editor failed:", err);
+    } finally {
+      setSavingContent(false);
     }
   };
 
@@ -435,6 +485,17 @@ function CloudPageInner() {
     });
   };
 
+  const formatRecentFilePath = (item: FolderItem) => {
+    if (item.type !== "file") return "";
+    if (item.path && item.path.startsWith("/")) return item.path;
+
+    const folderSegments = (item.path || "")
+      .split("/")
+      .map((segment) => segment.trim())
+      .filter((segment) => segment.length > 0 && segment !== "내 클라우드");
+    return `/${[...folderSegments, item.file!.name].join("/")}`;
+  };
+
   const sortOptions: { value: SortBy; label: string }[] = [
     { value: "name", label: "이름" },
     { value: "updated_at", label: "수정한 날짜" },
@@ -442,8 +503,8 @@ function CloudPageInner() {
     { value: "size", label: "크기" },
   ];
 
-  const displayItems = isMyFilesSection && searchResults
-    ? searchResults.map((f) => ({ type: "file" as const, file: f }))
+  const displayItems: FolderItem[] = isMyFilesSection && searchResults
+    ? searchResults.map((f) => ({ type: "file" as const, file: f, path: undefined }))
     : items;
 
   const sectionLabel = CLOUD_SECTION_LABELS[section];
@@ -834,6 +895,7 @@ function CloudPageInner() {
                 const name = item.type === "folder" ? item.folder!.name : item.file!.name;
                 const isRenaming = renaming?.id === id;
                 const isSelected = selectedIds.has(id);
+                const recentPath = isRecentSection && item.type === "file" ? formatRecentFilePath(item) : "";
 
                 return (
                   <tr
@@ -843,7 +905,13 @@ function CloudPageInner() {
                     }`}
                     onDoubleClick={() => {
                       if (isMyFilesSection && item.type === "folder" && item.folder) navigateToFolder(item.folder);
-                      else if (!isTrashSection && item.type === "file" && item.file) handleDownload(item.file);
+                      else if (!isTrashSection && item.type === "file" && item.file) {
+                        if (isMyFilesSection && isEditableTextFile(item.file)) {
+                          openTextEditor(item.file);
+                        } else {
+                          handleDownload(item.file);
+                        }
+                      }
                     }}
                   >
                     <td className="px-4 md:px-6 py-2">
@@ -875,14 +943,19 @@ function CloudPageInner() {
                           />
                         ) : (
                           <>
-                            <span
-                              className={`${item.type === "folder" && isMyFilesSection ? "cursor-pointer hover:underline " : ""}text-text-primary`}
-                              onClick={() => {
-                                if (isMyFilesSection && item.type === "folder" && item.folder) navigateToFolder(item.folder);
-                              }}
-                            >
-                              {name}
-                            </span>
+                            <div className="min-w-0">
+                              <span
+                                className={`${item.type === "folder" && isMyFilesSection ? "cursor-pointer hover:underline " : ""}text-text-primary`}
+                                onClick={() => {
+                                  if (isMyFilesSection && item.type === "folder" && item.folder) navigateToFolder(item.folder);
+                                }}
+                              >
+                                {name}
+                              </span>
+                              {isRecentSection && item.type === "file" && (
+                                <p className="truncate text-[11px] text-text-muted">{recentPath}</p>
+                              )}
+                            </div>
                             {isItemStarred(item) && (
                               <StarIcon size={12} className="shrink-0 text-amber-500 fill-amber-500" />
                             )}
@@ -914,6 +987,13 @@ function CloudPageInner() {
                                 <DropdownMenuItem onClick={() => navigateToFolder(item.folder!)}>
                                   <FolderOpen size={14} /> 열기
                                 </DropdownMenuItem>
+                              )}
+                              {item.type === "file" && item.file && (
+                                isEditableTextFile(item.file) ? (
+                                  <DropdownMenuItem onClick={() => openTextEditor(item.file!)}>
+                                    <Pencil size={14} /> 편집
+                                  </DropdownMenuItem>
+                                ) : null
                               )}
                               {item.type === "file" && item.file && (
                                 <DropdownMenuItem onClick={() => handleDownload(item.file!)}>
@@ -974,6 +1054,7 @@ function CloudPageInner() {
               const id = item.type === "folder" ? item.folder!.id : item.file!.id;
               const name = item.type === "folder" ? item.folder!.name : item.file!.name;
               const isSelected = selectedIds.has(id);
+              const recentPath = isRecentSection && item.type === "file" ? formatRecentFilePath(item) : "";
 
               return (
                 <div
@@ -1006,6 +1087,11 @@ function CloudPageInner() {
                   {/* 파일명 */}
                   <div className="px-2 py-1.5">
                     <span className="block w-full truncate text-center text-xs text-text-primary">{name}</span>
+                    {isRecentSection && item.type === "file" && (
+                      <p className="mt-0.5 truncate text-center text-[10px] text-text-muted">
+                        {recentPath}
+                      </p>
+                    )}
                   </div>
                 </div>
               );
@@ -1013,6 +1099,34 @@ function CloudPageInner() {
           </div>
         )}
       </div>
+
+      <Dialog open={editorOpen} onOpenChange={(open) => {
+        setEditorOpen(open);
+        if (!open) {
+          setEditingFile(null);
+          setEditorContent("");
+        }
+      }}>
+        <DialogContent className="max-w-3xl">
+          <DialogHeader>
+            <DialogTitle>{editingFile ? `${editingFile.name} 편집` : "파일 편집"}</DialogTitle>
+          </DialogHeader>
+          <Textarea
+            value={editorContent}
+            onChange={(e) => setEditorContent(e.target.value)}
+            rows={18}
+            className="font-mono text-sm"
+          />
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setEditorOpen(false)}>
+              취소
+            </Button>
+            <Button onClick={saveTextEditor} disabled={savingContent}>
+              저장
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

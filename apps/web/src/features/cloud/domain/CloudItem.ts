@@ -24,6 +24,7 @@ export interface FolderItem {
   type: "folder" | "file";
   folder?: FolderData;
   file?: CloudFile;
+  path?: string;
 }
 
 export interface StarItem {
