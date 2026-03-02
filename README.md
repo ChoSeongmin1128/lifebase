@@ -62,11 +62,9 @@ lifebase/
 
 ```bash
 # 프로젝트 루트 기준
-cp .env.development.example .env.development.local
 # 로컬 개발 값은 .env.development.local에 저장 (git ignored)
-
-cp .env.production.example .env.production.local
 # 운영 값은 .env.production.local에 저장 (git ignored)
+# 웹 앱 값은 apps/web/.env.development.local, apps/web/.env.production.local 사용
 
 # 기본 SERVER_ENV=development는 .env에 정의됨
 ```
