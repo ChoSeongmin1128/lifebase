@@ -37,9 +37,16 @@ type RecentFileSummary struct {
 }
 
 type StorageSummary struct {
-	UsedBytes    int64   `json:"used_bytes"`
-	QuotaBytes   int64   `json:"quota_bytes"`
-	UsagePercent float64 `json:"usage_percent"`
+	UsedBytes    int64              `json:"used_bytes"`
+	QuotaBytes   int64              `json:"quota_bytes"`
+	UsagePercent float64            `json:"usage_percent"`
+	Breakdown    []StorageTypeUsage `json:"breakdown"`
+}
+
+type StorageTypeUsage struct {
+	Type    string  `json:"type"`
+	Bytes   int64   `json:"bytes"`
+	Percent float64 `json:"percent"`
 }
 
 type Summary struct {

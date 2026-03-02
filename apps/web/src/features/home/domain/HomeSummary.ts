@@ -27,6 +27,12 @@ export interface HomeSummaryRecentFile {
   updated_at: string;
 }
 
+export interface HomeStorageTypeUsage {
+  type: "image" | "video" | "other";
+  bytes: number;
+  percent: number;
+}
+
 export interface HomeSummary {
   window: {
     start: string;
@@ -50,6 +56,7 @@ export interface HomeSummary {
     used_bytes: number;
     quota_bytes: number;
     usage_percent: number;
+    breakdown: HomeStorageTypeUsage[];
   };
 }
 

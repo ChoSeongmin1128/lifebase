@@ -12,4 +12,5 @@ type HomeRepository interface {
 	ListTodayTodos(ctx context.Context, userID, todayDate string, limit int) ([]domain.TodoSummary, int, error)
 	ListRecentFiles(ctx context.Context, userID string, limit int) ([]domain.RecentFileSummary, int, error)
 	GetStorageSummary(ctx context.Context, userID string) (domain.StorageSummary, error)
+	ListStorageTypeUsage(ctx context.Context, userID string) ([]domain.StorageTypeUsage, error)
 }

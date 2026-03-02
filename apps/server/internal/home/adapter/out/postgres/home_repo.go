@@ -201,3 +201,37 @@ func (r *homeRepo) GetStorageSummary(ctx context.Context, userID string) (domain
 	}
 	return out, nil
 }
+
+func (r *homeRepo) ListStorageTypeUsage(ctx context.Context, userID string) ([]domain.StorageTypeUsage, error) {
+	rows, err := r.db.Query(ctx,
+		`SELECT type_key, COALESCE(SUM(size_bytes), 0) AS used_bytes
+		 FROM (
+		   SELECT
+		     CASE
+		       WHEN mime_type LIKE 'image/%' THEN 'image'
+		       WHEN mime_type LIKE 'video/%' THEN 'video'
+		       ELSE 'other'
+		     END AS type_key,
+		     size_bytes
+		   FROM files
+		   WHERE user_id = $1
+		     AND deleted_at IS NULL
+		 ) t
+		 GROUP BY type_key`,
+		userID,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	out := make([]domain.StorageTypeUsage, 0, 3)
+	for rows.Next() {
+		var item domain.StorageTypeUsage
+		if err := rows.Scan(&item.Type, &item.Bytes); err != nil {
+			return nil, err
+		}
+		out = append(out, item)
+	}
+	return out, nil
+}

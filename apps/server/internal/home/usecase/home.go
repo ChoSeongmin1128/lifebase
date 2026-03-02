@@ -57,6 +57,10 @@ func (uc *homeUseCase) GetSummary(ctx context.Context, userID string, input port
 	if err != nil {
 		return nil, fmt.Errorf("get storage summary: %w", err)
 	}
+	typeUsage, err := uc.repo.ListStorageTypeUsage(ctx, userID)
+	if err != nil {
+		return nil, fmt.Errorf("list storage type usage: %w", err)
+	}
 
 	if storage.QuotaBytes <= 0 {
 		storage.UsagePercent = 0
@@ -64,6 +68,7 @@ func (uc *homeUseCase) GetSummary(ctx context.Context, userID string, input port
 		usage := float64(storage.UsedBytes) / float64(storage.QuotaBytes) * 100
 		storage.UsagePercent = math.Round(usage*100) / 100
 	}
+	storage.Breakdown = fillStorageBreakdown(typeUsage, storage.UsedBytes)
 
 	out := &domain.Summary{}
 	out.Window = domain.TimeWindow{Start: input.Start, End: input.End}
@@ -87,4 +92,41 @@ func clampLimit(input, def, max int) int {
 		return max
 	}
 	return input
+}
+
+func fillStorageBreakdown(raw []domain.StorageTypeUsage, usedBytes int64) []domain.StorageTypeUsage {
+	byType := map[string]int64{
+		"image": 0,
+		"video": 0,
+		"other": 0,
+	}
+
+	for _, item := range raw {
+		if _, ok := byType[item.Type]; !ok {
+			byType["other"] += item.Bytes
+			continue
+		}
+		byType[item.Type] += item.Bytes
+	}
+
+	denominator := usedBytes
+	if denominator <= 0 {
+		denominator = byType["image"] + byType["video"] + byType["other"]
+	}
+
+	types := []string{"image", "video", "other"}
+	out := make([]domain.StorageTypeUsage, 0, len(types))
+	for _, t := range types {
+		bytes := byType[t]
+		percent := 0.0
+		if denominator > 0 {
+			percent = math.Round((float64(bytes)/float64(denominator)*100)*100) / 100
+		}
+		out = append(out, domain.StorageTypeUsage{
+			Type:    t,
+			Bytes:   bytes,
+			Percent: percent,
+		})
+	}
+	return out
 }

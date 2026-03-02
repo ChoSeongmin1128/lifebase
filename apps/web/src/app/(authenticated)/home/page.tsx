@@ -8,6 +8,12 @@ import { useHomeActions } from "@/features/home/ui/hooks/useHomeActions";
 import type { HomeSummary, HomeSummaryEvent, HomeSummaryTodo } from "@/features/home/domain/HomeSummary";
 import { CalendarPlus, CheckCircle2, Upload } from "lucide-react";
 
+const STORAGE_TYPE_META = {
+  image: { label: "이미지", color: "#22c55e" },
+  video: { label: "비디오", color: "#3b82f6" },
+  other: { label: "기타", color: "#f59e0b" },
+} as const;
+
 function toLocalRFC3339(date: Date): string {
   const year = date.getFullYear();
   const month = String(date.getMonth() + 1).padStart(2, "0");
@@ -91,6 +97,34 @@ export default function HomePage() {
   const now = new Date();
   const pastEvents = (summary?.events.items || []).filter((event) => new Date(event.end_time) < now);
   const todayEvents = (summary?.events.items || []).filter((event) => new Date(event.end_time) >= now);
+  const storageBreakdown = (["image", "video", "other"] as const).map((type) => {
+    const found = summary?.storage.breakdown.find((item) => item.type === type);
+    return {
+      type,
+      label: STORAGE_TYPE_META[type].label,
+      color: STORAGE_TYPE_META[type].color,
+      bytes: found?.bytes || 0,
+      percent: found?.percent || 0,
+    };
+  });
+  const storageConicGradient = (() => {
+    if (usedBytes <= 0) {
+      return "conic-gradient(#e5e7eb 0% 100%)";
+    }
+    const segments: string[] = [];
+    let offset = 0;
+    for (const item of storageBreakdown) {
+      const pct = Math.max(0, item.percent);
+      if (pct <= 0) continue;
+      const end = Math.min(100, offset + pct);
+      segments.push(`${item.color} ${offset}% ${end}%`);
+      offset = end;
+    }
+    if (offset < 100) {
+      segments.push(`#e5e7eb ${offset}% 100%`);
+    }
+    return `conic-gradient(${segments.join(", ")})`;
+  })();
 
   return (
     <div className="flex h-full flex-col">
@@ -277,15 +311,39 @@ export default function HomePage() {
                     <h3 className="text-sm font-semibold text-text-strong">저장공간</h3>
                     <Link href="/cloud" className="text-xs text-primary">Cloud 열기</Link>
                   </div>
-                  <p className="text-sm text-text-secondary">
+                  <p className="mb-3 text-sm text-text-secondary">
                     <span className="tabular-nums">{formatBytes(usedBytes)}</span>
                     <span className="mx-1 text-text-muted">/</span>
                     <span className="tabular-nums">{formatBytes(quotaBytes)}</span>
                   </p>
-                  <div className="mt-3 h-2 overflow-hidden rounded-full bg-surface-accent">
-                    <div className="h-full bg-primary transition-all" style={{ width: `${usagePercent}%` }} />
+                  <div className="flex items-center gap-4">
+                    <div
+                      className="relative h-24 w-24 shrink-0 rounded-full"
+                      style={{ background: storageConicGradient }}
+                    >
+                      <div className="absolute inset-[10px] flex items-center justify-center rounded-full bg-surface">
+                        <span className="text-xs font-medium text-text-strong tabular-nums">
+                          {usagePercent.toFixed(1)}%
+                        </span>
+                      </div>
+                    </div>
+                    <div className="flex-1 space-y-1.5">
+                      {storageBreakdown.map((item) => (
+                        <div key={item.type} className="flex items-center justify-between gap-2 text-xs">
+                          <div className="flex items-center gap-2 min-w-0">
+                            <span
+                              className="h-2 w-2 shrink-0 rounded-full"
+                              style={{ backgroundColor: item.color }}
+                            />
+                            <span className="text-text-secondary">{item.label}</span>
+                          </div>
+                          <span className="text-text-muted tabular-nums">
+                            {item.percent.toFixed(1)}% · {formatBytes(item.bytes)}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
                   </div>
-                  <p className="mt-2 text-xs text-text-muted tabular-nums">{usagePercent.toFixed(2)}%</p>
                 </section>
               </div>
             </div>
