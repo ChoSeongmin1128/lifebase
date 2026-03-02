@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, useMemo, useRef, type MouseEvent as ReactMouseEvent } from "react";
-import { useRouter, useParams } from "next/navigation";
+import { useRouter, useParams, useSearchParams } from "next/navigation";
 import { useCalendarActions } from "@/features/calendar/ui/hooks/useCalendarActions";
 import type {
   CalendarData,
@@ -233,7 +233,9 @@ function buildEventPayload(form: EventEditorForm, timezone: string): EventPayloa
 export default function CalendarPage() {
   const router = useRouter();
   const params = useParams();
+  const searchParams = useSearchParams();
   const slug = params.slug as string[] | undefined;
+  const quickAction = searchParams.get("quick");
   const { view: initialView, date: initialDate } = parseSlug(slug);
 
   const [view, setView] = useState<CalendarViewMode>(initialView);
@@ -251,6 +253,7 @@ export default function CalendarPage() {
   const [quickDefaultStart, setQuickDefaultStart] = useState<string>("");
   const [quickDefaultEnd, setQuickDefaultEnd] = useState<string>("");
   const [quickCreateAnchor, setQuickCreateAnchor] = useState<QuickCreateAnchorPoint | null>(null);
+  const quickActionHandledRef = useRef(false);
 
   const [editorOpen, setEditorOpen] = useState(false);
   const [editorMode, setEditorMode] = useState<"create" | "edit">("create");
@@ -314,6 +317,27 @@ export default function CalendarPage() {
   useEffect(() => { loadCalendars(); }, [loadCalendars]);
   useEffect(() => { loadSettings(); }, [loadSettings]);
   useEffect(() => { loadEvents(); }, [loadEvents]);
+  useEffect(() => {
+    if (quickAction !== "create") return;
+    if (quickActionHandledRef.current) return;
+    if (!defaultCalendarID) return;
+
+    quickActionHandledRef.current = true;
+
+    const now = new Date();
+    const start = new Date(now);
+    start.setMinutes(0, 0, 0);
+    start.setHours(start.getHours() + 1);
+    const end = new Date(start.getTime() + 60 * 60 * 1000);
+
+    setQuickDefaultStart(toLocalDateTimeInput(start));
+    setQuickDefaultEnd(toLocalDateTimeInput(end));
+    setQuickCreateAnchor(null);
+    setSelectedDateKey(toDateStr(start));
+    setQuickCreateOpen(true);
+
+    router.replace(buildCalendarUrl(view, currentDate), { scroll: false });
+  }, [quickAction, defaultCalendarID, router, view, currentDate]);
 
   const updateUrl = useCallback((newView: CalendarViewMode, date: Date) => {
     router.replace(buildCalendarUrl(newView, date), { scroll: false });

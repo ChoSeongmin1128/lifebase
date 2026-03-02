@@ -53,6 +53,7 @@ function TodoPageInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const listFromUrl = searchParams.get("list") || "";
+  const quickAction = searchParams.get("quick");
 
   const [lists, setLists] = useState<TodoList[]>([]);
   const [activeListId, setActiveListIdState] = useState<string>(listFromUrl);
@@ -79,6 +80,7 @@ function TodoPageInner() {
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const [showCreateDialog, setShowCreateDialog] = useState(false);
   const [createParentId, setCreateParentId] = useState<string | undefined>();
+  const quickActionHandledRef = useRef(false);
 
   // DnD state
   const [dragActiveId, setDragActiveId] = useState<string | null>(null);
@@ -132,6 +134,22 @@ function TodoPageInner() {
 
   useEffect(() => { loadLists(); }, [loadLists]);
   useEffect(() => { loadTodos(); }, [loadTodos]);
+  useEffect(() => {
+    if (quickAction !== "create") return;
+    if (quickActionHandledRef.current) return;
+    if (!activeListId) return;
+
+    quickActionHandledRef.current = true;
+    setCreateParentId(undefined);
+    setShowCreateDialog(true);
+
+    const params = new URLSearchParams();
+    if (activeListId) {
+      params.set("list", activeListId);
+    }
+    const next = params.toString();
+    router.replace(next ? `/todo?${next}` : "/todo", { scroll: false });
+  }, [quickAction, activeListId, router]);
 
   const handleCreateList = async () => {
     if (!newListName.trim()) return;
