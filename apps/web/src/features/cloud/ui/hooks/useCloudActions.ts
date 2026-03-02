@@ -28,6 +28,7 @@ export function useCloudActions() {
       emptyTrash: () => useCase.emptyTrash(),
       renameFolder: (folderId: string, name: string) => useCase.renameFolder(folderId, name),
       renameFile: (fileId: string, name: string) => useCase.renameFile(fileId, name),
+      moveFile: (fileId: string, folderId: string) => useCase.moveFile(fileId, folderId),
       createFolder: (name: string, parentId?: string | null) => useCase.createFolder(name, parentId),
       searchFiles: (query: string) => useCase.searchFiles(query),
     }),

@@ -175,6 +175,15 @@ export class HttpCloudRepository implements CloudRepository {
     });
   }
 
+  async moveFile(fileId: string, folderId: string): Promise<void> {
+    const token = this.getToken();
+    await api(`/cloud/files/${fileId}/move`, {
+      method: "PATCH",
+      body: { folder_id: folderId },
+      token,
+    });
+  }
+
   async createFolder(name: string, parentId?: string | null): Promise<void> {
     const token = this.getToken();
     await api("/cloud/folders", {

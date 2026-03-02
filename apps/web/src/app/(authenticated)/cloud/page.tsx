@@ -55,6 +55,7 @@ import {
 type SortBy = "name" | "size" | "updated_at" | "created_at";
 type SortDir = "asc" | "desc";
 type ViewMode = "list" | "grid";
+const INTERNAL_FILE_DRAG_TYPE = "application/x-lifebase-cloud-file-id";
 
 function CloudPageInner() {
   const router = useRouter();
@@ -90,6 +91,9 @@ function CloudPageInner() {
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState<CloudFile[] | null>(null);
   const [dragOver, setDragOver] = useState(false);
+  const [draggingFileId, setDraggingFileId] = useState<string | null>(null);
+  const [dropTargetFolderId, setDropTargetFolderId] = useState<string | null>(null);
+  const [movingFileId, setMovingFileId] = useState<string | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [viewMode, setViewMode] = useState<ViewMode>("list");
   const [starredKeys, setStarredKeys] = useState<Set<string>>(new Set());
@@ -199,6 +203,10 @@ function CloudPageInner() {
     setSearchResults(null);
     setSearchQuery("");
     setSelectedIds(new Set());
+    setDragOver(false);
+    setDraggingFileId(null);
+    setDropTargetFolderId(null);
+    setMovingFileId(null);
     loadStars();
     loadItems();
   }, [isMyFilesSection, loadItems, loadStars]);
@@ -438,12 +446,78 @@ function CloudPageInner() {
     }
   };
 
+  const getDraggedFileId = (e: React.DragEvent): string | null => {
+    const fromData = e.dataTransfer.getData(INTERNAL_FILE_DRAG_TYPE);
+    if (fromData) return fromData;
+    return draggingFileId;
+  };
+
+  const isUploadDragEvent = (e: React.DragEvent) => Array.from(e.dataTransfer.types).includes("Files");
+
+  const handleMoveFileToFolder = async (fileId: string, folderId: string) => {
+    if (!authed || !isMyFilesSection || movingFileId) return;
+    const source = displayItems.find((item) => item.type === "file" && item.file?.id === fileId);
+    if (!source || source.type !== "file") return;
+    if (source.file!.folder_id === folderId) return;
+
+    setMovingFileId(fileId);
+    try {
+      await cloud.moveFile(fileId, folderId);
+      setSelectedIds((prev) => {
+        if (!prev.has(fileId)) return prev;
+        const next = new Set(prev);
+        next.delete(fileId);
+        return next;
+      });
+      await loadItems();
+    } catch (err) {
+      console.error("Move file failed:", err);
+      const msg = err instanceof Error ? err.message : "알 수 없는 오류";
+      if (typeof window !== "undefined") {
+        window.alert(`파일 이동에 실패했습니다: ${msg}`);
+      }
+    } finally {
+      setMovingFileId(null);
+    }
+  };
+
+  const handleFolderDragOver = (e: React.DragEvent, folderId: string) => {
+    if (!isMyFilesSection || movingFileId) return;
+    const fileId = getDraggedFileId(e);
+    if (!fileId) return;
+    const source = displayItems.find((item) => item.type === "file" && item.file?.id === fileId);
+    if (!source || source.type !== "file") return;
+    if (source.file!.folder_id === folderId) return;
+
+    e.preventDefault();
+    e.stopPropagation();
+    e.dataTransfer.dropEffect = "move";
+    if (dropTargetFolderId !== folderId) {
+      setDropTargetFolderId(folderId);
+    }
+  };
+
+  const handleFolderDrop = async (e: React.DragEvent, folderId: string) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const fileId = getDraggedFileId(e);
+    setDropTargetFolderId(null);
+    if (!fileId) return;
+    await handleMoveFileToFolder(fileId, folderId);
+  };
+
   const handleDrop = (e: React.DragEvent) => {
     e.preventDefault();
     if (!isMyFilesSection) {
       setDragOver(false);
       return;
     }
+
+    if (!isUploadDragEvent(e)) {
+      setDragOver(false);
+      return;
+    }
+
     setDragOver(false);
     handleUpload(e.dataTransfer.files);
   };
@@ -517,11 +591,14 @@ function CloudPageInner() {
     <div
       className="flex h-full flex-col"
       onDragOver={(e) => {
-        e.preventDefault();
         if (!isMyFilesSection) return;
+        if (!isUploadDragEvent(e)) return;
+        e.preventDefault();
         setDragOver(true);
       }}
-      onDragLeave={() => setDragOver(false)}
+      onDragLeave={() => {
+        setDragOver(false);
+      }}
       onDrop={handleDrop}
     >
       {showBreadcrumb && (
@@ -896,13 +973,43 @@ function CloudPageInner() {
                 const isRenaming = renaming?.id === id;
                 const isSelected = selectedIds.has(id);
                 const recentPath = isRecentSection && item.type === "file" ? formatRecentFilePath(item) : "";
+                const isDropTarget = isMyFilesSection && item.type === "folder" && dropTargetFolderId === id;
+                const isDraggingItem = isMyFilesSection && item.type === "file" && draggingFileId === id;
 
                 return (
                   <tr
                     key={id}
                     className={`border-b border-border/50 hover:bg-surface-accent/50 cursor-default ${
                       isSelected ? "bg-primary/5" : ""
+                    } ${isDropTarget ? "bg-surface-accent/80 ring-1 ring-inset ring-primary" : ""} ${
+                      isDraggingItem ? "opacity-60" : ""
                     }`}
+                    draggable={isMyFilesSection && item.type === "file"}
+                    onDragStart={(e) => {
+                      if (!isMyFilesSection || item.type !== "file" || movingFileId) return;
+                      setDraggingFileId(item.file!.id);
+                      e.dataTransfer.effectAllowed = "move";
+                      e.dataTransfer.setData(INTERNAL_FILE_DRAG_TYPE, item.file!.id);
+                      e.dataTransfer.setData("text/plain", item.file!.id);
+                    }}
+                    onDragEnd={() => {
+                      setDraggingFileId(null);
+                      setDropTargetFolderId(null);
+                    }}
+                    onDragOver={(e) => {
+                      if (item.type !== "folder") return;
+                      handleFolderDragOver(e, item.folder!.id);
+                    }}
+                    onDragLeave={() => {
+                      if (item.type !== "folder") return;
+                      if (dropTargetFolderId === item.folder!.id) {
+                        setDropTargetFolderId(null);
+                      }
+                    }}
+                    onDrop={(e) => {
+                      if (item.type !== "folder") return;
+                      void handleFolderDrop(e, item.folder!.id);
+                    }}
                     onDoubleClick={() => {
                       if (isMyFilesSection && item.type === "folder" && item.folder) navigateToFolder(item.folder);
                       else if (!isTrashSection && item.type === "file" && item.file) {
@@ -1055,13 +1162,43 @@ function CloudPageInner() {
               const name = item.type === "folder" ? item.folder!.name : item.file!.name;
               const isSelected = selectedIds.has(id);
               const recentPath = isRecentSection && item.type === "file" ? formatRecentFilePath(item) : "";
+              const isDropTarget = isMyFilesSection && item.type === "folder" && dropTargetFolderId === id;
+              const isDraggingItem = isMyFilesSection && item.type === "file" && draggingFileId === id;
 
               return (
                 <div
                   key={id}
                   className={`group relative flex flex-col rounded-lg border overflow-hidden cursor-default transition-colors ${
                     isSelected ? "border-primary bg-primary/5" : "border-border hover:bg-surface-accent/50"
+                  } ${isDropTarget ? "bg-surface-accent/80 ring-2 ring-primary border-primary" : ""} ${
+                    isDraggingItem ? "opacity-60" : ""
                   }`}
+                  draggable={isMyFilesSection && item.type === "file"}
+                  onDragStart={(e) => {
+                    if (!isMyFilesSection || item.type !== "file" || movingFileId) return;
+                    setDraggingFileId(item.file!.id);
+                    e.dataTransfer.effectAllowed = "move";
+                    e.dataTransfer.setData(INTERNAL_FILE_DRAG_TYPE, item.file!.id);
+                    e.dataTransfer.setData("text/plain", item.file!.id);
+                  }}
+                  onDragEnd={() => {
+                    setDraggingFileId(null);
+                    setDropTargetFolderId(null);
+                  }}
+                  onDragOver={(e) => {
+                    if (item.type !== "folder") return;
+                    handleFolderDragOver(e, item.folder!.id);
+                  }}
+                  onDragLeave={() => {
+                    if (item.type !== "folder") return;
+                    if (dropTargetFolderId === item.folder!.id) {
+                      setDropTargetFolderId(null);
+                    }
+                  }}
+                  onDrop={(e) => {
+                    if (item.type !== "folder") return;
+                    void handleFolderDrop(e, item.folder!.id);
+                  }}
                   onClick={() => toggleSelect(id)}
                   onDoubleClick={() => {
                     if (isMyFilesSection && item.type === "folder" && item.folder) navigateToFolder(item.folder);

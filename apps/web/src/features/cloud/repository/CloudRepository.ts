@@ -26,6 +26,7 @@ export interface CloudRepository {
   emptyTrash(): Promise<void>;
   renameFolder(folderId: string, name: string): Promise<void>;
   renameFile(fileId: string, name: string): Promise<void>;
+  moveFile(fileId: string, folderId: string): Promise<void>;
   createFolder(name: string, parentId?: string | null): Promise<void>;
   searchFiles(query: string): Promise<CloudFile[]>;
 }

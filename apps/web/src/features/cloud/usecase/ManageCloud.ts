@@ -72,6 +72,10 @@ export class ManageCloudUseCase {
     return this.repo.renameFile(fileId, name.trim());
   }
 
+  moveFile(fileId: string, folderId: string) {
+    return this.repo.moveFile(fileId, folderId);
+  }
+
   createFolder(name: string, parentId?: string | null) {
     const normalized = name.trim();
     if (!normalized) {
