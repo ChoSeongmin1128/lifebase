@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useRef, Suspense } from "react";
 import { api, apiUpload, apiDownload } from "@/lib/api";
 import { getAccessToken } from "@/lib/auth";
 import { Button } from "@/components/ui/button";
@@ -18,6 +18,7 @@ import {
 import { FileIcon } from "@/components/cloud/FileIcon";
 import { ThumbnailImage } from "@/components/cloud/ThumbnailImage";
 import { BulkActionBar } from "@/components/cloud/BulkActionBar";
+import { PageToolbar, PageToolbarGroup } from "@/components/layout/PageToolbar";
 import {
   CLOUD_SECTION_ITEMS,
   CLOUD_SECTION_LABELS,
@@ -78,7 +79,7 @@ type SortBy = "name" | "size" | "updated_at" | "created_at";
 type SortDir = "asc" | "desc";
 type ViewMode = "list" | "grid";
 
-export default function CloudPage() {
+function CloudPageInner() {
   const searchParams = useSearchParams();
   const section = parseCloudSection(searchParams.get("section"));
   const isMyFilesSection = section === "";
@@ -497,7 +498,7 @@ export default function CloudPage() {
       onDrop={handleDrop}
     >
       {showBreadcrumb && (
-        <div className="flex flex-wrap items-center gap-2 border-b border-border px-4 md:px-6 py-2">
+        <PageToolbar className="justify-start py-3">
           <nav className="flex items-center gap-1 text-sm">
             {path.map((p, i) => (
               <span key={i} className="flex items-center gap-1">
@@ -515,7 +516,7 @@ export default function CloudPage() {
               </span>
             ))}
           </nav>
-        </div>
+        </PageToolbar>
       )}
 
       <div className="flex gap-1.5 overflow-x-auto border-b border-border px-4 py-2 md:hidden">
@@ -539,8 +540,8 @@ export default function CloudPage() {
       </div>
 
       {/* Toolbar Row 2: Actions */}
-      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border px-4 md:px-6 py-2">
-        <div className="flex items-center gap-2">
+      <PageToolbar>
+        <PageToolbarGroup className="gap-2">
           {/* Search */}
           <div className="relative">
             <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-text-muted" />
@@ -578,9 +579,9 @@ export default function CloudPage() {
               </button>
             </div>
           )}
-        </div>
+        </PageToolbarGroup>
 
-        <div className="flex items-center gap-2">
+        <PageToolbarGroup className="gap-2">
           {isMyFilesSection && (
             <>
               <DropdownMenu>
@@ -645,8 +646,8 @@ export default function CloudPage() {
               <span className="hidden md:inline">휴지통 비우기</span>
             </Button>
           )}
-        </div>
-      </div>
+        </PageToolbarGroup>
+      </PageToolbar>
 
       {/* New Folder Input */}
       {isMyFilesSection && showNewFolder && (
@@ -970,5 +971,13 @@ export default function CloudPage() {
         )}
       </div>
     </div>
+  );
+}
+
+export default function CloudPage() {
+  return (
+    <Suspense fallback={<div className="flex h-full items-center justify-center text-text-muted">불러오는 중...</div>}>
+      <CloudPageInner />
+    </Suspense>
   );
 }

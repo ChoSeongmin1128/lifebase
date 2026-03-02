@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
-import Image from "next/image";
 import { api } from "@/lib/api";
 import { getAccessToken } from "@/lib/auth";
 import { Button } from "@/components/ui/button";
@@ -20,6 +19,7 @@ import {
 } from "@/components/ui/tooltip";
 import { ExtensionBadge } from "@/components/gallery/ExtensionBadge";
 import { ThumbnailImage } from "@/components/cloud/ThumbnailImage";
+import { PageToolbar, PageToolbarGroup } from "@/components/layout/PageToolbar";
 import {
   LayoutGrid,
   List,
@@ -36,8 +36,6 @@ import {
   X,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:38117";
 
 interface MediaFile {
   id: string;
@@ -202,9 +200,9 @@ export default function GalleryPage() {
     <TooltipProvider>
       <div className="flex h-full flex-col">
         {/* Header */}
-        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border px-4 md:px-6 py-3">
+        <PageToolbar>
           <h1 className="text-lg font-semibold text-text-strong">갤러리</h1>
-          <div className="flex items-center gap-2 md:gap-3">
+          <PageToolbarGroup>
             {/* Media type filter */}
             <div className="flex rounded-lg border border-border">
               {mediaFilters.map((f) => (
@@ -264,8 +262,8 @@ export default function GalleryPage() {
                 </Tooltip>
               ))}
             </div>
-          </div>
-        </div>
+          </PageToolbarGroup>
+        </PageToolbar>
 
         {/* Content */}
         <div className="flex-1 overflow-auto p-4">

@@ -8,6 +8,7 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
 } from "@/components/ui/dropdown-menu";
+import { PageToolbar, PageToolbarGroup } from "@/components/layout/PageToolbar";
 import { Search, ArrowUpDown, Filter } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -48,9 +49,9 @@ export function TodoToolbar({
   onFilterChange,
 }: TodoToolbarProps) {
   return (
-    <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border px-4 py-2">
+    <PageToolbar className="py-3">
       <h2 className="font-medium text-text-strong">{listName}</h2>
-      <div className="flex items-center gap-2">
+      <PageToolbarGroup className="gap-2">
         <div className="relative">
           <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-text-muted" />
           <Input
@@ -119,8 +120,8 @@ export function TodoToolbar({
             ))}
           </DropdownMenuContent>
         </DropdownMenu>
-      </div>
-    </div>
+      </PageToolbarGroup>
+    </PageToolbar>
   );
 }
 
