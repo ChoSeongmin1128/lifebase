@@ -7,8 +7,11 @@ export function useCalendarActions() {
     return new BrowseCalendarUseCase(new HttpCalendarRepository());
   }, []);
 
-  return {
-    getSettings: () => useCase.getSettings(),
-    listEvents: (start: string, end: string) => useCase.listEvents(start, end),
-  };
+  return useMemo(
+    () => ({
+      getSettings: () => useCase.getSettings(),
+      listEvents: (start: string, end: string) => useCase.listEvents(start, end),
+    }),
+    [useCase],
+  );
 }

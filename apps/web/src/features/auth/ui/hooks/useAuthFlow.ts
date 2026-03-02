@@ -10,8 +10,11 @@ export function useAuthFlow() {
     return new AuthFlowUseCase(new HttpAuthRepository());
   }, []);
 
-  return {
-    requestAuthUrl: () => useCase.requestAuthUrl(),
-    exchangeCode: (input: AuthCallbackInput) => useCase.exchangeCode(input),
-  };
+  return useMemo(
+    () => ({
+      requestAuthUrl: () => useCase.requestAuthUrl(),
+      exchangeCode: (input: AuthCallbackInput) => useCase.exchangeCode(input),
+    }),
+    [useCase],
+  );
 }

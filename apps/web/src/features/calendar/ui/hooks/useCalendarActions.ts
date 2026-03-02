@@ -13,12 +13,15 @@ export function useCalendarActions() {
     return new ManageCalendarUseCase(new HttpCalendarRepository());
   }, []);
 
-  return {
-    listCalendars: () => useCase.listCalendars(),
-    getSettings: () => useCase.getSettings(),
-    listEvents: (start: string, end: string) => useCase.listEvents(start, end),
-    createEvent: (input: CreateEventInput) => useCase.createEvent(input),
-    updateEvent: (eventId: string, payload: EventPayload) => useCase.updateEvent(eventId, payload),
-    deleteEvent: (eventId: string) => useCase.deleteEvent(eventId),
-  };
+  return useMemo(
+    () => ({
+      listCalendars: () => useCase.listCalendars(),
+      getSettings: () => useCase.getSettings(),
+      listEvents: (start: string, end: string) => useCase.listEvents(start, end),
+      createEvent: (input: CreateEventInput) => useCase.createEvent(input),
+      updateEvent: (eventId: string, payload: EventPayload) => useCase.updateEvent(eventId, payload),
+      deleteEvent: (eventId: string) => useCase.deleteEvent(eventId),
+    }),
+    [useCase],
+  );
 }

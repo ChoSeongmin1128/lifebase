@@ -7,7 +7,10 @@ export function useGalleryActions() {
     return new BrowseGalleryUseCase(new HttpGalleryRepository());
   }, []);
 
-  return {
-    listMedia: () => useCase.listMedia(),
-  };
+  return useMemo(
+    () => ({
+      listMedia: () => useCase.listMedia(),
+    }),
+    [useCase],
+  );
 }

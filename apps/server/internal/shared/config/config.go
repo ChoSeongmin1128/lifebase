@@ -59,7 +59,8 @@ type StorageConfig struct {
 
 func Load() (*Config, error) {
 	_, thisFile, _, _ := runtime.Caller(0)
-	rootDir := filepath.Join(filepath.Dir(thisFile), "..", "..", "..", "..")
+	// config.go 기준 프로젝트 루트는 5단계 상위다.
+	rootDir := filepath.Join(filepath.Dir(thisFile), "..", "..", "..", "..", "..")
 	loadEnvFiles(rootDir)
 
 	port, _ := strconv.Atoi(getEnv("SERVER_PORT", "38117"))

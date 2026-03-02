@@ -9,8 +9,11 @@ export function useSettingsActions() {
     return new ManageSettingsUseCase(new HttpSettingsRepository());
   }, []);
 
-  return {
-    getSettings: () => useCase.getSettings(),
-    updateSetting: (key: string, value: string) => useCase.updateSetting(key, value),
-  };
+  return useMemo(
+    () => ({
+      getSettings: () => useCase.getSettings(),
+      updateSetting: (key: string, value: string) => useCase.updateSetting(key, value),
+    }),
+    [useCase],
+  );
 }

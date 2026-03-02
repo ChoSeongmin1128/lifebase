@@ -7,9 +7,12 @@ export function useTodoActions() {
     return new ManageTodoUseCase(new HttpTodoMobileRepository());
   }, []);
 
-  return {
-    listLists: () => useCase.listLists(),
-    listTodos: (listId: string) => useCase.listTodos(listId),
-    updateDone: (todoId: string, done: boolean) => useCase.updateDone(todoId, done),
-  };
+  return useMemo(
+    () => ({
+      listLists: () => useCase.listLists(),
+      listTodos: (listId: string) => useCase.listTodos(listId),
+      updateDone: (todoId: string, done: boolean) => useCase.updateDone(todoId, done),
+    }),
+    [useCase],
+  );
 }

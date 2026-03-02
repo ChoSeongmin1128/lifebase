@@ -7,7 +7,10 @@ export function useCloudActions() {
     return new BrowseCloudUseCase(new HttpCloudRepository());
   }, []);
 
-  return {
-    listItems: (folderId?: string | null) => useCase.listItems(folderId),
-  };
+  return useMemo(
+    () => ({
+      listItems: (folderId?: string | null) => useCase.listItems(folderId),
+    }),
+    [useCase],
+  );
 }

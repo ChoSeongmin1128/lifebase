@@ -7,7 +7,10 @@ export function useAuthFlow() {
     return new AuthFlowUseCase(new HttpAuthRepository());
   }, []);
 
-  return {
-    requestAuthUrl: () => useCase.requestAuthUrl(),
-  };
+  return useMemo(
+    () => ({
+      requestAuthUrl: () => useCase.requestAuthUrl(),
+    }),
+    [useCase],
+  );
 }

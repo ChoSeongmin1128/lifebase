@@ -10,8 +10,11 @@ export function useGalleryActions() {
     return new BrowseGalleryUseCase(new HttpGalleryRepository());
   }, []);
 
-  return {
-    listMedia: (query: GalleryQuery) => useCase.listMedia(query),
-    loadThumbnail: (fileId: string, size: ThumbSize) => useCase.loadThumbnail(fileId, size),
-  };
+  return useMemo(
+    () => ({
+      listMedia: (query: GalleryQuery) => useCase.listMedia(query),
+      loadThumbnail: (fileId: string, size: ThumbSize) => useCase.loadThumbnail(fileId, size),
+    }),
+    [useCase],
+  );
 }

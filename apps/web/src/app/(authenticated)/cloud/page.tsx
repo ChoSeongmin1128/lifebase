@@ -1,8 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
-import { useState, useEffect, useCallback, useRef, Suspense } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { useState, useEffect, useCallback, useMemo, useRef, Suspense } from "react";
 import { useCloudActions } from "@/features/cloud/ui/hooks/useCloudActions";
 import type { CloudFile, CloudSection, FolderData, FolderItem } from "@/features/cloud/domain/CloudItem";
 import { isAuthenticated } from "@/features/auth/infrastructure/token-auth";
@@ -48,8 +48,10 @@ type SortDir = "asc" | "desc";
 type ViewMode = "list" | "grid";
 
 function CloudPageInner() {
+  const router = useRouter();
   const searchParams = useSearchParams();
   const section = parseCloudSection(searchParams.get("section")) as CloudSection;
+  const folderFromUrl = searchParams.get("folder");
   const isMyFilesSection = section === "";
   const isTrashSection = section === "trash";
   const isRecentSection = section === "recent";
@@ -77,9 +79,33 @@ function CloudPageInner() {
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const currentFolderID = path[path.length - 1].id;
+  const currentFolderID = useMemo(() => {
+    const fromPath = path[path.length - 1].id;
+    if (fromPath) return fromPath;
+    if (isMyFilesSection && folderFromUrl) return folderFromUrl;
+    return null;
+  }, [folderFromUrl, isMyFilesSection, path]);
   const authed = isAuthenticated();
   const cloud = useCloudActions();
+
+  const buildCloudHref = useCallback((targetSection: CloudSection, folderId?: string | null) => {
+    const params = new URLSearchParams();
+    if (targetSection) {
+      params.set("section", targetSection);
+    }
+    if (!targetSection && folderId) {
+      params.set("folder", folderId);
+    }
+    const query = params.toString();
+    return query ? `/cloud?${query}` : "/cloud";
+  }, []);
+
+  const syncFolderUrl = useCallback(
+    (folderId: string | null) => {
+      router.replace(buildCloudHref(section, folderId), { scroll: false });
+    },
+    [buildCloudHref, router, section],
+  );
 
   const toItemMeta = (item: FolderItem): { id: string; type: "folder" | "file" } => {
     if (item.type === "folder") {
@@ -155,11 +181,17 @@ function CloudPageInner() {
   const navigateToFolder = (folder: FolderData) => {
     if (!isMyFilesSection) return;
     setPath((prev) => [...prev, { id: folder.id, name: folder.name }]);
+    syncFolderUrl(folder.id);
   };
 
   const navigateToBreadcrumb = (index: number) => {
     if (!isMyFilesSection) return;
-    setPath((prev) => prev.slice(0, index + 1));
+    setPath((prev) => {
+      const next = prev.slice(0, index + 1);
+      const nextFolderId = next[next.length - 1]?.id ?? null;
+      syncFolderUrl(nextFolderId);
+      return next;
+    });
   };
 
   const handleUpload = async (files: FileList | null) => {
