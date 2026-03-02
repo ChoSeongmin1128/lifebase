@@ -34,6 +34,9 @@ import (
 	galleryhttp "lifebase/internal/gallery/adapter/in/http"
 	gallerypg "lifebase/internal/gallery/adapter/out/postgres"
 	galleryusecase "lifebase/internal/gallery/usecase"
+	homehttp "lifebase/internal/home/adapter/in/http"
+	homepg "lifebase/internal/home/adapter/out/postgres"
+	homeusecase "lifebase/internal/home/usecase"
 	settingshttp "lifebase/internal/settings/adapter/in/http"
 	settingspg "lifebase/internal/settings/adapter/out/postgres"
 	settingsusecase "lifebase/internal/settings/usecase"
@@ -109,6 +112,7 @@ func main() {
 	// Sharing repos
 	shareRepo := sharingpg.NewShareRepo(dbpool)
 	inviteRepo := sharingpg.NewInviteRepo(dbpool)
+	homeRepo := homepg.NewHomeRepo(dbpool)
 
 	// Use Cases
 	redirects := map[string]string{
@@ -136,6 +140,7 @@ func main() {
 	todoUC := todousecase.NewTodoUseCase(todoListRepo, todoItemRepo)
 	sharingUC := sharingusecase.NewSharingUseCase(shareRepo, inviteRepo)
 	settingsUC := settingsusecase.NewSettingsUseCase(settingspg.NewSettingsRepo(dbpool))
+	homeUC := homeusecase.NewHomeUseCase(homeRepo)
 	adminUC := adminusecase.NewAdminUseCase(
 		adminRepo,
 		userRepo,
@@ -153,6 +158,7 @@ func main() {
 	settingsHandler := settingshttp.NewSettingsHandler(settingsUC)
 	todoHandler := todohttp.NewTodoHandler(todoUC)
 	sharingHandler := sharinghttp.NewSharingHandler(sharingUC)
+	homeHandler := homehttp.NewHomeHandler(homeUC)
 	adminHandler := adminhttp.NewAdminHandler(adminUC)
 
 	// Router
@@ -205,6 +211,9 @@ func main() {
 					"user_id": userID,
 				})
 			})
+
+			// Home
+			r.Get("/home/summary", homeHandler.GetSummary)
 
 			// Cloud
 			r.Route("/cloud", func(r chi.Router) {
