@@ -53,6 +53,16 @@
 - `https://www.googleapis.com/auth/tasks` — Google Tasks 읽기/쓰기
 - Google Drive 스코프는 사용하지 않음 (자체 파일 스토리지 사용)
 
+## 웹/관리자 OAuth 앱 구분
+- 인증 URL 요청 시 `app` 파라미터를 사용한다.
+  - 사용자 웹: `GET /api/v1/auth/url?app=web`
+  - 관리자 웹: `GET /api/v1/auth/url?app=admin`
+- 서버는 OAuth state에 앱 구분값을 포함해 서명하고, 콜백에서 검증한다.
+- app별 redirect URI:
+  - `web` → `${WEB_URL}/auth/callback`
+  - `admin` → `${ADMIN_URL}/admin/auth/callback`
+- Google OAuth 콘솔 Authorized redirect URI에 위 두 경로를 모두 등록해야 한다.
+
 ## 사용자 격리 원칙
 - 사용자 간 정보가 완전히 격리되어야 한다
 - API 응답에 다른 사용자의 존재나 정보가 노출되지 않아야 한다

@@ -33,9 +33,10 @@ lifebase/
 │   │   │   ├── todo/        # Todo (계층/우선순위/고정)
 │   │   │   ├── sharing/     # 폴더 공유 (초대 토큰 + ACL)
 │   │   │   ├── settings/    # 사용자 설정
+│   │   │   ├── admin/       # 관리자 운영 (권한/할당량/계정 상태)
 │   │   │   ├── worker/      # 썸네일 생성 워커
 │   │   │   └── shared/      # 공통 (미들웨어, 설정, 응답)
-│   │   └── migrations/  # goose DB 마이그레이션 (10개)
+│   │   └── migrations/  # goose DB 마이그레이션 (11개)
 │   ├── web/             # Next.js 웹 앱
 │   │   └── src/app/     # 페이지: Cloud, Gallery, Calendar, Todo, Settings
 │   ├── desktop/         # Tauri v2 데스크탑 앱
@@ -60,9 +61,28 @@ lifebase/
 ### 환경 변수
 
 ```bash
-cp apps/server/.env.example apps/server/.env
-# .env 파일에 Google OAuth 클라이언트 ID/Secret, DB URL 등 설정
+# 프로젝트 루트 기준
+cp .env.development.example .env.development.local
+# 로컬 개발 값은 .env.development.local에 저장 (git ignored)
+
+cp .env.production.example .env.production.local
+# 운영 값은 .env.production.local에 저장 (git ignored)
+
+# 기본 SERVER_ENV=development는 .env에 정의됨
 ```
+
+Go 서버(`apps/server`)는 아래 우선순위로 환경 변수를 읽는다.
+
+1. 프로세스 환경 변수(export)
+2. `.env.<SERVER_ENV>.local`
+3. `.env.local`
+4. `.env.<SERVER_ENV>`
+5. `.env`
+
+`SERVER_ENV`가 없으면 기본값은 `development`다.
+
+- 로컬 개발 권장: `SERVER_ENV=development` + `.env.development.local`
+- 운영 권장: `SERVER_ENV=production` + `.env.production.local` (또는 프로세스 환경 변수)
 
 ### 서버 실행
 
@@ -139,6 +159,12 @@ npx expo start
 - 테마 (라이트/다크/시스템)
 - 방해 금지 시간 설정
 
+### Admin
+- 관리자 전용 OAuth 로그인 (`/admin/auth/callback`)
+- 사용자 목록/상세 조회, 스토리지 사용량 재계산/초기화
+- 사용자 할당량 수정 (숫자 + 단위 입력, B/KB/MB/GB/TB 표시)
+- Google 계정 상태 제어 (정상/재인증 필요/해지)
+
 ## API
 
 모든 API는 `/api/v1/` 프리픽스. 인증이 필요한 엔드포인트는 `Authorization: Bearer <token>` 헤더 필요.
@@ -152,7 +178,8 @@ npx expo start
 | todo | 8 |
 | settings | 2 |
 | sharing | 5 |
-| **합계** | **42** |
+| admin | 10 |
+| **합계** | **52** |
 
 상세 목록은 `docs/700-마일스톤.md` 참조.
 
