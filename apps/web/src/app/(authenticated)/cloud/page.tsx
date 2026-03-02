@@ -28,6 +28,7 @@ import { FileIcon } from "@/components/cloud/FileIcon";
 import { ThumbnailImage } from "@/components/cloud/ThumbnailImage";
 import { BulkActionBar } from "@/components/cloud/BulkActionBar";
 import { PageToolbar, PageToolbarGroup } from "@/components/layout/PageToolbar";
+import { useToast } from "@/components/providers/ToastProvider";
 import {
   CLOUD_SECTION_ITEMS,
   CLOUD_SECTION_LABELS,
@@ -128,6 +129,7 @@ function CloudPageInner() {
   }, [folderFromUrl, isMyFilesSection, path]);
   const authed = isAuthenticated();
   const cloud = useCloudActions();
+  const toast = useToast();
 
   const buildCloudHref = useCallback((targetSection: CloudSection, folderId?: string | null) => {
     const params = new URLSearchParams();
@@ -493,9 +495,7 @@ function CloudPageInner() {
     } catch (err) {
       console.error("Move file failed:", err);
       const msg = err instanceof Error ? err.message : "알 수 없는 오류";
-      if (typeof window !== "undefined") {
-        window.alert(`파일 이동에 실패했습니다: ${msg}`);
-      }
+      toast.error("파일 이동에 실패했습니다", msg);
     } finally {
       setMovingFileId(null);
     }
@@ -545,17 +545,19 @@ function CloudPageInner() {
   const showCloudActionError = useCallback((prefix: string, err: unknown) => {
     console.error(prefix, err);
     const msg = err instanceof Error ? err.message : "알 수 없는 오류";
-    if (typeof window !== "undefined") {
-      window.alert(`${prefix}: ${msg}`);
-    }
-  }, []);
+    toast.error(prefix, msg);
+  }, [toast]);
 
   const setClipboardFromItem = useCallback((mode: ClipboardMode, item: FolderItem) => {
     if (!isMyFilesSection) return;
+    if (mode === "copy" && item.type === "folder") {
+      toast.warning("폴더 복사는 지원하지 않습니다", "잘라내기 후 붙여넣기를 사용해 주세요.");
+      return;
+    }
     const itemID = item.type === "folder" ? item.folder!.id : item.file!.id;
     const itemName = item.type === "folder" ? item.folder!.name : item.file!.name;
     setClipboard({ mode, itemType: item.type, itemID, itemName });
-  }, [isMyFilesSection]);
+  }, [isMyFilesSection, toast]);
 
   const applyClipboardToFolder = useCallback(async (targetFolderID: string | null) => {
     if (!authed || !isMyFilesSection || !clipboard || clipboardBusy) return;
@@ -1226,9 +1228,15 @@ function CloudPageInner() {
                             </DropdownMenuItem>
                           ) : isMyFilesSection ? (
                             <>
-                              <DropdownMenuItem onClick={() => setClipboardFromItem("copy", item)}>
-                                <Copy size={14} /> 복사
-                              </DropdownMenuItem>
+                              {item.type === "file" ? (
+                                <DropdownMenuItem onClick={() => setClipboardFromItem("copy", item)}>
+                                  <Copy size={14} /> 복사
+                                </DropdownMenuItem>
+                              ) : (
+                                <DropdownMenuItem disabled>
+                                  <Copy size={14} /> 복사 (폴더 미지원)
+                                </DropdownMenuItem>
+                              )}
                               <DropdownMenuItem onClick={() => setClipboardFromItem("cut", item)}>
                                 <Scissors size={14} /> 잘라내기
                               </DropdownMenuItem>
