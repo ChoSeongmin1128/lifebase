@@ -21,9 +21,18 @@ func NewCalendarRepo(db *pgxpool.Pool) *calendarRepo {
 
 func (r *calendarRepo) Create(ctx context.Context, cal *domain.Calendar) error {
 	_, err := r.db.Exec(ctx,
-		`INSERT INTO calendars (id, user_id, google_id, name, color_id, is_primary, is_visible, created_at, updated_at)
-		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
-		cal.ID, cal.UserID, cal.GoogleID, cal.Name, cal.ColorID, cal.IsPrimary, cal.IsVisible, cal.CreatedAt, cal.UpdatedAt,
+		`INSERT INTO calendars (id, user_id, google_id, google_account_id, name, color_id, is_primary, is_visible, created_at, updated_at)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+		cal.ID,
+		cal.UserID,
+		cal.GoogleID,
+		cal.GoogleAccountID,
+		cal.Name,
+		cal.ColorID,
+		cal.IsPrimary,
+		cal.IsVisible,
+		cal.CreatedAt,
+		cal.UpdatedAt,
 	)
 	return err
 }
@@ -31,9 +40,21 @@ func (r *calendarRepo) Create(ctx context.Context, cal *domain.Calendar) error {
 func (r *calendarRepo) FindByID(ctx context.Context, userID, id string) (*domain.Calendar, error) {
 	var c domain.Calendar
 	err := r.db.QueryRow(ctx,
-		`SELECT id, user_id, google_id, name, color_id, is_primary, is_visible, sync_token, created_at, updated_at
+		`SELECT id, user_id, google_id, google_account_id, name, color_id, is_primary, is_visible, sync_token, created_at, updated_at
 		 FROM calendars WHERE id = $1 AND user_id = $2`, id, userID,
-	).Scan(&c.ID, &c.UserID, &c.GoogleID, &c.Name, &c.ColorID, &c.IsPrimary, &c.IsVisible, &c.SyncToken, &c.CreatedAt, &c.UpdatedAt)
+	).Scan(
+		&c.ID,
+		&c.UserID,
+		&c.GoogleID,
+		&c.GoogleAccountID,
+		&c.Name,
+		&c.ColorID,
+		&c.IsPrimary,
+		&c.IsVisible,
+		&c.SyncToken,
+		&c.CreatedAt,
+		&c.UpdatedAt,
+	)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, fmt.Errorf("calendar not found")
 	}
@@ -42,7 +63,7 @@ func (r *calendarRepo) FindByID(ctx context.Context, userID, id string) (*domain
 
 func (r *calendarRepo) ListByUser(ctx context.Context, userID string) ([]*domain.Calendar, error) {
 	rows, err := r.db.Query(ctx,
-		`SELECT id, user_id, google_id, name, color_id, is_primary, is_visible, sync_token, created_at, updated_at
+		`SELECT id, user_id, google_id, google_account_id, name, color_id, is_primary, is_visible, sync_token, created_at, updated_at
 		 FROM calendars WHERE user_id = $1 ORDER BY is_primary DESC, name ASC`, userID)
 	if err != nil {
 		return nil, err
@@ -52,7 +73,19 @@ func (r *calendarRepo) ListByUser(ctx context.Context, userID string) ([]*domain
 	var calendars []*domain.Calendar
 	for rows.Next() {
 		var c domain.Calendar
-		if err := rows.Scan(&c.ID, &c.UserID, &c.GoogleID, &c.Name, &c.ColorID, &c.IsPrimary, &c.IsVisible, &c.SyncToken, &c.CreatedAt, &c.UpdatedAt); err != nil {
+		if err := rows.Scan(
+			&c.ID,
+			&c.UserID,
+			&c.GoogleID,
+			&c.GoogleAccountID,
+			&c.Name,
+			&c.ColorID,
+			&c.IsPrimary,
+			&c.IsVisible,
+			&c.SyncToken,
+			&c.CreatedAt,
+			&c.UpdatedAt,
+		); err != nil {
 			return nil, err
 		}
 		calendars = append(calendars, &c)
