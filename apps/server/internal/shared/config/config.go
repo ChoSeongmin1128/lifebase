@@ -11,20 +11,22 @@ import (
 )
 
 type Config struct {
-	Server   ServerConfig
-	Database DatabaseConfig
-	Redis    RedisConfig
-	Google   GoogleConfig
-	JWT      JWTConfig
-	Storage  StorageConfig
+	Server       ServerConfig
+	Database     DatabaseConfig
+	Redis        RedisConfig
+	Google       GoogleConfig
+	JWT          JWTConfig
+	Storage      StorageConfig
+	StateHMACKey string
 }
 
 type ServerConfig struct {
-	Port      int
-	Env       string
-	Domain    string
-	WebOrigin string
-	APIOrigin string
+	Port        int
+	Env         string
+	Domain      string
+	WebOrigin   string
+	AdminOrigin string
+	APIOrigin   string
 }
 
 func (s ServerConfig) WebURL() string {
@@ -56,11 +58,9 @@ type StorageConfig struct {
 }
 
 func Load() (*Config, error) {
-	// 프로젝트 루트 .env 로드 (CWD 기준 또는 소스 파일 기준)
-	_ = godotenv.Load()
 	_, thisFile, _, _ := runtime.Caller(0)
-	rootEnv := filepath.Join(filepath.Dir(thisFile), "..", "..", "..", "..", ".env")
-	_ = godotenv.Load(rootEnv)
+	rootDir := filepath.Join(filepath.Dir(thisFile), "..", "..", "..", "..")
+	loadEnvFiles(rootDir)
 
 	port, _ := strconv.Atoi(getEnv("SERVER_PORT", "38117"))
 	accessExpiry, _ := time.ParseDuration(getEnv("JWT_ACCESS_EXPIRY", "15m"))
@@ -68,11 +68,12 @@ func Load() (*Config, error) {
 
 	return &Config{
 		Server: ServerConfig{
-			Port:      port,
-			Env:       getEnv("SERVER_ENV", "development"),
-			Domain:    getEnv("DOMAIN", "lifebase.cc"),
-			WebOrigin: getEnv("WEB_URL", "http://localhost:39001"),
-			APIOrigin: getEnv("API_URL", "http://localhost:38117"),
+			Port:        port,
+			Env:         getEnv("SERVER_ENV", "development"),
+			Domain:      getEnv("DOMAIN", "lifebase.cc"),
+			WebOrigin:   getEnv("WEB_URL", "http://localhost:39001"),
+			AdminOrigin: getEnv("ADMIN_URL", "http://localhost:39001"),
+			APIOrigin:   getEnv("API_URL", "http://localhost:38117"),
 		},
 		Database: DatabaseConfig{
 			URL: getEnv("DATABASE_URL", "postgres://seongmin@localhost:5432/lifebase?sslmode=disable"),
@@ -93,7 +94,77 @@ func Load() (*Config, error) {
 			DataPath:  getEnv("STORAGE_DATA_PATH", "/Volumes/WDRedPlus/LifeBase/data"),
 			ThumbPath: getEnv("STORAGE_THUMB_PATH", "/Users/seongmin/lifebase-cache/thumbs"),
 		},
+		StateHMACKey: getEnv("STATE_HMAC_KEY", "dev-hmac-key"),
 	}, nil
+}
+
+func loadEnvFiles(rootDir string) {
+	env := detectServerEnv(rootDir)
+
+	// 우선순위:
+	// process env > .env.<env>.local > .env.local > .env.<env> > .env
+	// (godotenv.Load는 이미 설정된 값을 덮어쓰지 않으므로 우선순위 높은 파일을 먼저 로드)
+	loadFromDirs([]string{
+		".env." + env + ".local",
+		".env.local",
+		".env." + env,
+		".env",
+	}, ".", rootDir)
+}
+
+func loadFromDirs(files []string, dirs ...string) {
+	seen := map[string]struct{}{}
+
+	for _, dir := range dirs {
+		abs, err := filepath.Abs(dir)
+		if err != nil {
+			abs = dir
+		}
+		if _, ok := seen[abs]; ok {
+			continue
+		}
+		seen[abs] = struct{}{}
+
+		for _, file := range files {
+			_ = godotenv.Load(filepath.Join(abs, file))
+		}
+	}
+}
+
+func detectServerEnv(rootDir string) string {
+	if v := os.Getenv("SERVER_ENV"); v != "" {
+		return v
+	}
+
+	// SERVER_ENV가 파일에만 있을 수 있으므로 최소 파일 집합에서 먼저 탐지한다.
+	candidates := []string{
+		filepath.Join(".", ".env.local"),
+		filepath.Join(".", ".env"),
+		filepath.Join(rootDir, ".env.local"),
+		filepath.Join(rootDir, ".env"),
+	}
+
+	seen := map[string]struct{}{}
+	for _, file := range candidates {
+		abs, err := filepath.Abs(file)
+		if err != nil {
+			abs = file
+		}
+		if _, ok := seen[abs]; ok {
+			continue
+		}
+		seen[abs] = struct{}{}
+
+		values, err := godotenv.Read(abs)
+		if err != nil {
+			continue
+		}
+		if v := values["SERVER_ENV"]; v != "" {
+			return v
+		}
+	}
+
+	return "development"
 }
 
 func getEnv(key, fallback string) string {

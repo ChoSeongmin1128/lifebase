@@ -1,27 +1,40 @@
 package http
 
 import (
-	"crypto/rand"
-	"encoding/base64"
 	"encoding/json"
 	"net/http"
 
 	portin "lifebase/internal/auth/port/in"
 	"lifebase/internal/shared/middleware"
+	"lifebase/internal/shared/oauthstate"
 	"lifebase/internal/shared/response"
 )
 
 type AuthHandler struct {
-	auth portin.AuthUseCase
+	auth         portin.AuthUseCase
+	stateHMACKey string
 }
 
-func NewAuthHandler(auth portin.AuthUseCase) *AuthHandler {
-	return &AuthHandler{auth: auth}
+func NewAuthHandler(auth portin.AuthUseCase, stateHMACKey string) *AuthHandler {
+	return &AuthHandler{
+		auth:         auth,
+		stateHMACKey: stateHMACKey,
+	}
 }
 
 func (h *AuthHandler) GetAuthURL(w http.ResponseWriter, r *http.Request) {
-	state := generateState()
-	url := h.auth.GetAuthURL(state)
+	app := r.URL.Query().Get("app")
+	if app == "" {
+		app = "web"
+	}
+
+	state, err := oauthstate.Generate(app, h.stateHMACKey)
+	if err != nil {
+		response.Error(w, http.StatusBadRequest, "INVALID_APP", "invalid app")
+		return
+	}
+
+	url := h.auth.GetAuthURLForApp(state, app)
 	response.JSON(w, http.StatusOK, map[string]string{
 		"url":   url,
 		"state": state,
@@ -30,7 +43,9 @@ func (h *AuthHandler) GetAuthURL(w http.ResponseWriter, r *http.Request) {
 
 func (h *AuthHandler) HandleCallback(w http.ResponseWriter, r *http.Request) {
 	var req struct {
-		Code string `json:"code"`
+		Code  string `json:"code"`
+		State string `json:"state"`
+		App   string `json:"app"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		response.Error(w, http.StatusBadRequest, "INVALID_REQUEST", "invalid request body")
@@ -41,7 +56,20 @@ func (h *AuthHandler) HandleCallback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	result, err := h.auth.HandleCallback(r.Context(), req.Code)
+	app := "web"
+	if req.State != "" {
+		verifiedApp, err := oauthstate.Verify(req.State, h.stateHMACKey)
+		if err != nil {
+			response.Error(w, http.StatusBadRequest, "INVALID_STATE", "invalid oauth state")
+			return
+		}
+		app = verifiedApp
+	} else if req.App == "admin" {
+		// Backward-compatible fallback for gradual client rollout.
+		app = "admin"
+	}
+
+	result, err := h.auth.HandleCallbackForApp(r.Context(), req.Code, app)
 	if err != nil {
 		response.Error(w, http.StatusUnauthorized, "AUTH_FAILED", "authentication failed")
 		return
@@ -87,10 +115,4 @@ func (h *AuthHandler) Logout(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	response.NoContent(w)
-}
-
-func generateState() string {
-	b := make([]byte, 16)
-	rand.Read(b)
-	return base64.URLEncoding.EncodeToString(b)
 }

@@ -5,5 +5,11 @@ api.lifebase.cc {
 }
 
 web.lifebase.cc {
+	@admin path /admin*
+	respond @admin 403
+	reverse_proxy localhost:39001
+}
+
+admin.lifebase.cc {
 	reverse_proxy localhost:39001
 }

@@ -22,6 +22,8 @@ type JWTOptions struct {
 	RefreshExpiry time.Duration
 }
 
+const defaultStorageQuotaBytes int64 = 1 << 40 // 1TB
+
 type authUseCase struct {
 	jwt           JWTOptions
 	users         portout.UserRepository
@@ -50,11 +52,19 @@ func NewAuthUseCase(
 }
 
 func (uc *authUseCase) GetAuthURL(state string) string {
-	return uc.googleAuth.AuthURL(state)
+	return uc.GetAuthURLForApp(state, "web")
+}
+
+func (uc *authUseCase) GetAuthURLForApp(state, app string) string {
+	return uc.googleAuth.AuthURLForApp(state, app)
 }
 
 func (uc *authUseCase) HandleCallback(ctx context.Context, code string) (*portin.LoginResult, error) {
-	token, err := uc.googleAuth.ExchangeCode(ctx, code)
+	return uc.HandleCallbackForApp(ctx, code, "web")
+}
+
+func (uc *authUseCase) HandleCallbackForApp(ctx context.Context, code, app string) (*portin.LoginResult, error) {
+	token, err := uc.googleAuth.ExchangeCodeForApp(ctx, code, app)
 	if err != nil {
 		return nil, fmt.Errorf("oauth exchange: %w", err)
 	}
@@ -114,7 +124,7 @@ func (uc *authUseCase) findOrCreateUser(ctx context.Context, info *portout.OAuth
 		Email:             info.Email,
 		Name:              info.Name,
 		Picture:           info.Picture,
-		StorageQuotaBytes: 1099511627776, // 1TB
+		StorageQuotaBytes: defaultStorageQuotaBytes,
 		CreatedAt:         now,
 		UpdatedAt:         now,
 	}

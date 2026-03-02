@@ -15,6 +15,9 @@ import (
 	"github.com/go-chi/cors"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	adminhttp "lifebase/internal/admin/adapter/in/http"
+	adminpg "lifebase/internal/admin/adapter/out/postgres"
+	adminusecase "lifebase/internal/admin/usecase"
 	authhttp "lifebase/internal/auth/adapter/in/http"
 	authbootstrap "lifebase/internal/auth/adapter/out/bootstrap"
 	authgoogle "lifebase/internal/auth/adapter/out/google"
@@ -71,6 +74,8 @@ func main() {
 	userRepo := authpg.NewUserRepo(dbpool)
 	googleAccountRepo := authpg.NewGoogleAccountRepo(dbpool)
 	refreshTokenRepo := authpg.NewRefreshTokenRepo(dbpool)
+	adminRepo := adminpg.NewAdminRepo(dbpool)
+	storageResetRepo := adminpg.NewStorageResetRepo(dbpool)
 	folderRepo := cloudpg.NewFolderRepo(dbpool)
 	fileRepo := cloudpg.NewFileRepo(dbpool)
 	cloudSharedRepo := cloudpg.NewSharedRepo(dbpool)
@@ -106,7 +111,11 @@ func main() {
 	inviteRepo := sharingpg.NewInviteRepo(dbpool)
 
 	// Use Cases
-	authOAuthClient := authgoogle.NewOAuthClient(cfg.Google.ClientID, cfg.Google.ClientSecret, cfg.Server.WebOrigin+"/auth/callback")
+	redirects := map[string]string{
+		"web":   cfg.Server.WebOrigin + "/auth/callback",
+		"admin": cfg.Server.AdminOrigin + "/admin/auth/callback",
+	}
+	authOAuthClient := authgoogle.NewOAuthClient(cfg.Google.ClientID, cfg.Google.ClientSecret, redirects)
 	authBootstrapper := authbootstrap.NewTodoBootstrapper(todoListRepo)
 	authUC := authusecase.NewAuthUseCase(
 		authusecase.JWTOptions{
@@ -127,15 +136,24 @@ func main() {
 	todoUC := todousecase.NewTodoUseCase(todoListRepo, todoItemRepo)
 	sharingUC := sharingusecase.NewSharingUseCase(shareRepo, inviteRepo)
 	settingsUC := settingsusecase.NewSettingsUseCase(settingspg.NewSettingsRepo(dbpool))
+	adminUC := adminusecase.NewAdminUseCase(
+		adminRepo,
+		userRepo,
+		adminRepo,
+		storageResetRepo,
+		cfg.Storage.DataPath,
+		cfg.Storage.ThumbPath,
+	)
 
 	// Handlers
-	authHandler := authhttp.NewAuthHandler(authUC)
+	authHandler := authhttp.NewAuthHandler(authUC, cfg.StateHMACKey)
 	cloudHandler := cloudhttp.NewCloudHandler(cloudUC)
 	galleryHandler := galleryhttp.NewGalleryHandler(galleryUC, cfg.Storage.ThumbPath)
 	calendarHandler := calendarhttp.NewCalendarHandler(calendarUC)
 	settingsHandler := settingshttp.NewSettingsHandler(settingsUC)
 	todoHandler := todohttp.NewTodoHandler(todoUC)
 	sharingHandler := sharinghttp.NewSharingHandler(sharingUC)
+	adminHandler := adminhttp.NewAdminHandler(adminUC)
 
 	// Router
 	r := chi.NewRouter()
@@ -146,8 +164,12 @@ func main() {
 	r.Use(middleware.Logger)
 	r.Use(chimw.Recoverer)
 	r.Use(middleware.NewRateLimiter(100).Handler)
+	allowedOrigins := []string{cfg.Server.WebURL()}
+	if cfg.Server.AdminOrigin != "" && cfg.Server.AdminOrigin != cfg.Server.WebURL() {
+		allowedOrigins = append(allowedOrigins, cfg.Server.AdminOrigin)
+	}
 	r.Use(cors.Handler(cors.Options{
-		AllowedOrigins:   []string{cfg.Server.WebURL()},
+		AllowedOrigins:   allowedOrigins,
 		AllowedMethods:   []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
 		AllowedHeaders:   []string{"Accept", "Authorization", "Content-Type"},
 		ExposedHeaders:   []string{"Link"},
@@ -270,6 +292,24 @@ func main() {
 				r.Get("/", sharingHandler.ListShares)
 				r.Get("/shared-with-me", sharingHandler.ListSharedWithMe)
 				r.Delete("/{shareID}", sharingHandler.RemoveShare)
+			})
+
+			// Admin
+			r.Route("/admin", func(r chi.Router) {
+				r.Use(middleware.Admin(adminRepo))
+				r.Use(middleware.NewRateLimiter(30).Handler)
+
+				r.Get("/users", adminHandler.ListUsers)
+				r.Get("/users/{userID}", adminHandler.GetUser)
+				r.Patch("/users/{userID}/quota", adminHandler.UpdateQuota)
+				r.Post("/users/{userID}/recalculate-storage", adminHandler.RecalculateStorage)
+				r.Post("/users/{userID}/reset-storage", adminHandler.ResetStorage)
+				r.Patch("/users/{userID}/google-accounts/{accountID}/status", adminHandler.UpdateGoogleAccountStatus)
+
+				r.Get("/admins", adminHandler.ListAdmins)
+				r.Post("/admins", adminHandler.CreateAdmin)
+				r.Patch("/admins/{adminID}/role", adminHandler.UpdateAdminRole)
+				r.Patch("/admins/{adminID}/deactivate", adminHandler.DeactivateAdmin)
 			})
 		})
 	})

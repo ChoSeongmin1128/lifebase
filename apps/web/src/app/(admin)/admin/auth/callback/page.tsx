@@ -2,8 +2,8 @@
 
 import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { api } from "@/lib/api";
-import { setTokens } from "@/lib/auth";
+import { adminApi } from "@/lib/admin-api";
+import { setAdminTokens } from "@/lib/admin-auth";
 import { Button } from "@/components/ui/button";
 
 function CallbackContent() {
@@ -14,28 +14,26 @@ function CallbackContent() {
 
   useEffect(() => {
     if (!code) return;
-
     const exchangeCode = async () => {
       try {
-        const state = sessionStorage.getItem("oauth_state") || undefined;
-        const data = await api<{
+        const state = sessionStorage.getItem("oauth_state_admin") || undefined;
+        const data = await adminApi<{
           access_token: string;
           refresh_token: string;
           expires_in: number;
         }>("/auth/callback", {
           method: "POST",
-          body: { code, state, app: "web" },
+          body: { code, state, app: "admin" },
         });
 
-        setTokens(data.access_token, data.refresh_token);
-        router.replace("/cloud");
-      } catch {
-        setError("로그인에 실패했습니다. 다시 시도해주세요.");
+        setAdminTokens(data.access_token, data.refresh_token);
+        router.replace("/admin");
+      } catch (e) {
+        setError(e instanceof Error ? e.message : "관리자 로그인에 실패했습니다.");
       } finally {
-        sessionStorage.removeItem("oauth_state");
+        sessionStorage.removeItem("oauth_state_admin");
       }
     };
-
     exchangeCode();
   }, [code, router]);
 
@@ -44,7 +42,7 @@ function CallbackContent() {
       <div className="flex min-h-screen items-center justify-center">
         <div className="flex flex-col items-center gap-4">
           <p className="text-error">인증 코드가 없습니다.</p>
-          <Button variant="secondary" onClick={() => router.replace("/")}>
+          <Button variant="secondary" onClick={() => router.replace("/admin/login")}>
             돌아가기
           </Button>
         </div>
@@ -57,8 +55,8 @@ function CallbackContent() {
       <div className="flex min-h-screen items-center justify-center">
         <div className="flex flex-col items-center gap-4">
           <p className="text-error">{error}</p>
-          <Button variant="secondary" onClick={() => router.replace("/")}>
-            돌아가기
+          <Button variant="secondary" onClick={() => router.replace("/admin/login")}>
+            다시 로그인
           </Button>
         </div>
       </div>
@@ -67,17 +65,17 @@ function CallbackContent() {
 
   return (
     <div className="flex min-h-screen items-center justify-center">
-      <p className="text-text-muted">로그인 중...</p>
+      <p className="text-text-muted">관리자 로그인 처리 중...</p>
     </div>
   );
 }
 
-export default function AuthCallback() {
+export default function AdminAuthCallbackPage() {
   return (
     <Suspense
       fallback={
         <div className="flex min-h-screen items-center justify-center">
-          <p className="text-text-muted">로그인 중...</p>
+          <p className="text-text-muted">관리자 로그인 처리 중...</p>
         </div>
       }
     >
@@ -85,3 +83,4 @@ export default function AuthCallback() {
     </Suspense>
   );
 }
+

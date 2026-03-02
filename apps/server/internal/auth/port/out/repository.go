@@ -9,8 +9,12 @@ import (
 
 type UserRepository interface {
 	FindByEmail(ctx context.Context, email string) (*domain.User, error)
+	FindByID(ctx context.Context, id string) (*domain.User, error)
+	ListUsers(ctx context.Context, search, cursor string, limit int) ([]*domain.User, string, error)
 	Create(ctx context.Context, user *domain.User) error
 	Update(ctx context.Context, user *domain.User) error
+	UpdateStorageQuota(ctx context.Context, userID string, quotaBytes int64) error
+	UpdateStorageUsed(ctx context.Context, userID string, usedBytes int64) error
 }
 
 type GoogleAccountRepository interface {
@@ -43,7 +47,9 @@ type OAuthUserInfo struct {
 
 type GoogleAuthClient interface {
 	AuthURL(state string) string
+	AuthURLForApp(state, app string) string
 	ExchangeCode(ctx context.Context, code string) (*OAuthToken, error)
+	ExchangeCodeForApp(ctx context.Context, code, app string) (*OAuthToken, error)
 	FetchUserInfo(ctx context.Context, token OAuthToken) (*OAuthUserInfo, error)
 }
 

@@ -13,33 +13,38 @@ import (
 )
 
 type oauthClient struct {
-	config *oauth2.Config
+	clientID     string
+	clientSecret string
+	redirects    map[string]string
 }
 
-func NewOAuthClient(clientID, clientSecret, redirectURL string) *oauthClient {
+func NewOAuthClient(clientID, clientSecret string, redirects map[string]string) *oauthClient {
+	cloned := map[string]string{}
+	for k, v := range redirects {
+		cloned[k] = v
+	}
 	return &oauthClient{
-		config: &oauth2.Config{
-			ClientID:     clientID,
-			ClientSecret: clientSecret,
-			Scopes: []string{
-				"openid",
-				"email",
-				"profile",
-				"https://www.googleapis.com/auth/calendar",
-				"https://www.googleapis.com/auth/tasks",
-			},
-			Endpoint:    google.Endpoint,
-			RedirectURL: redirectURL,
-		},
+		clientID:     clientID,
+		clientSecret: clientSecret,
+		redirects:    cloned,
 	}
 }
 
 func (c *oauthClient) AuthURL(state string) string {
-	return c.config.AuthCodeURL(state, oauth2.AccessTypeOffline, oauth2.SetAuthURLParam("prompt", "consent"))
+	return c.AuthURLForApp(state, "web")
+}
+
+func (c *oauthClient) AuthURLForApp(state, app string) string {
+	cfg := c.oauthConfig(app)
+	return cfg.AuthCodeURL(state, oauth2.AccessTypeOffline, oauth2.SetAuthURLParam("prompt", "consent"))
 }
 
 func (c *oauthClient) ExchangeCode(ctx context.Context, code string) (*portout.OAuthToken, error) {
-	token, err := c.config.Exchange(ctx, code)
+	return c.ExchangeCodeForApp(ctx, code, "web")
+}
+
+func (c *oauthClient) ExchangeCodeForApp(ctx context.Context, code, app string) (*portout.OAuthToken, error) {
+	token, err := c.oauthConfig(app).Exchange(ctx, code)
 	if err != nil {
 		return nil, err
 	}
@@ -58,7 +63,7 @@ func (c *oauthClient) FetchUserInfo(ctx context.Context, token portout.OAuthToke
 		Expiry:       token.Expiry,
 	}
 
-	client := c.config.Client(ctx, ot)
+	client := c.oauthConfig("web").Client(ctx, ot)
 	resp, err := client.Get("https://www.googleapis.com/oauth2/v3/userinfo")
 	if err != nil {
 		return nil, err
@@ -85,4 +90,25 @@ func (c *oauthClient) FetchUserInfo(ctx context.Context, token portout.OAuthToke
 		Name:     info.Name,
 		Picture:  info.Picture,
 	}, nil
+}
+
+func (c *oauthClient) oauthConfig(app string) *oauth2.Config {
+	redirectURL, ok := c.redirects[app]
+	if !ok || redirectURL == "" {
+		redirectURL = c.redirects["web"]
+	}
+
+	return &oauth2.Config{
+		ClientID:     c.clientID,
+		ClientSecret: c.clientSecret,
+		Scopes: []string{
+			"openid",
+			"email",
+			"profile",
+			"https://www.googleapis.com/auth/calendar",
+			"https://www.googleapis.com/auth/tasks",
+		},
+		Endpoint:    google.Endpoint,
+		RedirectURL: redirectURL,
+	}
 }
