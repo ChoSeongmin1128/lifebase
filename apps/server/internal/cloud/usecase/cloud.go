@@ -418,7 +418,11 @@ func (uc *cloudUseCase) ListRecent(ctx context.Context, userID string) ([]portin
 	cache := map[string]string{}
 	items := make([]portin.FolderItem, 0, len(files))
 	for _, f := range files {
-		path, _ := uc.buildFolderPath(ctx, userID, f.FolderID, cache)
+		folderPath, _ := uc.buildFolderPath(ctx, userID, f.FolderID, cache)
+		path := folderPath + "/" + f.Name
+		if folderPath == "/" {
+			path = "/" + f.Name
+		}
 		items = append(items, portin.FolderItem{
 			Type: "file",
 			File: f,
@@ -531,7 +535,7 @@ func (uc *cloudUseCase) buildFolderPath(
 	cache map[string]string,
 ) (string, error) {
 	if folderID == nil || *folderID == "" {
-		return "내 클라우드", nil
+		return "/", nil
 	}
 
 	if cached, ok := cache[*folderID]; ok {
@@ -540,14 +544,17 @@ func (uc *cloudUseCase) buildFolderPath(
 
 	folder, err := uc.folders.FindByID(ctx, userID, *folderID)
 	if err != nil || folder == nil {
-		return "내 클라우드", err
+		return "/", err
 	}
 
 	parentPath, err := uc.buildFolderPath(ctx, userID, folder.ParentID, cache)
 	if err != nil {
-		parentPath = "내 클라우드"
+		parentPath = "/"
 	}
-	fullPath := parentPath + " / " + folder.Name
+	fullPath := parentPath + folder.Name
+	if parentPath != "/" {
+		fullPath = parentPath + "/" + folder.Name
+	}
 	cache[*folderID] = fullPath
 	return fullPath, nil
 }
