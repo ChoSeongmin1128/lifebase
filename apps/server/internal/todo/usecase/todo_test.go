@@ -209,14 +209,74 @@ func TestCreateTodo_MaxNestingDepth(t *testing.T) {
 		ParentID: &parent.ID,
 	})
 
-	// Grandchild should fail (max 2 levels)
+	// Grandchild should fail (max 1 child depth)
 	_, err := uc.CreateTodo(ctx, "user1", portin.CreateTodoInput{
 		ListID:   list.ID,
 		Title:    "Grandchild",
 		ParentID: &child.ID,
 	})
 	if err == nil {
-		t.Fatal("expected error for 3rd level nesting, got nil")
+		t.Fatal("expected error for nesting deeper than 1 level, got nil")
+	}
+}
+
+func TestUpdateTodo_MaxNestingDepth(t *testing.T) {
+	listRepo := newMockListRepo()
+	todoRepo := newMockTodoRepo()
+	uc := NewTodoUseCase(listRepo, todoRepo)
+
+	ctx := context.Background()
+	list, _ := uc.CreateList(ctx, "user1", "My List")
+
+	parent, _ := uc.CreateTodo(ctx, "user1", portin.CreateTodoInput{
+		ListID: list.ID,
+		Title:  "Parent",
+	})
+	child, _ := uc.CreateTodo(ctx, "user1", portin.CreateTodoInput{
+		ListID:   list.ID,
+		Title:    "Child",
+		ParentID: &parent.ID,
+	})
+	target, _ := uc.CreateTodo(ctx, "user1", portin.CreateTodoInput{
+		ListID: list.ID,
+		Title:  "Target",
+	})
+
+	_, err := uc.UpdateTodo(ctx, "user1", target.ID, portin.UpdateTodoInput{
+		ParentID: &child.ID,
+	})
+	if err == nil {
+		t.Fatal("expected error for nesting deeper than 1 level, got nil")
+	}
+}
+
+func TestReorderTodos_MaxNestingDepth(t *testing.T) {
+	listRepo := newMockListRepo()
+	todoRepo := newMockTodoRepo()
+	uc := NewTodoUseCase(listRepo, todoRepo)
+
+	ctx := context.Background()
+	list, _ := uc.CreateList(ctx, "user1", "My List")
+
+	parent, _ := uc.CreateTodo(ctx, "user1", portin.CreateTodoInput{
+		ListID: list.ID,
+		Title:  "Parent",
+	})
+	child, _ := uc.CreateTodo(ctx, "user1", portin.CreateTodoInput{
+		ListID:   list.ID,
+		Title:    "Child",
+		ParentID: &parent.ID,
+	})
+	target, _ := uc.CreateTodo(ctx, "user1", portin.CreateTodoInput{
+		ListID: list.ID,
+		Title:  "Target",
+	})
+
+	err := uc.ReorderTodos(ctx, "user1", []portin.ReorderItem{
+		{ID: target.ID, ParentID: &child.ID, SortOrder: 0},
+	})
+	if err == nil {
+		t.Fatal("expected error for nesting deeper than 1 level, got nil")
 	}
 }
 

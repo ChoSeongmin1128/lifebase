@@ -17,6 +17,14 @@ type todoUseCase struct {
 	todos portout.TodoRepository
 }
 
+func normalizeParentID(parentID *string) *string {
+	if parentID == nil || *parentID == "" {
+		return nil
+	}
+	id := *parentID
+	return &id
+}
+
 func NewTodoUseCase(lists portout.TodoListRepository, todos portout.TodoRepository) portin.TodoUseCase {
 	return &todoUseCase{lists: lists, todos: todos}
 }
@@ -81,14 +89,18 @@ func (uc *todoUseCase) CreateTodo(ctx context.Context, userID string, input port
 	}
 
 	// Verify parent exists if specified
-	if input.ParentID != nil {
-		parent, err := uc.todos.FindByID(ctx, userID, *input.ParentID)
+	parentID := normalizeParentID(input.ParentID)
+	if parentID != nil {
+		parent, err := uc.todos.FindByID(ctx, userID, *parentID)
 		if err != nil {
 			return nil, fmt.Errorf("parent todo not found")
 		}
-		// Max 2 levels: parent cannot have a parent
+		if parent.ListID != input.ListID {
+			return nil, fmt.Errorf("parent todo must be in same list")
+		}
+		// Max 1 level nesting: parent must be a root item.
 		if parent.ParentID != nil {
-			return nil, fmt.Errorf("maximum nesting depth is 2 levels")
+			return nil, fmt.Errorf("maximum nesting depth is 1 level")
 		}
 	}
 
@@ -97,7 +109,7 @@ func (uc *todoUseCase) CreateTodo(ctx context.Context, userID string, input port
 		priority = "normal"
 	}
 
-	sortOrder, err := uc.todos.NextSortOrder(ctx, userID, input.ListID, input.ParentID)
+	sortOrder, err := uc.todos.NextSortOrder(ctx, userID, input.ListID, parentID)
 	if err != nil {
 		sortOrder = 0
 	}
@@ -107,7 +119,7 @@ func (uc *todoUseCase) CreateTodo(ctx context.Context, userID string, input port
 		ID:        uuid.New().String(),
 		ListID:    input.ListID,
 		UserID:    userID,
-		ParentID:  input.ParentID,
+		ParentID:  parentID,
 		Title:     input.Title,
 		Notes:     input.Notes,
 		Due:       input.Due,
@@ -137,6 +149,31 @@ func (uc *todoUseCase) UpdateTodo(ctx context.Context, userID, todoID string, in
 	todo, err := uc.todos.FindByID(ctx, userID, todoID)
 	if err != nil {
 		return nil, fmt.Errorf("todo not found")
+	}
+
+	targetListID := todo.ListID
+	if input.ListID != nil {
+		targetListID = *input.ListID
+	}
+	finalParentID := todo.ParentID
+	if input.ParentID != nil {
+		finalParentID = normalizeParentID(input.ParentID)
+	}
+	if finalParentID != nil {
+		if *finalParentID == todoID {
+			return nil, fmt.Errorf("todo cannot be parent of itself")
+		}
+		parent, err := uc.todos.FindByID(ctx, userID, *finalParentID)
+		if err != nil {
+			return nil, fmt.Errorf("parent todo not found")
+		}
+		if parent.ListID != targetListID {
+			return nil, fmt.Errorf("parent todo must be in same list")
+		}
+		// Max 1 level nesting: parent must be a root item.
+		if parent.ParentID != nil {
+			return nil, fmt.Errorf("maximum nesting depth is 1 level")
+		}
 	}
 
 	if input.Title != nil {
@@ -183,12 +220,7 @@ func (uc *todoUseCase) UpdateTodo(ctx context.Context, userID, todoID string, in
 		todo.IsPinned = *input.IsPinned
 	}
 	if input.ParentID != nil {
-		if *input.ParentID == "" {
-			// Empty string means "move to root"
-			todo.ParentID = nil
-		} else {
-			todo.ParentID = input.ParentID
-		}
+		todo.ParentID = finalParentID
 	}
 	if input.ListID != nil {
 		// Verify target list exists and belongs to user
@@ -217,13 +249,77 @@ func (uc *todoUseCase) DeleteTodo(ctx context.Context, userID, todoID string) er
 }
 
 func (uc *todoUseCase) ReorderTodos(ctx context.Context, userID string, items []portin.ReorderItem) error {
+	todoCache := make(map[string]*domain.Todo)
+	getTodo := func(id string) (*domain.Todo, error) {
+		if t, ok := todoCache[id]; ok {
+			return t, nil
+		}
+		t, err := uc.todos.FindByID(ctx, userID, id)
+		if err != nil {
+			return nil, err
+		}
+		todoCache[id] = t
+		return t, nil
+	}
+
+	nextParentByID := make(map[string]*string, len(items))
+	for _, item := range items {
+		nextParentByID[item.ID] = normalizeParentID(item.ParentID)
+		if _, err := getTodo(item.ID); err != nil {
+			return fmt.Errorf("todo not found")
+		}
+	}
+
+	resolveFinalParent := func(id string) (*string, error) {
+		if parentID, ok := nextParentByID[id]; ok {
+			return parentID, nil
+		}
+		t, err := getTodo(id)
+		if err != nil {
+			return nil, err
+		}
+		return t.ParentID, nil
+	}
+
+	for _, item := range items {
+		parentID := nextParentByID[item.ID]
+		if parentID == nil {
+			continue
+		}
+		if *parentID == item.ID {
+			return fmt.Errorf("todo cannot be parent of itself")
+		}
+
+		parentTodo, err := getTodo(*parentID)
+		if err != nil {
+			return fmt.Errorf("parent todo not found")
+		}
+		childTodo, err := getTodo(item.ID)
+		if err != nil {
+			return fmt.Errorf("todo not found")
+		}
+		if parentTodo.ListID != childTodo.ListID {
+			return fmt.Errorf("parent todo must be in same list")
+		}
+
+		parentFinalParent, err := resolveFinalParent(*parentID)
+		if err != nil {
+			return fmt.Errorf("parent todo not found")
+		}
+		// Max 1 level nesting: parent must be a root item in final state.
+		if parentFinalParent != nil {
+			return fmt.Errorf("maximum nesting depth is 1 level")
+		}
+	}
+
 	now := time.Now()
 	var todos []*domain.Todo
 	for _, item := range items {
+		parentID := normalizeParentID(item.ParentID)
 		todos = append(todos, &domain.Todo{
 			ID:        item.ID,
 			UserID:    userID,
-			ParentID:  item.ParentID,
+			ParentID:  parentID,
 			SortOrder: item.SortOrder,
 			UpdatedAt: now,
 		})
