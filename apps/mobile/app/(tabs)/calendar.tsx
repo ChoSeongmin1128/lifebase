@@ -6,25 +6,12 @@ import {
   TouchableOpacity,
   StyleSheet,
 } from "react-native";
-import { api } from "../../lib/api";
-import { getAccessToken } from "../../lib/auth";
+import { useCalendarActions } from "../../features/calendar/ui/hooks/useCalendarActions";
 import {
   buildFixedMonthGridWithWeekStart,
   getFixedMonthFetchRangeWithWeekStart,
 } from "../../lib/calendar/month-grid";
-
-type CalendarEvent = {
-  id: string;
-  title: string;
-  start_time: string;
-  end_time: string;
-  is_all_day: boolean;
-  color?: string;
-};
-
-type SettingsResponse = {
-  settings: Record<string, string>;
-};
+import type { CalendarEvent, SettingsResponse } from "../../features/calendar/domain/CalendarEntities";
 
 function toDateKey(date: Date): string {
   const y = date.getFullYear();
@@ -45,35 +32,27 @@ export default function CalendarScreen() {
   const [currentDate, setCurrentDate] = useState(new Date());
   const [selectedDateKey, setSelectedDateKey] = useState<string | null>(null);
   const [weekStartsOn, setWeekStartsOn] = useState(0);
+  const { getSettings, listEvents } = useCalendarActions();
 
   const loadSettings = useCallback(async () => {
-    const token = await getAccessToken();
-    if (!token) return;
-
     try {
-      const data = await api<SettingsResponse>("/settings", { token });
+      const data = await getSettings();
       setWeekStartsOn(parseWeekStartsOn(data.settings || {}));
     } catch {
       setWeekStartsOn(0);
     }
-  }, []);
+  }, [getSettings]);
 
   const load = useCallback(async () => {
-    const token = await getAccessToken();
-    if (!token) return;
-
     const { start, end } = getFixedMonthFetchRangeWithWeekStart(currentDate, weekStartsOn);
 
     try {
-      const data = await api<{ events: CalendarEvent[] }>(
-        `/events?start=${encodeURIComponent(start)}&end=${encodeURIComponent(end)}`,
-        { token }
-      );
-      setEvents(data.events || []);
+      const data = await listEvents(start, end);
+      setEvents(data || []);
     } catch {
       setEvents([]);
     }
-  }, [currentDate, weekStartsOn]);
+  }, [currentDate, listEvents, weekStartsOn]);
 
   useEffect(() => {
     loadSettings();

@@ -7,17 +7,8 @@ import {
   StyleSheet,
   RefreshControl,
 } from "react-native";
-import { api } from "../../lib/api";
-import { getAccessToken } from "../../lib/auth";
-
-type FolderItem = {
-  type: "folder" | "file";
-  id: string;
-  name: string;
-  mime_type?: string;
-  size_bytes?: number;
-  updated_at: string;
-};
+import { useCloudActions } from "../../features/cloud/ui/hooks/useCloudActions";
+import type { FolderItem } from "../../features/cloud/domain/CloudItem";
 
 export default function CloudScreen() {
   const [items, setItems] = useState<FolderItem[]>([]);
@@ -26,21 +17,16 @@ export default function CloudScreen() {
     { id: null, name: "내 파일" },
   ]);
   const [refreshing, setRefreshing] = useState(false);
+  const { listItems } = useCloudActions();
 
   const load = useCallback(async () => {
-    const token = await getAccessToken();
-    if (!token) return;
     try {
-      const q = folderId ? `?parent_id=${folderId}` : "";
-      const data = await api<{ items: FolderItem[] }>(
-        `/cloud/folders${q}`,
-        { token }
-      );
-      setItems(data.items || []);
+      const data = await listItems(folderId);
+      setItems(data || []);
     } catch {
       setItems([]);
     }
-  }, [folderId]);
+  }, [folderId, listItems]);
 
   useEffect(() => {
     load();

@@ -1,6 +1,6 @@
 import { View, Text, TouchableOpacity, Switch, StyleSheet } from "react-native";
 import { useState } from "react";
-import { clearTokens } from "../../lib/auth";
+import { clearTokens } from "../../features/auth/infrastructure/token-auth";
 import { router } from "expo-router";
 
 export default function SettingsScreen() {

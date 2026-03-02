@@ -8,20 +8,12 @@ import {
   Dimensions,
   RefreshControl,
 } from "react-native";
-import { api } from "../../lib/api";
-import { getAccessToken } from "../../lib/auth";
+import { useGalleryActions } from "../../features/gallery/ui/hooks/useGalleryActions";
+import type { MediaItem } from "../../features/gallery/domain/MediaItem";
 
 const COLUMN_COUNT = 3;
 const SCREEN_WIDTH = Dimensions.get("window").width;
 const ITEM_SIZE = SCREEN_WIDTH / COLUMN_COUNT - 2;
-
-type MediaItem = {
-  id: string;
-  name: string;
-  mime_type: string;
-  taken_at?: string;
-  created_at: string;
-};
 
 import Constants from "expo-constants";
 
@@ -32,17 +24,16 @@ const API_BASE =
 export default function GalleryScreen() {
   const [media, setMedia] = useState<MediaItem[]>([]);
   const [refreshing, setRefreshing] = useState(false);
+  const { listMedia } = useGalleryActions();
 
   const load = useCallback(async () => {
-    const token = await getAccessToken();
-    if (!token) return;
     try {
-      const data = await api<{ items: MediaItem[] }>("/gallery", { token });
-      setMedia(data.items || []);
+      const data = await listMedia();
+      setMedia(data || []);
     } catch {
       setMedia([]);
     }
-  }, []);
+  }, [listMedia]);
 
   useEffect(() => {
     load();

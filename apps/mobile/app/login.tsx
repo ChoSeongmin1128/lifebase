@@ -1,11 +1,13 @@
 import { View, Text, TouchableOpacity, StyleSheet } from "react-native";
 import * as Linking from "expo-linking";
-import { api } from "../lib/api";
+import { useAuthFlow } from "../features/auth/ui/hooks/useAuthFlow";
 
 export default function LoginScreen() {
+  const { requestAuthUrl } = useAuthFlow();
+
   const handleLogin = async () => {
     try {
-      const data = await api<{ url: string }>("/auth/url");
+      const data = await requestAuthUrl();
       if (data.url) {
         Linking.openURL(data.url);
       }

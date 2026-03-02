@@ -8,23 +8,9 @@ import {
   StyleSheet,
   RefreshControl,
 } from "react-native";
-import { api } from "../../lib/api";
-import { getAccessToken } from "../../lib/auth";
 import { useCreateTodo } from "../../features/todo/ui/hooks/useCreateTodo";
-
-type TodoItem = {
-  id: string;
-  title: string;
-  done: boolean;
-  priority: string;
-  due_date?: string;
-  is_pinned: boolean;
-};
-
-type TodoList = {
-  id: string;
-  name: string;
-};
+import { useTodoActions } from "../../features/todo/ui/hooks/useTodoActions";
+import type { MobileTodoItem as TodoItem, MobileTodoList as TodoList } from "../../features/todo/domain/TodoEntities";
 
 export default function TodoScreen() {
   const [lists, setLists] = useState<TodoList[]>([]);
@@ -33,34 +19,27 @@ export default function TodoScreen() {
   const [newTitle, setNewTitle] = useState("");
   const [refreshing, setRefreshing] = useState(false);
   const { createTodo, creating } = useCreateTodo();
+  const { listLists, listTodos, updateDone } = useTodoActions();
 
   const loadLists = useCallback(async () => {
-    const token = await getAccessToken();
-    if (!token) return;
     try {
-      const data = await api<{ lists: TodoList[] }>("/todo/lists", { token });
-      const ls = data.lists || [];
+      const ls = await listLists();
       setLists(ls);
       if (!selectedList && ls.length > 0) setSelectedList(ls[0].id);
     } catch {
       setLists([]);
     }
-  }, [selectedList]);
+  }, [listLists, selectedList]);
 
   const loadTodos = useCallback(async () => {
     if (!selectedList) return;
-    const token = await getAccessToken();
-    if (!token) return;
     try {
-      const data = await api<{ todos: TodoItem[] }>(
-        `/todo?list_id=${selectedList}`,
-        { token }
-      );
-      setTodos(data.todos || []);
+      const data = await listTodos(selectedList);
+      setTodos(data || []);
     } catch {
       setTodos([]);
     }
-  }, [selectedList]);
+  }, [listTodos, selectedList]);
 
   useEffect(() => {
     loadLists();
@@ -77,17 +56,11 @@ export default function TodoScreen() {
   };
 
   const toggleDone = async (id: string, done: boolean) => {
-    const token = await getAccessToken();
-    if (!token) return;
     setTodos((prev) =>
       prev.map((t) => (t.id === id ? { ...t, done: !done } : t))
     );
     try {
-      await api(`/todo/${id}`, {
-        method: "PATCH",
-        body: { done: !done },
-        token,
-      });
+      await updateDone(id, !done);
     } catch {
       setTodos((prev) =>
         prev.map((t) => (t.id === id ? { ...t, done } : t))
