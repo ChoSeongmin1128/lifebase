@@ -5,6 +5,11 @@ import "./globals.css";
 export const metadata: Metadata = {
   title: "LifeBase",
   description: "Cloud + Calendar + Todo",
+  icons: {
+    icon: "/favicon.ico",
+    shortcut: "/favicon.ico",
+    apple: "/apple-touch-icon.png",
+  },
 };
 
 export default function RootLayout({
