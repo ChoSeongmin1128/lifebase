@@ -96,9 +96,10 @@ func clampLimit(input, def, max int) int {
 
 func fillStorageBreakdown(raw []domain.StorageTypeUsage, usedBytes int64) []domain.StorageTypeUsage {
 	byType := map[string]int64{
-		"image": 0,
-		"video": 0,
-		"other": 0,
+		"image":    0,
+		"video":    0,
+		"document": 0,
+		"other":    0,
 	}
 
 	for _, item := range raw {
@@ -111,10 +112,10 @@ func fillStorageBreakdown(raw []domain.StorageTypeUsage, usedBytes int64) []doma
 
 	denominator := usedBytes
 	if denominator <= 0 {
-		denominator = byType["image"] + byType["video"] + byType["other"]
+		denominator = byType["image"] + byType["video"] + byType["document"] + byType["other"]
 	}
 
-	types := []string{"image", "video", "other"}
+	types := []string{"image", "video", "document", "other"}
 	out := make([]domain.StorageTypeUsage, 0, len(types))
 	for _, t := range types {
 		bytes := byType[t]

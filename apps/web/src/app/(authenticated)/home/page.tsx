@@ -11,6 +11,7 @@ import { CalendarPlus, CheckCircle2, Upload } from "lucide-react";
 const STORAGE_TYPE_META = {
   image: { label: "이미지", color: "#22c55e" },
   video: { label: "비디오", color: "#3b82f6" },
+  document: { label: "문서", color: "#f97316" },
   other: { label: "기타", color: "#f59e0b" },
 } as const;
 
@@ -97,16 +98,32 @@ export default function HomePage() {
   const now = new Date();
   const pastEvents = (summary?.events.items || []).filter((event) => new Date(event.end_time) < now);
   const todayEvents = (summary?.events.items || []).filter((event) => new Date(event.end_time) >= now);
-  const storageBreakdown = (["image", "video", "other"] as const).map((type) => {
-    const found = summary?.storage.breakdown?.find((item) => item.type === type);
-    return {
-      type,
-      label: STORAGE_TYPE_META[type].label,
-      color: STORAGE_TYPE_META[type].color,
-      bytes: found?.bytes || 0,
-      percent: found?.percent || 0,
-    };
-  });
+  const storageBreakdown = (() => {
+    const breakdown = (["image", "video", "document", "other"] as const).map((type) => {
+      const found = summary?.storage.breakdown?.find((item) => item.type === type);
+      return {
+        type,
+        label: STORAGE_TYPE_META[type].label,
+        color: STORAGE_TYPE_META[type].color,
+        bytes: found?.bytes || 0,
+      };
+    });
+
+    const sumBytes = breakdown.reduce((acc, item) => acc + item.bytes, 0);
+    if (usedBytes > 0 && sumBytes < usedBytes) {
+      const other = breakdown.find((item) => item.type === "other");
+      if (other) {
+        other.bytes += usedBytes - sumBytes;
+      }
+    }
+
+    const normalizedSum = breakdown.reduce((acc, item) => acc + item.bytes, 0);
+    const denominator = Math.max(usedBytes, normalizedSum);
+    return breakdown.map((item) => ({
+      ...item,
+      percent: denominator > 0 ? (item.bytes / denominator) * 100 : 0,
+    }));
+  })();
   const storageConicGradient = (() => {
     if (usedBytes <= 0) {
       return "conic-gradient(#e5e7eb 0% 100%)";
@@ -154,7 +171,7 @@ export default function HomePage() {
           <div className="mx-auto w-full max-w-[1200px] space-y-4">
             <section className="rounded-xl border border-border bg-surface p-4">
               <div className="mb-3 flex items-center justify-between">
-                <h3 className="text-sm font-semibold text-text-strong">오늘 한눈에</h3>
+                <h3 className="text-sm font-semibold text-text-strong">오늘 요약</h3>
               </div>
               <div className="grid gap-2 sm:grid-cols-3">
                 <div className="rounded-lg bg-surface-accent/60 px-3 py-2">
@@ -162,7 +179,7 @@ export default function HomePage() {
                   <p className="tabular-nums text-lg font-semibold text-text-strong">{todayEventCount}</p>
                 </div>
                 <div className="rounded-lg bg-surface-accent/60 px-3 py-2">
-                  <p className="text-xs text-text-muted">지연 Todo</p>
+                  <p className="text-xs text-text-muted">지난 Todo</p>
                   <p className="tabular-nums text-lg font-semibold text-text-strong">{overdueTodoCount}</p>
                 </div>
                 <div className="rounded-lg bg-surface-accent/60 px-3 py-2">

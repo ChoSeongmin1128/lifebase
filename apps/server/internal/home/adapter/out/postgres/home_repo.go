@@ -208,8 +208,25 @@ func (r *homeRepo) ListStorageTypeUsage(ctx context.Context, userID string) ([]d
 		 FROM (
 		   SELECT
 		     CASE
+		       WHEN lower(name) ~ '\.(svg|png|jpe?g|gif|webp|bmp|avif|heic|heif)$' THEN 'image'
+		       WHEN lower(name) ~ '\.(mp4|mov|m4v|webm|avi|mkv|wmv)$' THEN 'video'
+		       WHEN lower(name) ~ '\.(pdf|docx?|xlsx?|pptx?|txt|md|csv|json|xml|rtf)$' THEN 'document'
 		       WHEN mime_type LIKE 'image/%' THEN 'image'
 		       WHEN mime_type LIKE 'video/%' THEN 'video'
+		       WHEN mime_type LIKE 'text/%'
+		         OR mime_type IN (
+		           'application/pdf',
+		           'application/msword',
+		           'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+		           'application/vnd.ms-excel',
+		           'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+		           'application/vnd.ms-powerpoint',
+		           'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+		           'application/rtf',
+		           'application/json',
+		           'application/xml',
+		           'text/markdown'
+		         ) THEN 'document'
 		       ELSE 'other'
 		     END AS type_key,
 		     size_bytes

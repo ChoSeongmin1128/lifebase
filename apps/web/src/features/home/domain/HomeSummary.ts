@@ -28,7 +28,7 @@ export interface HomeSummaryRecentFile {
 }
 
 export interface HomeStorageTypeUsage {
-  type: "image" | "video" | "other";
+  type: "image" | "video" | "document" | "other";
   bytes: number;
   percent: number;
 }
