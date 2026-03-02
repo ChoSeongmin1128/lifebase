@@ -98,7 +98,7 @@ export default function HomePage() {
   const pastEvents = (summary?.events.items || []).filter((event) => new Date(event.end_time) < now);
   const todayEvents = (summary?.events.items || []).filter((event) => new Date(event.end_time) >= now);
   const storageBreakdown = (["image", "video", "other"] as const).map((type) => {
-    const found = summary?.storage.breakdown.find((item) => item.type === type);
+    const found = summary?.storage.breakdown?.find((item) => item.type === type);
     return {
       type,
       label: STORAGE_TYPE_META[type].label,
