@@ -16,6 +16,18 @@ export class ManageCloudUseCase {
     return this.repo.uploadFile(file, folderId);
   }
 
+  createTextFile(name: string, extension: "md" | "txt", folderId?: string | null) {
+    const normalized = name.trim();
+    if (!normalized) {
+      throw new Error("파일 이름이 비어 있습니다.");
+    }
+
+    const hasExt = normalized.includes(".");
+    const fileName = hasExt ? normalized : `${normalized}.${extension}`;
+    const mimeType = extension === "md" ? "text/markdown" : "text/plain";
+    return this.repo.createTextFile(fileName, "", mimeType, folderId);
+  }
+
   downloadFile(fileId: string) {
     return this.repo.downloadFile(fileId);
   }

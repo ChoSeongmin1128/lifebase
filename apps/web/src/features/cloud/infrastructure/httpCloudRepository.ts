@@ -78,6 +78,16 @@ export class HttpCloudRepository implements CloudRepository {
     await apiUpload("/cloud/files/upload", formData, token);
   }
 
+  async createTextFile(
+    name: string,
+    content: string,
+    mimeType: string,
+    folderId?: string | null,
+  ): Promise<void> {
+    const file = new File([content], name, { type: mimeType });
+    await this.uploadFile(file, folderId);
+  }
+
   downloadFile(fileId: string): Promise<{ blob: Blob; filename: string }> {
     const token = this.getToken();
     return apiDownload(`/cloud/files/${fileId}/download`, token);

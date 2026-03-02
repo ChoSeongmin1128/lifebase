@@ -28,6 +28,7 @@ import {
 import {
   ArrowUpDown,
   FolderPlus,
+  FilePlus,
   Upload,
   Folder,
   Cloud,
@@ -70,6 +71,10 @@ function CloudPageInner() {
   const [showNewFolder, setShowNewFolder] = useState(false);
   const [newFolderName, setNewFolderName] = useState("");
   const [creatingFolder, setCreatingFolder] = useState(false);
+  const [showNewFile, setShowNewFile] = useState(false);
+  const [newFileName, setNewFileName] = useState("");
+  const [newFileExtension, setNewFileExtension] = useState<"md" | "txt">("md");
+  const [creatingFile, setCreatingFile] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState<CloudFile[] | null>(null);
   const [dragOver, setDragOver] = useState(false);
@@ -171,6 +176,9 @@ function CloudPageInner() {
     setRenaming(null);
     setShowNewFolder(false);
     setNewFolderName("");
+    setShowNewFile(false);
+    setNewFileName("");
+    setNewFileExtension("md");
     setSearchResults(null);
     setSearchQuery("");
     setSelectedIds(new Set());
@@ -348,6 +356,22 @@ function CloudPageInner() {
       console.error("Create folder failed:", err);
     } finally {
       setCreatingFolder(false);
+    }
+  };
+
+  const handleCreateFile = async () => {
+    if (!authed || !newFileName.trim() || !isMyFilesSection || creatingFile) return;
+    setCreatingFile(true);
+    try {
+      await cloud.createTextFile(newFileName, newFileExtension, currentFolderID);
+      setShowNewFile(false);
+      setNewFileName("");
+      setNewFileExtension("md");
+      loadItems();
+    } catch (err) {
+      console.error("Create file failed:", err);
+    } finally {
+      setCreatingFile(false);
     }
   };
 
@@ -558,9 +582,32 @@ function CloudPageInner() {
                 </DropdownMenuContent>
               </DropdownMenu>
 
-              <Button variant="ghost" size="sm" onClick={() => setShowNewFolder(true)} className="gap-1.5">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  setShowNewFile(false);
+                  setNewFileName("");
+                  setShowNewFolder(true);
+                }}
+                className="gap-1.5"
+              >
                 <FolderPlus size={14} />
                 <span className="hidden md:inline">새 폴더</span>
+              </Button>
+
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  setShowNewFolder(false);
+                  setNewFolderName("");
+                  setShowNewFile(true);
+                }}
+                className="gap-1.5"
+              >
+                <FilePlus size={14} />
+                <span className="hidden md:inline">새 파일</span>
               </Button>
 
               <Button variant="primary" size="sm" onClick={() => fileInputRef.current?.click()} className="gap-1.5">
@@ -608,6 +655,61 @@ function CloudPageInner() {
           />
           <Button size="sm" onClick={handleCreateFolder}>만들기</Button>
           <Button variant="ghost" size="sm" onClick={() => { setShowNewFolder(false); setNewFolderName(""); }}>
+            취소
+          </Button>
+        </div>
+      )}
+
+      {/* New File Input */}
+      {isMyFilesSection && showNewFile && (
+        <div className="flex items-center gap-2 border-b border-border bg-surface-accent/50 px-6 py-2">
+          <FilePlus size={16} className="text-text-muted" />
+          <Input
+            autoFocus
+            placeholder="파일 이름"
+            value={newFileName}
+            onChange={(e) => setNewFileName(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                handleCreateFile();
+              }
+              if (e.key === "Escape") {
+                setShowNewFile(false);
+                setNewFileName("");
+                setNewFileExtension("md");
+              }
+            }}
+            className="h-7 flex-1"
+          />
+          <div className="flex items-center gap-1">
+            <Button
+              variant={newFileExtension === "md" ? "secondary" : "ghost"}
+              size="sm"
+              onClick={() => setNewFileExtension("md")}
+            >
+              .md
+            </Button>
+            <Button
+              variant={newFileExtension === "txt" ? "secondary" : "ghost"}
+              size="sm"
+              onClick={() => setNewFileExtension("txt")}
+            >
+              .txt
+            </Button>
+          </div>
+          <Button size="sm" disabled={creatingFile} onClick={handleCreateFile}>
+            만들기
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => {
+              setShowNewFile(false);
+              setNewFileName("");
+              setNewFileExtension("md");
+            }}
+          >
             취소
           </Button>
         </div>

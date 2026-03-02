@@ -15,6 +15,8 @@ export function useCloudActions() {
       listItems: (input: ListCloudItemsInput) => useCase.listItems(input),
       listStars: () => useCase.listStars(),
       uploadFile: (file: File, folderId?: string | null) => useCase.uploadFile(file, folderId),
+      createTextFile: (name: string, extension: "md" | "txt", folderId?: string | null) =>
+        useCase.createTextFile(name, extension, folderId),
       downloadFile: (fileId: string) => useCase.downloadFile(fileId),
       deleteFolder: (folderId: string) => useCase.deleteFolder(folderId),
       deleteFile: (fileId: string) => useCase.deleteFile(fileId),
