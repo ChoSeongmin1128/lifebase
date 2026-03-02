@@ -73,6 +73,23 @@ func (r *folderRepo) Update(ctx context.Context, folder *domain.Folder) error {
 	return err
 }
 
+func (r *folderRepo) ExistsByName(ctx context.Context, userID string, parentID *string, name string) (bool, error) {
+	var count int
+	var err error
+	if parentID == nil {
+		err = r.db.QueryRow(ctx,
+			`SELECT COUNT(*) FROM folders WHERE user_id = $1 AND parent_id IS NULL AND name = $2 AND deleted_at IS NULL`,
+			userID, name,
+		).Scan(&count)
+	} else {
+		err = r.db.QueryRow(ctx,
+			`SELECT COUNT(*) FROM folders WHERE user_id = $1 AND parent_id = $2 AND name = $3 AND deleted_at IS NULL`,
+			userID, *parentID, name,
+		).Scan(&count)
+	}
+	return count > 0, err
+}
+
 func (r *folderRepo) SoftDelete(ctx context.Context, userID, id string) error {
 	_, err := r.db.Exec(ctx,
 		`UPDATE folders SET deleted_at = $3 WHERE id = $1 AND user_id = $2 AND deleted_at IS NULL`,

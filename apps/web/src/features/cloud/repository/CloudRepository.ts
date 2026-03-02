@@ -25,8 +25,11 @@ export interface CloudRepository {
   restoreTrashItem(id: string, type: "folder" | "file"): Promise<void>;
   emptyTrash(): Promise<void>;
   renameFolder(folderId: string, name: string): Promise<void>;
+  moveFolder(folderId: string, parentId?: string | null): Promise<void>;
+  copyFolder(folderId: string, parentId?: string | null): Promise<void>;
   renameFile(fileId: string, name: string): Promise<void>;
-  moveFile(fileId: string, folderId: string): Promise<void>;
+  moveFile(fileId: string, folderId?: string | null): Promise<void>;
+  copyFile(fileId: string, folderId?: string | null): Promise<void>;
   createFolder(name: string, parentId?: string | null): Promise<void>;
   searchFiles(query: string): Promise<CloudFile[]>;
 }

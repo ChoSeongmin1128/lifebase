@@ -35,6 +35,8 @@ import {
 } from "@/lib/cloud-sections";
 import {
   ArrowUpDown,
+  ClipboardPaste,
+  Copy,
   FolderPlus,
   FilePlus,
   Upload,
@@ -48,6 +50,7 @@ import {
   LayoutGrid,
   List,
   Search,
+  Scissors,
   Star as StarIcon,
   Undo2,
 } from "lucide-react";
@@ -55,7 +58,22 @@ import {
 type SortBy = "name" | "size" | "updated_at" | "created_at";
 type SortDir = "asc" | "desc";
 type ViewMode = "list" | "grid";
+type ClipboardMode = "copy" | "cut";
+type ClipboardItemType = "file" | "folder";
+interface CloudClipboard {
+  mode: ClipboardMode;
+  itemType: ClipboardItemType;
+  itemID: string;
+  itemName: string;
+}
 const INTERNAL_FILE_DRAG_TYPE = "application/x-lifebase-cloud-file-id";
+
+const isTextInputTarget = (target: EventTarget | null) => {
+  if (!(target instanceof HTMLElement)) return false;
+  if (target.isContentEditable) return true;
+  const tag = target.tagName;
+  return tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT";
+};
 
 function CloudPageInner() {
   const router = useRouter();
@@ -94,6 +112,8 @@ function CloudPageInner() {
   const [draggingFileId, setDraggingFileId] = useState<string | null>(null);
   const [dropTargetFolderId, setDropTargetFolderId] = useState<string | null>(null);
   const [movingFileId, setMovingFileId] = useState<string | null>(null);
+  const [clipboard, setClipboard] = useState<CloudClipboard | null>(null);
+  const [clipboardBusy, setClipboardBusy] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [viewMode, setViewMode] = useState<ViewMode>("list");
   const [starredKeys, setStarredKeys] = useState<Set<string>>(new Set());
@@ -522,6 +542,61 @@ function CloudPageInner() {
     handleUpload(e.dataTransfer.files);
   };
 
+  const showCloudActionError = useCallback((prefix: string, err: unknown) => {
+    console.error(prefix, err);
+    const msg = err instanceof Error ? err.message : "알 수 없는 오류";
+    if (typeof window !== "undefined") {
+      window.alert(`${prefix}: ${msg}`);
+    }
+  }, []);
+
+  const setClipboardFromItem = useCallback((mode: ClipboardMode, item: FolderItem) => {
+    if (!isMyFilesSection) return;
+    const itemID = item.type === "folder" ? item.folder!.id : item.file!.id;
+    const itemName = item.type === "folder" ? item.folder!.name : item.file!.name;
+    setClipboard({ mode, itemType: item.type, itemID, itemName });
+  }, [isMyFilesSection]);
+
+  const applyClipboardToFolder = useCallback(async (targetFolderID: string | null) => {
+    if (!authed || !isMyFilesSection || !clipboard || clipboardBusy) return;
+
+    setClipboardBusy(true);
+    try {
+      if (clipboard.itemType === "file") {
+        if (clipboard.mode === "copy") {
+          await cloud.copyFile(clipboard.itemID, targetFolderID);
+        } else {
+          await cloud.moveFile(clipboard.itemID, targetFolderID);
+          setClipboard(null);
+        }
+      } else {
+        if (clipboard.mode === "copy") {
+          await cloud.copyFolder(clipboard.itemID, targetFolderID);
+        } else {
+          await cloud.moveFolder(clipboard.itemID, targetFolderID);
+          setClipboard(null);
+        }
+      }
+
+      await loadItems();
+    } catch (err) {
+      showCloudActionError("붙여넣기에 실패했습니다", err);
+    } finally {
+      setClipboardBusy(false);
+    }
+  }, [authed, clipboard, clipboardBusy, cloud, isMyFilesSection, loadItems, showCloudActionError]);
+
+  const getSingleSelectedItem = useCallback(() => {
+    if (!isMyFilesSection || selectedIds.size !== 1) return null;
+    const currentItems: FolderItem[] = isMyFilesSection && searchResults
+      ? searchResults.map((f) => ({ type: "file" as const, file: f, path: undefined }))
+      : items;
+    const selectedID = Array.from(selectedIds)[0];
+    return currentItems.find((item) =>
+      item.type === "folder" ? item.folder?.id === selectedID : item.file?.id === selectedID,
+    ) ?? null;
+  }, [isMyFilesSection, items, searchResults, selectedIds]);
+
   const toggleSelect = (id: string) => {
     if (!isSelectableSection) return;
     setSelectedIds((prev) => {
@@ -540,6 +615,45 @@ function CloudPageInner() {
       setSelectedIds(new Set(displayItems.map((i) => (i.type === "folder" ? i.folder!.id : i.file!.id))));
     }
   };
+
+  useEffect(() => {
+    if (!isMyFilesSection) return;
+
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (!(e.metaKey || e.ctrlKey) || e.altKey) return;
+      if (isTextInputTarget(e.target)) return;
+
+      const key = e.key.toLowerCase();
+      if (key !== "c" && key !== "x" && key !== "v") return;
+
+      const selectedText = window.getSelection()?.toString() || "";
+      if (selectedText && key !== "v") return;
+
+      if (key === "v") {
+        if (!clipboard || clipboardBusy) return;
+        e.preventDefault();
+        void applyClipboardToFolder(currentFolderID ?? null);
+        return;
+      }
+
+      const selectedItem = getSingleSelectedItem();
+      if (!selectedItem) return;
+
+      e.preventDefault();
+      setClipboardFromItem(key === "x" ? "cut" : "copy", selectedItem);
+    };
+
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [
+    applyClipboardToFolder,
+    clipboard,
+    clipboardBusy,
+    currentFolderID,
+    getSingleSelectedItem,
+    isMyFilesSection,
+    setClipboardFromItem,
+  ]);
 
   const isMediaFile = (mimeType: string) =>
     mimeType.startsWith("image/") || mimeType.startsWith("video/");
@@ -752,6 +866,16 @@ function CloudPageInner() {
                 <Upload size={14} />
                 <span className="hidden md:inline">업로드</span>
               </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                disabled={!clipboard || clipboardBusy}
+                onClick={() => void applyClipboardToFolder(currentFolderID ?? null)}
+                className="gap-1.5"
+              >
+                <ClipboardPaste size={14} />
+                <span className="hidden md:inline">붙여넣기</span>
+              </Button>
               <input
                 ref={fileInputRef}
                 type="file"
@@ -868,6 +992,15 @@ function CloudPageInner() {
         </div>
       )}
 
+      {isMyFilesSection && clipboard && (
+        <div className="flex items-center gap-2 border-b border-border bg-surface-accent/40 px-6 py-2 text-xs text-text-secondary">
+          <span>
+            {clipboard.mode === "copy" ? "복사됨" : "잘라내기됨"}: {clipboard.itemName}
+          </span>
+          <span className="text-text-muted">붙여넣기: mac ⌘V / windows Ctrl+V</span>
+        </div>
+      )}
+
       {/* Bulk action bar */}
       {showBulkBar && (
         <>
@@ -975,6 +1108,8 @@ function CloudPageInner() {
                 const recentPath = isRecentSection && item.type === "file" ? formatRecentFilePath(item) : "";
                 const isDropTarget = isMyFilesSection && item.type === "folder" && dropTargetFolderId === id;
                 const isDraggingItem = isMyFilesSection && item.type === "file" && draggingFileId === id;
+                const isCutClipboardItem =
+                  clipboard?.mode === "cut" && clipboard.itemType === item.type && clipboard.itemID === id;
 
                 return (
                   <tr
@@ -983,6 +1118,7 @@ function CloudPageInner() {
                       isSelected ? "bg-primary/5" : ""
                     } ${isDropTarget ? "bg-surface-accent/80 ring-1 ring-inset ring-primary" : ""} ${
                       isDraggingItem ? "opacity-60" : ""
+                    } ${isCutClipboardItem ? "opacity-60" : ""}
                     }`}
                     draggable={isMyFilesSection && item.type === "file"}
                     onDragStart={(e) => {
@@ -1090,6 +1226,21 @@ function CloudPageInner() {
                             </DropdownMenuItem>
                           ) : isMyFilesSection ? (
                             <>
+                              <DropdownMenuItem onClick={() => setClipboardFromItem("copy", item)}>
+                                <Copy size={14} /> 복사
+                              </DropdownMenuItem>
+                              <DropdownMenuItem onClick={() => setClipboardFromItem("cut", item)}>
+                                <Scissors size={14} /> 잘라내기
+                              </DropdownMenuItem>
+                              {item.type === "folder" && item.folder && (
+                                <DropdownMenuItem
+                                  onClick={() => void applyClipboardToFolder(item.folder!.id)}
+                                  disabled={!clipboard || clipboardBusy}
+                                >
+                                  <ClipboardPaste size={14} /> 여기에 붙여넣기
+                                </DropdownMenuItem>
+                              )}
+                              <DropdownMenuSeparator />
                               {item.type === "folder" && item.folder && (
                                 <DropdownMenuItem onClick={() => navigateToFolder(item.folder!)}>
                                   <FolderOpen size={14} /> 열기
@@ -1164,6 +1315,8 @@ function CloudPageInner() {
               const recentPath = isRecentSection && item.type === "file" ? formatRecentFilePath(item) : "";
               const isDropTarget = isMyFilesSection && item.type === "folder" && dropTargetFolderId === id;
               const isDraggingItem = isMyFilesSection && item.type === "file" && draggingFileId === id;
+              const isCutClipboardItem =
+                clipboard?.mode === "cut" && clipboard.itemType === item.type && clipboard.itemID === id;
 
               return (
                 <div
@@ -1172,6 +1325,7 @@ function CloudPageInner() {
                     isSelected ? "border-primary bg-primary/5" : "border-border hover:bg-surface-accent/50"
                   } ${isDropTarget ? "bg-surface-accent/80 ring-2 ring-primary border-primary" : ""} ${
                     isDraggingItem ? "opacity-60" : ""
+                  } ${isCutClipboardItem ? "opacity-60" : ""}
                   }`}
                   draggable={isMyFilesSection && item.type === "file"}
                   onDragStart={(e) => {

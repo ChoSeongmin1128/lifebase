@@ -68,12 +68,24 @@ export class ManageCloudUseCase {
     return this.repo.renameFolder(folderId, name.trim());
   }
 
+  moveFolder(folderId: string, parentId?: string | null) {
+    return this.repo.moveFolder(folderId, parentId);
+  }
+
+  copyFolder(folderId: string, parentId?: string | null) {
+    return this.repo.copyFolder(folderId, parentId);
+  }
+
   renameFile(fileId: string, name: string) {
     return this.repo.renameFile(fileId, name.trim());
   }
 
-  moveFile(fileId: string, folderId: string) {
+  moveFile(fileId: string, folderId?: string | null) {
     return this.repo.moveFile(fileId, folderId);
+  }
+
+  copyFile(fileId: string, folderId?: string | null) {
+    return this.repo.copyFile(fileId, folderId);
   }
 
   createFolder(name: string, parentId?: string | null) {

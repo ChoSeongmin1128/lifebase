@@ -11,6 +11,7 @@ type FolderRepository interface {
 	FindByID(ctx context.Context, userID, id string) (*domain.Folder, error)
 	ListByParent(ctx context.Context, userID string, parentID *string) ([]*domain.Folder, error)
 	Update(ctx context.Context, folder *domain.Folder) error
+	ExistsByName(ctx context.Context, userID string, parentID *string, name string) (bool, error)
 	SoftDelete(ctx context.Context, userID, id string) error
 	Restore(ctx context.Context, userID, id string) error
 	HardDelete(ctx context.Context, id string) error

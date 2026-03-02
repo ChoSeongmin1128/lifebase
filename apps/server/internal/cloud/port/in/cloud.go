@@ -25,6 +25,7 @@ type CloudUseCase interface {
 	ListFolder(ctx context.Context, userID string, folderID *string, sortBy, sortDir string) ([]FolderItem, error)
 	RenameFolder(ctx context.Context, userID, folderID, newName string) error
 	MoveFolder(ctx context.Context, userID, folderID string, newParentID *string) error
+	CopyFolder(ctx context.Context, userID, folderID string, targetParentID *string) error
 	DeleteFolder(ctx context.Context, userID, folderID string) error
 
 	// Files
@@ -35,6 +36,7 @@ type CloudUseCase interface {
 	RenameFile(ctx context.Context, userID, fileID, newName string) error
 	UpdateFileContent(ctx context.Context, userID, fileID, content string) error
 	MoveFile(ctx context.Context, userID, fileID string, newFolderID *string) error
+	CopyFile(ctx context.Context, userID, fileID string, targetFolderID *string) error
 	DeleteFile(ctx context.Context, userID, fileID string) error
 
 	// Trash

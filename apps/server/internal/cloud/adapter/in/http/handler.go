@@ -116,6 +116,24 @@ func (h *CloudHandler) MoveFolder(w http.ResponseWriter, r *http.Request) {
 	response.NoContent(w)
 }
 
+func (h *CloudHandler) CopyFolder(w http.ResponseWriter, r *http.Request) {
+	userID := middleware.GetUserID(r.Context())
+	folderID := chi.URLParam(r, "folderID")
+	var req struct {
+		ParentID *string `json:"parent_id"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil && err != io.EOF {
+		response.Error(w, http.StatusBadRequest, "INVALID_REQUEST", "invalid request body")
+		return
+	}
+
+	if err := h.cloud.CopyFolder(r.Context(), userID, folderID, req.ParentID); err != nil {
+		response.Error(w, http.StatusBadRequest, "COPY_FAILED", err.Error())
+		return
+	}
+	response.NoContent(w)
+}
+
 func (h *CloudHandler) DeleteFolder(w http.ResponseWriter, r *http.Request) {
 	userID := middleware.GetUserID(r.Context())
 	folderID := chi.URLParam(r, "folderID")
@@ -267,6 +285,24 @@ func (h *CloudHandler) MoveFile(w http.ResponseWriter, r *http.Request) {
 
 	if err := h.cloud.MoveFile(r.Context(), userID, fileID, req.FolderID); err != nil {
 		response.Error(w, http.StatusBadRequest, "MOVE_FAILED", err.Error())
+		return
+	}
+	response.NoContent(w)
+}
+
+func (h *CloudHandler) CopyFile(w http.ResponseWriter, r *http.Request) {
+	userID := middleware.GetUserID(r.Context())
+	fileID := chi.URLParam(r, "fileID")
+	var req struct {
+		FolderID *string `json:"folder_id"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil && err != io.EOF {
+		response.Error(w, http.StatusBadRequest, "INVALID_REQUEST", "invalid request body")
+		return
+	}
+
+	if err := h.cloud.CopyFile(r.Context(), userID, fileID, req.FolderID); err != nil {
+		response.Error(w, http.StatusBadRequest, "COPY_FAILED", err.Error())
 		return
 	}
 	response.NoContent(w)

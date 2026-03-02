@@ -119,11 +119,49 @@ func (uc *cloudUseCase) MoveFolder(ctx context.Context, userID, folderID string,
 		if err != nil || parent == nil {
 			return fmt.Errorf("target folder not found")
 		}
+		descendant, err := uc.isDescendantFolder(ctx, userID, folderID, newParentID)
+		if err != nil {
+			return fmt.Errorf("validate target folder: %w", err)
+		}
+		if descendant {
+			return fmt.Errorf("cannot move folder into its descendant")
+		}
+	}
+
+	if (folder.ParentID == nil && newParentID == nil) || (folder.ParentID != nil && newParentID != nil && *folder.ParentID == *newParentID) {
+		return nil
 	}
 
 	folder.ParentID = newParentID
 	folder.UpdatedAt = time.Now()
 	return uc.folders.Update(ctx, folder)
+}
+
+func (uc *cloudUseCase) CopyFolder(ctx context.Context, userID, folderID string, targetParentID *string) error {
+	source, err := uc.folders.FindByID(ctx, userID, folderID)
+	if err != nil || source == nil {
+		return fmt.Errorf("folder not found")
+	}
+
+	if targetParentID != nil {
+		if *targetParentID == folderID {
+			return fmt.Errorf("cannot copy folder into itself")
+		}
+		parent, err := uc.folders.FindByID(ctx, userID, *targetParentID)
+		if err != nil || parent == nil {
+			return fmt.Errorf("target folder not found")
+		}
+		descendant, err := uc.isDescendantFolder(ctx, userID, folderID, targetParentID)
+		if err != nil {
+			return fmt.Errorf("validate target folder: %w", err)
+		}
+		if descendant {
+			return fmt.Errorf("cannot copy folder into its descendant")
+		}
+	}
+
+	_, err = uc.copyFolderTree(ctx, userID, source, targetParentID)
+	return err
 }
 
 func (uc *cloudUseCase) DeleteFolder(ctx context.Context, userID, folderID string) error {
@@ -157,6 +195,28 @@ func (uc *cloudUseCase) resolveFileName(ctx context.Context, userID string, fold
 		}
 	}
 	return "", fmt.Errorf("could not resolve unique filename for %q", name)
+}
+
+func (uc *cloudUseCase) resolveFolderName(ctx context.Context, userID string, parentID *string, name string) (string, error) {
+	exists, err := uc.folders.ExistsByName(ctx, userID, parentID, name)
+	if err != nil {
+		return "", err
+	}
+	if !exists {
+		return name, nil
+	}
+
+	for i := 1; i <= 10000; i++ {
+		candidate := fmt.Sprintf("%s (%d)", name, i)
+		exists, err := uc.folders.ExistsByName(ctx, userID, parentID, candidate)
+		if err != nil {
+			return "", err
+		}
+		if !exists {
+			return candidate, nil
+		}
+	}
+	return "", fmt.Errorf("could not resolve unique folder name for %q", name)
 }
 
 func (uc *cloudUseCase) UploadFile(ctx context.Context, userID string, folderID *string, name string, mimeType string, size int64, data []byte) (*domain.File, error) {
@@ -329,6 +389,14 @@ func (uc *cloudUseCase) MoveFile(ctx context.Context, userID, fileID string, new
 	file.FolderID = newFolderID
 	file.UpdatedAt = time.Now()
 	return uc.files.Update(ctx, file)
+}
+
+func (uc *cloudUseCase) CopyFile(ctx context.Context, userID, fileID string, targetFolderID *string) error {
+	source, err := uc.files.FindByID(ctx, userID, fileID)
+	if err != nil || source == nil {
+		return fmt.Errorf("file not found")
+	}
+	return uc.copyFileToFolder(ctx, userID, source, targetFolderID)
 }
 
 func (uc *cloudUseCase) DeleteFile(ctx context.Context, userID, fileID string) error {
@@ -557,4 +625,139 @@ func (uc *cloudUseCase) buildFolderPath(
 	}
 	cache[*folderID] = fullPath
 	return fullPath, nil
+}
+
+func (uc *cloudUseCase) isDescendantFolder(
+	ctx context.Context,
+	userID string,
+	ancestorFolderID string,
+	candidateParentID *string,
+) (bool, error) {
+	current := candidateParentID
+	visited := map[string]bool{}
+	for current != nil {
+		if *current == ancestorFolderID {
+			return true, nil
+		}
+		if visited[*current] {
+			return false, fmt.Errorf("cycle detected in folder tree")
+		}
+		visited[*current] = true
+
+		f, err := uc.folders.FindByID(ctx, userID, *current)
+		if err != nil || f == nil {
+			return false, fmt.Errorf("folder not found")
+		}
+		current = f.ParentID
+	}
+	return false, nil
+}
+
+func (uc *cloudUseCase) copyFileToFolder(ctx context.Context, userID string, source *domain.File, targetFolderID *string) error {
+	if targetFolderID != nil {
+		folder, err := uc.folders.FindByID(ctx, userID, *targetFolderID)
+		if err != nil || folder == nil {
+			return fmt.Errorf("target folder not found")
+		}
+	}
+
+	resolvedName, err := uc.resolveFileName(ctx, userID, targetFolderID, source.Name)
+	if err != nil {
+		return fmt.Errorf("resolve filename: %w", err)
+	}
+
+	data, err := uc.storage.Read(source.StoragePath)
+	if err != nil {
+		return fmt.Errorf("read source file: %w", err)
+	}
+
+	newFileID := uuid.New().String()
+	storagePath, err := uc.storage.Save(userID, newFileID, data)
+	if err != nil {
+		return fmt.Errorf("save copied file: %w", err)
+	}
+
+	now := time.Now()
+	copied := &domain.File{
+		ID:          newFileID,
+		UserID:      userID,
+		FolderID:    targetFolderID,
+		Name:        resolvedName,
+		MimeType:    source.MimeType,
+		SizeBytes:   source.SizeBytes,
+		StoragePath: storagePath,
+		ThumbStatus: "pending",
+		TakenAt:     source.TakenAt,
+		CreatedAt:   now,
+		UpdatedAt:   now,
+	}
+	if err := uc.files.Create(ctx, copied); err != nil {
+		_ = uc.storage.Delete(storagePath)
+		return fmt.Errorf("create copied file record: %w", err)
+	}
+
+	if err := uc.files.UpdateStorageUsed(ctx, userID, source.SizeBytes); err != nil {
+		return fmt.Errorf("update storage used: %w", err)
+	}
+
+	if uc.queue != nil {
+		_ = uc.queue.EnqueueThumbnail(ctx, portout.ThumbnailTask{
+			FileID:      newFileID,
+			UserID:      userID,
+			StoragePath: storagePath,
+			MimeType:    source.MimeType,
+		})
+	}
+
+	return nil
+}
+
+func (uc *cloudUseCase) copyFolderTree(
+	ctx context.Context,
+	userID string,
+	source *domain.Folder,
+	targetParentID *string,
+) (*domain.Folder, error) {
+	resolvedName, err := uc.resolveFolderName(ctx, userID, targetParentID, source.Name)
+	if err != nil {
+		return nil, fmt.Errorf("resolve folder name: %w", err)
+	}
+
+	now := time.Now()
+	copied := &domain.Folder{
+		ID:        uuid.New().String(),
+		UserID:    userID,
+		ParentID:  targetParentID,
+		Name:      resolvedName,
+		CreatedAt: now,
+		UpdatedAt: now,
+	}
+	if err := uc.folders.Create(ctx, copied); err != nil {
+		return nil, fmt.Errorf("create folder: %w", err)
+	}
+
+	sourceFolderID := source.ID
+	files, err := uc.files.ListByFolder(ctx, userID, &sourceFolderID, "name", "asc")
+	if err != nil {
+		return nil, fmt.Errorf("list source files: %w", err)
+	}
+	for _, f := range files {
+		targetFolderID := copied.ID
+		if err := uc.copyFileToFolder(ctx, userID, f, &targetFolderID); err != nil {
+			return nil, err
+		}
+	}
+
+	children, err := uc.folders.ListByParent(ctx, userID, &sourceFolderID)
+	if err != nil {
+		return nil, fmt.Errorf("list child folders: %w", err)
+	}
+	for _, child := range children {
+		targetFolderID := copied.ID
+		if _, err := uc.copyFolderTree(ctx, userID, child, &targetFolderID); err != nil {
+			return nil, err
+		}
+	}
+
+	return copied, nil
 }

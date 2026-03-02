@@ -166,6 +166,24 @@ export class HttpCloudRepository implements CloudRepository {
     });
   }
 
+  async moveFolder(folderId: string, parentId?: string | null): Promise<void> {
+    const token = this.getToken();
+    await api(`/cloud/folders/${folderId}/move`, {
+      method: "PATCH",
+      body: { parent_id: parentId ?? null },
+      token,
+    });
+  }
+
+  async copyFolder(folderId: string, parentId?: string | null): Promise<void> {
+    const token = this.getToken();
+    await api(`/cloud/folders/${folderId}/copy`, {
+      method: "PATCH",
+      body: { parent_id: parentId ?? null },
+      token,
+    });
+  }
+
   async renameFile(fileId: string, name: string): Promise<void> {
     const token = this.getToken();
     await api(`/cloud/files/${fileId}/rename`, {
@@ -175,11 +193,20 @@ export class HttpCloudRepository implements CloudRepository {
     });
   }
 
-  async moveFile(fileId: string, folderId: string): Promise<void> {
+  async moveFile(fileId: string, folderId?: string | null): Promise<void> {
     const token = this.getToken();
     await api(`/cloud/files/${fileId}/move`, {
       method: "PATCH",
-      body: { folder_id: folderId },
+      body: { folder_id: folderId ?? null },
+      token,
+    });
+  }
+
+  async copyFile(fileId: string, folderId?: string | null): Promise<void> {
+    const token = this.getToken();
+    await api(`/cloud/files/${fileId}/copy`, {
+      method: "PATCH",
+      body: { folder_id: folderId ?? null },
       token,
     });
   }
