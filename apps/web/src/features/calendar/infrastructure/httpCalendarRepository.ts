@@ -37,12 +37,16 @@ export class HttpCalendarRepository implements CalendarRepository {
     return api<CalendarSettingsResponse>("/settings", { token });
   }
 
-  async listEvents(start: string, end: string): Promise<EventData[]> {
+  async listEvents(start: string, end: string, calendarIDs?: string[]): Promise<EventData[]> {
     const token = this.getToken();
-    const data = await api<EventsResponse>(
-      `/events?start=${encodeURIComponent(start)}&end=${encodeURIComponent(end)}`,
-      { token },
-    );
+    const params = new URLSearchParams({
+      start,
+      end,
+    });
+    if (calendarIDs && calendarIDs.length > 0) {
+      params.set("calendar_ids", calendarIDs.join(","));
+    }
+    const data = await api<EventsResponse>(`/events?${params.toString()}`, { token });
     return data.events || [];
   }
 

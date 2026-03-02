@@ -2,6 +2,7 @@ export interface CalendarData {
   id: string;
   name: string;
   color_id: string | null;
+  google_account_id: string | null;
   is_primary: boolean;
   is_visible: boolean;
 }

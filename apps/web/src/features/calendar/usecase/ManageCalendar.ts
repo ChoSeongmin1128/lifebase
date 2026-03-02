@@ -15,8 +15,8 @@ export class ManageCalendarUseCase {
     return this.repo.getSettings();
   }
 
-  listEvents(start: string, end: string) {
-    return this.repo.listEvents(start, end);
+  listEvents(start: string, end: string, calendarIDs?: string[]) {
+    return this.repo.listEvents(start, end, calendarIDs);
   }
 
   createEvent(input: CreateEventInput) {

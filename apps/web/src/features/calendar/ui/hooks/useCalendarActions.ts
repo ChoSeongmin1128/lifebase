@@ -17,7 +17,7 @@ export function useCalendarActions() {
     () => ({
       listCalendars: () => useCase.listCalendars(),
       getSettings: () => useCase.getSettings(),
-      listEvents: (start: string, end: string) => useCase.listEvents(start, end),
+      listEvents: (start: string, end: string, calendarIDs?: string[]) => useCase.listEvents(start, end, calendarIDs),
       createEvent: (input: CreateEventInput) => useCase.createEvent(input),
       updateEvent: (eventId: string, payload: EventPayload) => useCase.updateEvent(eventId, payload),
       deleteEvent: (eventId: string) => useCase.deleteEvent(eventId),

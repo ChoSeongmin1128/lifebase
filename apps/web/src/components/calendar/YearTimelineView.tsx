@@ -15,8 +15,11 @@ interface EventData {
 interface YearTimelineViewProps {
   year: number;
   events: EventData[];
-  getEventColor: (colorId: string | null, calColorId: string | null) => string;
-  calendars: { id: string; color_id: string | null }[];
+  getEventColor: (
+    colorId: string | null,
+    calendar?: { id: string; color_id: string | null; google_account_id?: string | null }
+  ) => string;
+  calendars: { id: string; color_id: string | null; google_account_id?: string | null }[];
 }
 
 const MONTHS = ["1월", "2월", "3월", "4월", "5월", "6월", "7월", "8월", "9월", "10월", "11월", "12월"];
@@ -101,7 +104,7 @@ export function YearTimelineView({ year, events, getEventColor, calendars }: Yea
                               <div
                                 key={e.id}
                                 className="h-1.5 w-full rounded-sm"
-                                style={{ backgroundColor: getEventColor(e.color_id, cal?.color_id ?? null) }}
+                                style={{ backgroundColor: getEventColor(e.color_id, cal) }}
                                 title={e.title}
                               />
                             );
