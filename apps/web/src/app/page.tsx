@@ -35,7 +35,10 @@ export default function Home() {
           <Image src="/logo.svg" alt="LifeBase" width={40} height={40} />
           <h1 className="text-3xl font-semibold text-text-strong">LifeBase</h1>
         </div>
-        <p className="text-text-secondary">Cloud + Calendar + Todo</p>
+        <div className="flex flex-col items-center gap-1 text-center">
+          <p className="text-base font-medium text-text-secondary">당신의 일상을 한곳에서</p>
+          <p className="text-sm text-text-muted">일정, 할 일, 파일을 하나로</p>
+        </div>
         <Button
           variant="secondary"
           size="lg"
