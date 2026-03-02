@@ -1,14 +1,36 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo, type MouseEvent as ReactMouseEvent } from "react";
 import { useRouter, useParams } from "next/navigation";
 import { api } from "@/lib/api";
 import { getAccessToken } from "@/lib/auth";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from "@/components/ui/dialog";
+import {
+  Select,
+  SelectTrigger,
+  SelectValue,
+  SelectContent,
+  SelectItem,
+} from "@/components/ui/select";
 import { ViewDropdown, type CalendarViewMode } from "@/components/calendar/ViewDropdown";
 import { YearCompactView } from "@/components/calendar/YearCompactView";
 import { YearTimelineView } from "@/components/calendar/YearTimelineView";
 import { QuickCreatePopover } from "@/components/calendar/QuickCreatePopover";
+import { PageToolbar, PageToolbarGroup } from "@/components/layout/PageToolbar";
+import {
+  getFixedMonthFetchRangeWithWeekStart,
+  buildFixedMonthGridWithWeekStart,
+  type MonthCell,
+} from "@/lib/calendar/month-grid";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -32,6 +54,26 @@ interface EventData {
   is_all_day: boolean;
   color_id: string | null;
   recurrence_rule: string | null;
+}
+
+interface SettingsResponse {
+  settings: Record<string, string>;
+}
+
+interface EventEditorForm {
+  title: string;
+  description: string;
+  location: string;
+  startLocal: string;
+  endLocal: string;
+  isAllDay: boolean;
+  calendarId: string;
+}
+
+interface QuickCreateAnchorPoint {
+  x: number;
+  y: number;
+  side?: "left" | "right";
 }
 
 const COLORS = [
@@ -67,7 +109,7 @@ function parseSlug(slug: string[] | undefined): { view: CalendarViewMode; date: 
 
   if (dateStr) {
     if (/^\d{4}$/.test(dateStr)) {
-      date = new Date(parseInt(dateStr), 0, 1);
+      date = new Date(parseInt(dateStr, 10), 0, 1);
     } else if (/^\d{4}-\d{2}$/.test(dateStr)) {
       const [y, m] = dateStr.split("-").map(Number);
       date = new Date(y, m - 1, 1);
@@ -118,8 +160,103 @@ function buildCalendarUrl(view: CalendarViewMode, date: Date): string {
   }
 }
 
-function toDateStr(d: Date): string {
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+function toDateStr(date: Date): string {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+}
+
+function toLocalDateTimeInput(date: Date): string {
+  const local = new Date(date.getTime() - date.getTimezoneOffset() * 60000);
+  return local.toISOString().slice(0, 16);
+}
+
+function fromLocalDateTimeInput(local: string): Date {
+  return new Date(local);
+}
+
+function formatTimeLabel(iso: string): string {
+  const date = new Date(iso);
+  let hour = date.getHours();
+  const minute = date.getMinutes();
+  const ampm = hour >= 12 ? "PM" : "AM";
+  hour = hour % 12;
+  if (hour === 0) hour = 12;
+  if (minute === 0) return `${ampm} ${hour}시`;
+  return `${ampm} ${hour}:${String(minute).padStart(2, "0")}`;
+}
+
+function formatTimeRangeLabel(startISO: string, endISO: string): string {
+  return `${formatTimeLabel(startISO)} - ${formatTimeLabel(endISO)}`;
+}
+
+function parseWeekHourRange(settings: Record<string, string>): { start: number; end: number } {
+  const rawStart = Number.parseInt(settings.week_start_hour || "8", 10);
+  const rawEnd = Number.parseInt(settings.week_end_hour || "22", 10);
+
+  const start = Number.isNaN(rawStart) ? 8 : Math.min(Math.max(rawStart, 0), 23);
+  const end = Number.isNaN(rawEnd) ? 22 : Math.min(Math.max(rawEnd, 1), 24);
+
+  if (start >= end) return { start: 8, end: 22 };
+  return { start, end };
+}
+
+function parseWeekStartsOn(settings: Record<string, string>): number {
+  const raw = Number.parseInt(settings.calendar_week_start || "0", 10);
+  if (Number.isNaN(raw)) return 0;
+  const normalized = raw % 7;
+  return normalized < 0 ? normalized + 7 : normalized;
+}
+
+function makeDefaultEditorForm(start: Date, end: Date, calendarId: string): EventEditorForm {
+  return {
+    title: "",
+    description: "",
+    location: "",
+    startLocal: toLocalDateTimeInput(start),
+    endLocal: toLocalDateTimeInput(end),
+    isAllDay: false,
+    calendarId,
+  };
+}
+
+function buildEventPayload(form: EventEditorForm, timezone: string): {
+  title: string;
+  description: string;
+  location: string;
+  start_time: string;
+  end_time: string;
+  timezone: string;
+  is_all_day: boolean;
+} {
+  const startDate = fromLocalDateTimeInput(form.startLocal);
+  let endDate = fromLocalDateTimeInput(form.endLocal);
+
+  if (endDate <= startDate) {
+    endDate = new Date(startDate.getTime() + 30 * 60 * 1000);
+  }
+
+  if (form.isAllDay) {
+    const start = new Date(startDate.getFullYear(), startDate.getMonth(), startDate.getDate(), 0, 0, 0, 0);
+    const end = new Date(endDate.getFullYear(), endDate.getMonth(), endDate.getDate(), 23, 59, 59, 999);
+    return {
+      title: form.title,
+      description: form.description,
+      location: form.location,
+      start_time: start.toISOString(),
+      end_time: end.toISOString(),
+      timezone,
+      is_all_day: true,
+    };
+  }
+
+  return {
+    title: form.title,
+    description: form.description,
+    location: form.location,
+    start_time: startDate.toISOString(),
+    end_time: endDate.toISOString(),
+    timezone,
+    is_all_day: false,
+  };
 }
 
 export default function CalendarPage() {
@@ -134,8 +271,40 @@ export default function CalendarPage() {
   const [events, setEvents] = useState<EventData[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedEvent, setSelectedEvent] = useState<EventData | null>(null);
+  const [selectedDateKey, setSelectedDateKey] = useState<string | null>(null);
+
+  const [weekHours, setWeekHours] = useState({ start: 8, end: 22 });
+  const [weekStartsOn, setWeekStartsOn] = useState(0);
+
+  const [quickCreateOpen, setQuickCreateOpen] = useState(false);
+  const [quickDefaultStart, setQuickDefaultStart] = useState<string>("");
+  const [quickDefaultEnd, setQuickDefaultEnd] = useState<string>("");
+  const [quickCreateAnchor, setQuickCreateAnchor] = useState<QuickCreateAnchorPoint | null>(null);
+
+  const [editorOpen, setEditorOpen] = useState(false);
+  const [editorMode, setEditorMode] = useState<"create" | "edit">("create");
+  const [editingEventID, setEditingEventID] = useState<string | null>(null);
+  const [editorForm, setEditorForm] = useState<EventEditorForm>(
+    makeDefaultEditorForm(new Date(), new Date(Date.now() + 60 * 60 * 1000), "")
+  );
 
   const token = getAccessToken();
+
+  const timezone = useMemo(
+    () => Intl.DateTimeFormat().resolvedOptions().timeZone || "Asia/Seoul",
+    []
+  );
+
+  const defaultCalendarID = useMemo(
+    () => calendars.find((cal) => cal.is_visible)?.id || calendars[0]?.id || "",
+    [calendars]
+  );
+
+  useEffect(() => {
+    if (!editorForm.calendarId && defaultCalendarID) {
+      setEditorForm((prev) => ({ ...prev, calendarId: defaultCalendarID }));
+    }
+  }, [defaultCalendarID, editorForm.calendarId]);
 
   const loadCalendars = useCallback(async () => {
     if (!token) return;
@@ -147,13 +316,26 @@ export default function CalendarPage() {
     }
   }, [token]);
 
+  const loadSettings = useCallback(async () => {
+    if (!token) return;
+    try {
+      const data = await api<SettingsResponse>("/settings", { token });
+      const settings = data.settings || {};
+      setWeekHours(parseWeekHourRange(settings));
+      setWeekStartsOn(parseWeekStartsOn(settings));
+    } catch {
+      setWeekHours({ start: 8, end: 22 });
+      setWeekStartsOn(0);
+    }
+  }, [token]);
+
   const loadEvents = useCallback(async () => {
     if (!token) return;
     setLoading(true);
-    const { start, end } = getDateRange(currentDate, view);
+    const { start, end } = getDateRange(currentDate, view, weekStartsOn);
     try {
       const data = await api<{ events: EventData[] }>(
-        `/events?start=${start}&end=${end}`,
+        `/events?start=${encodeURIComponent(start)}&end=${encodeURIComponent(end)}`,
         { token }
       );
       setEvents(data.events || []);
@@ -162,13 +344,14 @@ export default function CalendarPage() {
     } finally {
       setLoading(false);
     }
-  }, [token, currentDate, view]);
+  }, [token, currentDate, view, weekStartsOn]);
 
   useEffect(() => { loadCalendars(); }, [loadCalendars]);
+  useEffect(() => { loadSettings(); }, [loadSettings]);
   useEffect(() => { loadEvents(); }, [loadEvents]);
 
-  const updateUrl = useCallback((v: CalendarViewMode, d: Date) => {
-    router.replace(buildCalendarUrl(v, d), { scroll: false });
+  const updateUrl = useCallback((newView: CalendarViewMode, date: Date) => {
+    router.replace(buildCalendarUrl(newView, date), { scroll: false });
   }, [router]);
 
   const handleViewChange = (newView: CalendarViewMode) => {
@@ -177,55 +360,181 @@ export default function CalendarPage() {
   };
 
   const navigate = (dir: number) => {
-    const d = new Date(currentDate);
-    if (view === "year-compact" || view === "year-timeline") d.setFullYear(d.getFullYear() + dir);
-    else if (view === "month") d.setMonth(d.getMonth() + dir);
-    else if (view === "week") d.setDate(d.getDate() + 7 * dir);
-    else if (view === "3day") d.setDate(d.getDate() + 3 * dir);
-    else d.setDate(d.getDate() + 7 * dir);
-    setCurrentDate(d);
-    updateUrl(view, d);
+    const next = new Date(currentDate);
+    if (view === "year-compact" || view === "year-timeline") next.setFullYear(next.getFullYear() + dir);
+    else if (view === "month") next.setMonth(next.getMonth() + dir);
+    else if (view === "week") next.setDate(next.getDate() + 7 * dir);
+    else if (view === "3day") next.setDate(next.getDate() + 3 * dir);
+    else next.setDate(next.getDate() + 7 * dir);
+    setCurrentDate(next);
+    updateUrl(view, next);
   };
 
   const goToday = () => {
-    const d = new Date();
-    setCurrentDate(d);
-    updateUrl(view, d);
+    const today = new Date();
+    setCurrentDate(today);
+    setSelectedDateKey(toDateStr(today));
+    updateUrl(view, today);
   };
 
-  const handleCreateEvent = async (data: { title: string; start_time: string; end_time: string; calendar_id: string }) => {
+  const openQuickCreate = (
+    start: Date,
+    end: Date,
+    selectedKey?: string,
+    anchorPoint?: QuickCreateAnchorPoint | null
+  ) => {
+    setQuickDefaultStart(toLocalDateTimeInput(start));
+    setQuickDefaultEnd(toLocalDateTimeInput(end));
+    setQuickCreateAnchor(anchorPoint ?? null);
+    if (selectedKey) setSelectedDateKey(selectedKey);
+    setQuickCreateOpen(true);
+  };
+
+  const getQuickCreateAnchorFromEvent = (
+    event: ReactMouseEvent<HTMLDivElement | HTMLButtonElement>
+  ): QuickCreateAnchorPoint => {
+    const rect = event.currentTarget.getBoundingClientRect();
+    const estimatedPopoverWidth = 352;
+    const shouldOpenLeft = rect.right + estimatedPopoverWidth + 12 > window.innerWidth;
+    return {
+      x: shouldOpenLeft ? rect.left + 4 : rect.right - 4,
+      y: rect.top + 8,
+      side: shouldOpenLeft ? "left" : "right",
+    };
+  };
+
+  const handleDayClick = (date: Date, event: ReactMouseEvent<HTMLDivElement>) => {
+    const start = new Date(date.getFullYear(), date.getMonth(), date.getDate(), 9, 0, 0, 0);
+    const end = new Date(start.getTime() + 60 * 60 * 1000);
+    openQuickCreate(start, end, toDateStr(date), getQuickCreateAnchorFromEvent(event));
+  };
+
+  const handleWeekSlotClick = (date: Date, hour: number, event: ReactMouseEvent<HTMLButtonElement>) => {
+    const start = new Date(date.getFullYear(), date.getMonth(), date.getDate(), hour, 0, 0, 0);
+    const end = new Date(start.getTime() + 60 * 60 * 1000);
+    openQuickCreate(start, end, toDateStr(date), getQuickCreateAnchorFromEvent(event));
+  };
+
+  const handleCreateEvent = async (data: {
+    title: string;
+    start_local: string;
+    end_local: string;
+    calendar_id: string;
+  }) => {
     if (!token) return;
     try {
       await api("/events", {
         method: "POST",
-        body: { ...data, is_all_day: false, timezone: "Asia/Seoul" },
+        body: {
+          calendar_id: data.calendar_id || defaultCalendarID,
+          title: data.title,
+          start_time: fromLocalDateTimeInput(data.start_local).toISOString(),
+          end_time: fromLocalDateTimeInput(data.end_local).toISOString(),
+          is_all_day: false,
+          timezone,
+          description: "",
+          location: "",
+        },
         token,
       });
-      loadEvents();
+      await loadEvents();
+      setQuickCreateOpen(false);
     } catch (err) {
       console.error("Create event failed:", err);
     }
   };
 
-  const handleDeleteEvent = async (eventId: string) => {
+  const openCreateEditor = (draft?: {
+    title: string;
+    start_local: string;
+    end_local: string;
+    calendar_id: string;
+  }) => {
+    const fallbackStart = new Date();
+    const fallbackEnd = new Date(Date.now() + 60 * 60 * 1000);
+
+    const start = draft?.start_local ? fromLocalDateTimeInput(draft.start_local) : fallbackStart;
+    const end = draft?.end_local ? fromLocalDateTimeInput(draft.end_local) : fallbackEnd;
+
+    setEditorMode("create");
+    setEditingEventID(null);
+    setEditorForm({
+      title: draft?.title || "",
+      description: "",
+      location: "",
+      startLocal: toLocalDateTimeInput(start),
+      endLocal: toLocalDateTimeInput(end),
+      isAllDay: false,
+      calendarId: draft?.calendar_id || defaultCalendarID,
+    });
+    setEditorOpen(true);
+  };
+
+  const openEditEditor = (event: EventData) => {
+    setEditorMode("edit");
+    setEditingEventID(event.id);
+    setEditorForm({
+      title: event.title || "",
+      description: event.description || "",
+      location: event.location || "",
+      startLocal: toLocalDateTimeInput(new Date(event.start_time)),
+      endLocal: toLocalDateTimeInput(new Date(event.end_time)),
+      isAllDay: event.is_all_day,
+      calendarId: event.calendar_id,
+    });
+    setEditorOpen(true);
+  };
+
+  const handleEditorSubmit = async () => {
+    if (!token) return;
+    if (!editorForm.title.trim()) return;
+    if (!editorForm.startLocal || !editorForm.endLocal) return;
+
+    try {
+      const payload = buildEventPayload(editorForm, timezone);
+      if (editorMode === "create") {
+        await api("/events", {
+          method: "POST",
+          body: {
+            calendar_id: editorForm.calendarId || defaultCalendarID,
+            ...payload,
+          },
+          token,
+        });
+      } else if (editingEventID) {
+        await api(`/events/${editingEventID}`, {
+          method: "PATCH",
+          body: payload,
+          token,
+        });
+      }
+
+      setEditorOpen(false);
+      setSelectedEvent(null);
+      await loadEvents();
+    } catch (err) {
+      console.error("Save event failed:", err);
+    }
+  };
+
+  const handleDeleteEvent = async (eventID: string) => {
     if (!token) return;
     try {
-      await api(`/events/${eventId}`, { method: "DELETE", token });
+      await api(`/events/${eventID}`, { method: "DELETE", token });
       setSelectedEvent(null);
-      loadEvents();
+      await loadEvents();
     } catch (err) {
       console.error("Delete event failed:", err);
     }
   };
 
   const headerLabel = getHeaderLabel(currentDate, view);
-  const calMap = new Map(calendars.map((c) => [c.id, c]));
+  const calMap = useMemo(() => new Map(calendars.map((cal) => [cal.id, cal])), [calendars]);
 
   return (
     <div className="flex h-full flex-col">
-      {/* Header */}
-      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border px-4 md:px-6 py-3">
-        <div className="flex items-center gap-2 md:gap-3">
+      <PageToolbar>
+        <PageToolbarGroup>
           <Button variant="secondary" size="sm" className="rounded-full" onClick={goToday}>오늘</Button>
           <Button variant="ghost" size="icon-sm" onClick={() => navigate(-1)}>
             <ChevronLeft size={16} />
@@ -234,17 +543,26 @@ export default function CalendarPage() {
             <ChevronRight size={16} />
           </Button>
           <h2 className="text-lg font-semibold text-text-strong">{headerLabel}</h2>
-        </div>
-        <div className="flex items-center gap-2">
+        </PageToolbarGroup>
+        <PageToolbarGroup className="gap-2">
           <ViewDropdown view={view} onChange={handleViewChange} />
           <QuickCreatePopover
-            calendarId={calendars[0]?.id || ""}
+            key={`${quickDefaultStart}|${quickDefaultEnd}|${defaultCalendarID}`}
+            open={quickCreateOpen}
+            anchorPoint={quickCreateAnchor}
+            onOpenChange={(open) => {
+              setQuickCreateOpen(open);
+              if (!open) setQuickCreateAnchor(null);
+            }}
+            defaultStart={quickDefaultStart}
+            defaultEnd={quickDefaultEnd}
+            calendarId={defaultCalendarID}
             onSubmit={handleCreateEvent}
+            onDetail={openCreateEditor}
           />
-        </div>
-      </div>
+        </PageToolbarGroup>
+      </PageToolbar>
 
-      {/* Content */}
       <div className="flex-1 min-h-0 overflow-auto">
         {loading && events.length === 0 ? (
           <div className="flex items-center justify-center py-20 text-text-muted">불러오는 중...</div>
@@ -252,11 +570,11 @@ export default function CalendarPage() {
           <YearCompactView
             year={currentDate.getFullYear()}
             events={events}
-            onMonthClick={(m) => {
-              const d = new Date(currentDate.getFullYear(), m, 1);
+            onMonthClick={(month) => {
+              const date = new Date(currentDate.getFullYear(), month, 1);
               setView("month");
-              setCurrentDate(d);
-              updateUrl("month", d);
+              setCurrentDate(date);
+              updateUrl("month", date);
             }}
           />
         ) : view === "year-timeline" ? (
@@ -271,6 +589,9 @@ export default function CalendarPage() {
             currentDate={currentDate}
             events={events}
             calendars={calendars}
+            weekStartsOn={weekStartsOn}
+            selectedDateKey={selectedDateKey}
+            onDayClick={handleDayClick}
             onEventClick={setSelectedEvent}
           />
         ) : view === "week" || view === "3day" ? (
@@ -279,6 +600,10 @@ export default function CalendarPage() {
             events={events}
             calendars={calendars}
             days={view === "week" ? 7 : 3}
+            startHour={weekHours.start}
+            endHour={weekHours.end}
+            weekStartsOn={weekStartsOn}
+            onSlotClick={handleWeekSlotClick}
             onEventClick={setSelectedEvent}
           />
         ) : (
@@ -286,7 +611,6 @@ export default function CalendarPage() {
         )}
       </div>
 
-      {/* Event Detail Modal */}
       {selectedEvent && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/30"
@@ -294,12 +618,17 @@ export default function CalendarPage() {
         >
           <div
             className="w-[calc(100vw-2rem)] max-w-80 rounded-lg border border-border bg-background p-4 shadow-xl"
-            onClick={(e) => e.stopPropagation()}
+            onClick={(event) => event.stopPropagation()}
           >
             <div className="flex items-start gap-3">
               <div
                 className="mt-1 h-3 w-3 shrink-0 rounded-full"
-                style={{ backgroundColor: getEventColor(selectedEvent.color_id, calMap.get(selectedEvent.calendar_id)?.color_id ?? null) }}
+                style={{
+                  backgroundColor: getEventColor(
+                    selectedEvent.color_id,
+                    calMap.get(selectedEvent.calendar_id)?.color_id ?? null
+                  ),
+                }}
               />
               <div className="min-w-0 flex-1">
                 <h3 className="text-sm font-medium text-text-strong">{selectedEvent.title || "(제목 없음)"}</h3>
@@ -312,79 +641,163 @@ export default function CalendarPage() {
                 )}
               </div>
             </div>
-            <div className="mt-3 flex justify-between">
+            <div className="mt-3 flex justify-between gap-2">
               <Button variant="danger" size="sm" onClick={() => handleDeleteEvent(selectedEvent.id)}>삭제</Button>
-              <Button variant="ghost" size="sm" onClick={() => setSelectedEvent(null)}>닫기</Button>
+              <div className="flex gap-2">
+                <Button variant="secondary" size="sm" onClick={() => openEditEditor(selectedEvent)}>수정</Button>
+                <Button variant="ghost" size="sm" onClick={() => setSelectedEvent(null)}>닫기</Button>
+              </div>
             </div>
           </div>
         </div>
       )}
+
+      <Dialog open={editorOpen} onOpenChange={setEditorOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>{editorMode === "create" ? "일정 추가" : "일정 수정"}</DialogTitle>
+          </DialogHeader>
+
+          <div className="space-y-3">
+            <Input
+              placeholder="제목"
+              value={editorForm.title}
+              onChange={(event) => setEditorForm((prev) => ({ ...prev, title: event.target.value }))}
+            />
+
+            {editorMode === "create" && (
+              <Select
+                value={editorForm.calendarId}
+                onValueChange={(value) => setEditorForm((prev) => ({ ...prev, calendarId: value }))}
+              >
+                <SelectTrigger className="h-9">
+                  <SelectValue placeholder="캘린더" />
+                </SelectTrigger>
+                <SelectContent>
+                  {calendars.map((calendar) => (
+                    <SelectItem key={calendar.id} value={calendar.id}>
+                      {calendar.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
+
+            <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
+              <div className="space-y-1">
+                <label className="text-xs text-text-muted">시작</label>
+                <Input
+                  type="datetime-local"
+                  value={editorForm.startLocal}
+                  onChange={(event) => setEditorForm((prev) => ({ ...prev, startLocal: event.target.value }))}
+                />
+              </div>
+              <div className="space-y-1">
+                <label className="text-xs text-text-muted">종료</label>
+                <Input
+                  type="datetime-local"
+                  value={editorForm.endLocal}
+                  onChange={(event) => setEditorForm((prev) => ({ ...prev, endLocal: event.target.value }))}
+                />
+              </div>
+            </div>
+
+            <label className="flex items-center gap-2 text-sm text-text-secondary">
+              <input
+                type="checkbox"
+                checked={editorForm.isAllDay}
+                onChange={(event) => setEditorForm((prev) => ({ ...prev, isAllDay: event.target.checked }))}
+              />
+              종일
+            </label>
+
+            <Input
+              placeholder="장소"
+              value={editorForm.location}
+              onChange={(event) => setEditorForm((prev) => ({ ...prev, location: event.target.value }))}
+            />
+
+            <Textarea
+              placeholder="메모"
+              rows={3}
+              value={editorForm.description}
+              onChange={(event) => setEditorForm((prev) => ({ ...prev, description: event.target.value }))}
+            />
+          </div>
+
+          <DialogFooter className="justify-between">
+            <Button variant="ghost" size="sm" onClick={() => setEditorOpen(false)}>취소</Button>
+            <Button size="sm" onClick={handleEditorSubmit} disabled={!editorForm.title.trim()}>
+              저장
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
 
-/* ===== Month View with Spanning Bars ===== */
+/* ===== Month View with 42 Cells ===== */
 function MonthView({
-  currentDate, events, calendars, onEventClick,
+  currentDate,
+  events,
+  calendars,
+  weekStartsOn,
+  selectedDateKey,
+  onDayClick,
+  onEventClick,
 }: {
   currentDate: Date;
   events: EventData[];
   calendars: CalendarData[];
-  onEventClick: (e: EventData) => void;
+  weekStartsOn: number;
+  selectedDateKey: string | null;
+  onDayClick: (date: Date, event: ReactMouseEvent<HTMLDivElement>) => void;
+  onEventClick: (event: EventData) => void;
 }) {
-  const year = currentDate.getFullYear();
-  const month = currentDate.getMonth();
-  const firstDay = new Date(year, month, 1);
-  const startOffset = firstDay.getDay();
-  const daysInMonth = new Date(year, month + 1, 0).getDate();
-  const today = new Date();
+  const cells = useMemo(
+    () => buildFixedMonthGridWithWeekStart(currentDate, weekStartsOn),
+    [currentDate, weekStartsOn]
+  );
+  const weeks = useMemo(
+    () => Array.from({ length: 6 }, (_, index) => cells.slice(index * 7, index * 7 + 7)),
+    [cells]
+  );
+  const todayKey = toDateStr(new Date());
 
-  // Build grid of dates (null = empty cell)
-  const weeks: (number | null)[][] = [];
-  let week: (number | null)[] = [];
-  for (let i = 0; i < startOffset; i++) week.push(null);
-  for (let d = 1; d <= daysInMonth; d++) {
-    week.push(d);
-    if (week.length === 7) { weeks.push(week); week = []; }
-  }
-  if (week.length > 0) {
-    while (week.length < 7) week.push(null);
-    weeks.push(week);
-  }
-
-  const calMap = new Map(calendars.map((c) => [c.id, c]));
-  const weekdays = ["일", "월", "화", "수", "목", "금", "토"];
-
-  // Multi-day events: compute spanning bars per week row
-  const multiDayEvents = events.filter((e) => {
-    const startD = e.start_time.split("T")[0];
-    const endD = e.end_time.split("T")[0];
-    return e.is_all_day || startD !== endD;
+  const calMap = new Map(calendars.map((calendar) => [calendar.id, calendar]));
+  const weekdayLabels = ["일", "월", "화", "수", "목", "금", "토"];
+  const weekdays = Array.from({ length: 7 }, (_, index) => {
+    const day = (weekStartsOn + index) % 7;
+    return { label: weekdayLabels[day], day };
   });
 
-  const singleDayEvents = events.filter((e) => {
-    const startD = e.start_time.split("T")[0];
-    const endD = e.end_time.split("T")[0];
-    return !e.is_all_day && startD === endD;
+  const multiDayEvents = events.filter((event) => {
+    const start = event.start_time.split("T")[0];
+    const end = event.end_time.split("T")[0];
+    return event.is_all_day || start !== end;
   });
 
-  // For each week, compute spanning bar segments
-  function getWeekSpanBars(weekDays: (number | null)[]) {
+  const singleDayEvents = events.filter((event) => {
+    const start = event.start_time.split("T")[0];
+    const end = event.end_time.split("T")[0];
+    return !event.is_all_day && start === end;
+  });
+
+  function getWeekSpanBars(weekCells: MonthCell[]) {
     const bars: { event: EventData; startCol: number; endCol: number; lane: number }[] = [];
-    const lanes: string[][] = []; // each lane tracks which event IDs occupy it
+    const lanes: string[][] = [];
 
-    for (const evt of multiDayEvents) {
-      const evtStart = evt.start_time.split("T")[0];
-      const evtEnd = evt.end_time.split("T")[0];
+    for (const event of multiDayEvents) {
+      const eventStart = event.start_time.split("T")[0];
+      const eventEnd = event.end_time.split("T")[0];
 
-      // Find overlap with this week's date range
       let startCol = -1;
       let endCol = -1;
-      for (let col = 0; col < 7; col++) {
-        const day = weekDays[col];
-        if (day === null) continue;
-        const dateStr = `${year}-${String(month + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
-        if (dateStr >= evtStart && dateStr <= evtEnd) {
+
+      for (let col = 0; col < 7; col += 1) {
+        const key = weekCells[col].dateKey;
+        if (key >= eventStart && key <= eventEnd) {
           if (startCol === -1) startCol = col;
           endCol = col;
         }
@@ -392,140 +805,159 @@ function MonthView({
 
       if (startCol === -1) continue;
 
-      // Assign to a lane (max 3 lanes visible)
       let assignedLane = -1;
-      for (let l = 0; l < lanes.length; l++) {
-        const occupied = lanes[l].some((id) => {
-          const bar = bars.find((b) => b.event.id === id && b.lane === l);
+      for (let lane = 0; lane < lanes.length; lane += 1) {
+        const occupied = lanes[lane].some((id) => {
+          const bar = bars.find((item) => item.event.id === id && item.lane === lane);
           if (!bar) return false;
           return !(endCol < bar.startCol || startCol > bar.endCol);
         });
+
         if (!occupied) {
-          assignedLane = l;
-          lanes[l].push(evt.id);
+          assignedLane = lane;
+          lanes[lane].push(event.id);
           break;
         }
       }
+
       if (assignedLane === -1 && lanes.length < 3) {
         assignedLane = lanes.length;
-        lanes.push([evt.id]);
+        lanes.push([event.id]);
       }
-      if (assignedLane === -1) continue; // overflow
+      if (assignedLane === -1) continue;
 
-      bars.push({ event: evt, startCol, endCol, lane: assignedLane });
+      bars.push({ event, startCol, endCol, lane: assignedLane });
     }
 
     return bars;
   }
 
-  function getSingleDayEvents(day: number) {
-    const dateStr = `${year}-${String(month + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
-    return singleDayEvents.filter((e) => e.start_time.split("T")[0] === dateStr);
+  function getSingleDayEvents(dateKey: string) {
+    return singleDayEvents.filter((event) => event.start_time.split("T")[0] === dateKey);
   }
 
-  function countAllEventsForDay(day: number) {
-    const dateStr = `${year}-${String(month + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
-    return events.filter((e) => {
-      const start = e.start_time.split("T")[0];
-      const end = e.end_time.split("T")[0];
-      return dateStr >= start && dateStr <= end;
+  function countAllEventsForDate(dateKey: string) {
+    return events.filter((event) => {
+      const start = event.start_time.split("T")[0];
+      const end = event.end_time.split("T")[0];
+      return dateKey >= start && dateKey <= end;
     }).length;
   }
 
   return (
     <div className="flex h-full flex-col">
       <div className="grid grid-cols-7 border-b border-border">
-        {weekdays.map((d, i) => (
+        {weekdays.map(({ label, day }) => (
           <div
-            key={d}
+            key={`${label}-${day}`}
             className={cn(
               "py-2 text-center text-xs font-medium",
-              i === 0 ? "text-error" : i === 6 ? "text-info" : "text-text-muted"
+              day === 0 ? "text-error" : day === 6 ? "text-info" : "text-text-muted"
             )}
           >
-            {d}
+            {label}
           </div>
         ))}
       </div>
-      <div className="grid flex-1 grid-cols-7" style={{ gridTemplateRows: `repeat(${weeks.length}, 1fr)` }}>
-        {weeks.map((weekDays, wi) => {
-          const spanBars = getWeekSpanBars(weekDays);
-          const spanBarHeight = Math.max(spanBars.length > 0 ? (Math.max(...spanBars.map((b) => b.lane)) + 1) * 18 : 0, 0);
 
-          return weekDays.map((day, di) => {
-            const isToday = day !== null && year === today.getFullYear() && month === today.getMonth() && day === today.getDate();
-            const singleEvents = day ? getSingleDayEvents(day) : [];
-            const totalCount = day ? countAllEventsForDay(day) : 0;
-            const idx = wi * 7 + di;
+      <div className="grid flex-1 grid-cols-7" style={{ gridTemplateRows: "repeat(6, 1fr)" }}>
+        {weeks.map((weekCells, weekIndex) => {
+          const spanBars = getWeekSpanBars(weekCells);
+          const spanBarHeight = Math.max(
+            spanBars.length > 0 ? (Math.max(...spanBars.map((bar) => bar.lane)) + 1) * 18 : 0,
+            0
+          );
 
-            // Spanning bars that start on this column
-            const barsStartingHere = spanBars.filter((b) => b.startCol === di);
+          return weekCells.map((cell, dayIndex) => {
+            const isToday = cell.dateKey === todayKey;
+            const isSelected = selectedDateKey === cell.dateKey;
+            const singleEvents = getSingleDayEvents(cell.dateKey);
+            const totalCount = countAllEventsForDate(cell.dateKey);
+            const index = weekIndex * 7 + dayIndex;
+            const barsStartingHere = spanBars.filter((bar) => bar.startCol === dayIndex);
 
             return (
               <div
-                key={idx}
+                key={index}
                 className={cn(
-                  "relative min-h-[60px] md:min-h-[80px] border-b border-r border-border/50 p-1 overflow-hidden",
-                  day === null && "bg-surface-accent/30"
+                  "relative min-h-[60px] md:min-h-[80px] border-b border-r border-border/50 p-1 overflow-hidden cursor-pointer",
+                  !cell.inCurrentMonth && "bg-surface-accent/20",
+                  isSelected && "ring-1 ring-inset ring-primary/50"
                 )}
+                onClick={(event) => onDayClick(cell.date, event)}
               >
-                {day !== null && (
-                  <>
+                <div
+                  className={cn(
+                    "mb-0.5 inline-flex h-6 w-6 items-center justify-center rounded-full text-xs",
+                    isToday
+                      ? "bg-primary text-white font-medium"
+                      : !cell.inCurrentMonth
+                          ? "text-text-muted"
+                        : cell.date.getDay() === 0
+                          ? "text-error"
+                          : cell.date.getDay() === 6
+                            ? "text-info"
+                            : "text-text-primary"
+                  )}
+                >
+                  {cell.day}
+                </div>
+
+                {barsStartingHere.map((bar) => {
+                  const spanCols = bar.endCol - bar.startCol + 1;
+                  const calendar = calMap.get(bar.event.calendar_id);
+                  return (
                     <div
+                      key={bar.event.id}
                       className={cn(
-                        "mb-0.5 inline-flex h-6 w-6 items-center justify-center rounded-full text-xs",
-                        isToday ? "bg-primary text-white font-medium" : di === 0 ? "text-error" : di === 6 ? "text-info" : ""
+                        "absolute left-0.5 cursor-pointer truncate rounded px-1 text-[10px] leading-[16px] text-white z-10",
+                        !cell.inCurrentMonth && "opacity-60"
                       )}
+                      style={{
+                        top: `${26 + bar.lane * 18}px`,
+                        width: `calc(${spanCols * 100}% - 4px)`,
+                        backgroundColor: getEventColor(bar.event.color_id, calendar?.color_id ?? null),
+                      }}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        onEventClick(bar.event);
+                      }}
                     >
-                      {day}
+                      {bar.event.title || "(제목 없음)"}
                     </div>
+                  );
+                })}
 
-                    {/* Spanning bars */}
-                    {barsStartingHere.map((bar) => {
-                      const spanCols = bar.endCol - bar.startCol + 1;
-                      const cal = calMap.get(bar.event.calendar_id);
-                      return (
+                <div className="space-y-0.5" style={{ marginTop: `${spanBarHeight}px` }}>
+                  {singleEvents.slice(0, 2).map((event) => {
+                    const calendar = calMap.get(event.calendar_id);
+                    return (
+                      <div
+                        key={event.id}
+                        onClick={(clickEvent) => {
+                          clickEvent.stopPropagation();
+                          onEventClick(event);
+                        }}
+                        className={cn(
+                          "flex items-center gap-1 cursor-pointer truncate px-0.5 text-[10px] leading-tight text-text-primary",
+                          !cell.inCurrentMonth && "opacity-60"
+                        )}
+                      >
                         <div
-                          key={bar.event.id}
-                          className="absolute left-0.5 cursor-pointer truncate rounded px-1 text-[10px] leading-[16px] text-white z-10"
-                          style={{
-                            top: `${26 + bar.lane * 18}px`,
-                            width: `calc(${spanCols * 100}% - 4px)`,
-                            backgroundColor: getEventColor(bar.event.color_id, cal?.color_id ?? null),
-                          }}
-                          onClick={() => onEventClick(bar.event)}
-                        >
-                          {bar.event.title || "(제목 없음)"}
-                        </div>
-                      );
-                    })}
-
-                    {/* Single-day events */}
-                    <div className="space-y-0.5" style={{ marginTop: `${spanBarHeight}px` }}>
-                      {singleEvents.slice(0, 2).map((e) => {
-                        const cal = calMap.get(e.calendar_id);
-                        return (
-                          <div
-                            key={e.id}
-                            onClick={() => onEventClick(e)}
-                            className="flex items-center gap-1 cursor-pointer truncate px-0.5 text-[10px] leading-tight text-text-primary"
-                          >
-                            <div
-                              className="h-1.5 w-1.5 shrink-0 rounded-full"
-                              style={{ backgroundColor: getEventColor(e.color_id, cal?.color_id ?? null) }}
-                            />
-                            <span className="truncate">{e.title || "(제목 없음)"}</span>
-                          </div>
-                        );
-                      })}
-                      {totalCount > 3 && (
-                        <div className="text-[10px] text-text-muted px-0.5">
-                          +{totalCount - 3}
-                        </div>
-                      )}
-                    </div>
-                  </>
-                )}
+                          className="h-1.5 w-1.5 shrink-0 rounded-full"
+                          style={{ backgroundColor: getEventColor(event.color_id, calendar?.color_id ?? null) }}
+                        />
+                        <span className="inline-block w-[64px] shrink-0 tabular-nums text-text-muted">
+                          {formatTimeLabel(event.start_time)}
+                        </span>
+                        <span className="truncate">{event.title || "(제목 없음)"}</span>
+                      </div>
+                    );
+                  })}
+                  {totalCount > 3 && (
+                    <div className="text-[10px] text-text-muted px-0.5">+{totalCount - 3}</div>
+                  )}
+                </div>
               </div>
             );
           });
@@ -535,97 +967,100 @@ function MonthView({
   );
 }
 
-/* ===== Week View with All-day Area + 30min Spacer ===== */
+/* ===== Week View ===== */
 function WeekView({
-  currentDate, events, calendars, days, onEventClick,
+  currentDate,
+  events,
+  calendars,
+  days,
+  startHour,
+  endHour,
+  weekStartsOn,
+  onSlotClick,
+  onEventClick,
 }: {
   currentDate: Date;
   events: EventData[];
   calendars: CalendarData[];
   days: number;
-  onEventClick: (e: EventData) => void;
+  startHour: number;
+  endHour: number;
+  weekStartsOn: number;
+  onSlotClick: (date: Date, hour: number, event: ReactMouseEvent<HTMLButtonElement>) => void;
+  onEventClick: (event: EventData) => void;
 }) {
   const startDate = new Date(currentDate);
-  if (days === 7) startDate.setDate(startDate.getDate() - startDate.getDay());
+  if (days === 7) {
+    const offset = (startDate.getDay() - weekStartsOn + 7) % 7;
+    startDate.setDate(startDate.getDate() - offset);
+  }
 
-  const dayDates = Array.from({ length: days }, (_, i) => {
-    const d = new Date(startDate);
-    d.setDate(d.getDate() + i);
-    return d;
+  const dayDates = Array.from({ length: days }, (_, index) => {
+    const date = new Date(startDate);
+    date.setDate(date.getDate() + index);
+    return date;
   });
 
   const today = new Date();
-  const startHour = 7; // Default start hour (configurable in settings)
-  const endHour = 23;
-  const hours = Array.from({ length: endHour - startHour }, (_, i) => i + startHour);
-  const calMap = new Map(calendars.map((c) => [c.id, c]));
+  const hours = Array.from({ length: endHour - startHour }, (_, index) => index + startHour);
+  const calMap = new Map(calendars.map((calendar) => [calendar.id, calendar]));
 
   const getEventsForDay = (date: Date) => {
-    const dateStr = toDateStr(date);
-    return events.filter((e) => {
-      const start = e.start_time.split("T")[0];
-      const end = e.end_time.split("T")[0];
-      return dateStr >= start && dateStr <= end;
+    const dateKey = toDateStr(date);
+    return events.filter((event) => {
+      const start = event.start_time.split("T")[0];
+      const end = event.end_time.split("T")[0];
+      return dateKey >= start && dateKey <= end;
     });
   };
 
-  // Separate all-day and timed events
-  const getAllDayEvents = (date: Date) => {
-    return getEventsForDay(date).filter((e) => e.is_all_day);
-  };
+  const getAllDayEvents = (date: Date) => getEventsForDay(date).filter((event) => event.is_all_day);
+  const getTimedEvents = (date: Date) => getEventsForDay(date).filter((event) => !event.is_all_day);
 
-  const getTimedEvents = (date: Date) => {
-    return getEventsForDay(date).filter((e) => !e.is_all_day);
-  };
-
-  // Check if any day has all-day events
-  const hasAnyAllDay = dayDates.some((d) => getAllDayEvents(d).length > 0);
-
+  const hasAnyAllDay = dayDates.some((date) => getAllDayEvents(date).length > 0);
   const weekdays = ["일", "월", "화", "수", "목", "금", "토"];
 
   return (
     <div className="flex h-full flex-col">
-      {/* Day headers */}
       <div className="flex border-b border-border">
         <div className="w-10 md:w-14 shrink-0" />
-        {dayDates.map((d, i) => {
-          const isToday = d.toDateString() === today.toDateString();
+        {dayDates.map((date, index) => {
+          const isToday = date.toDateString() === today.toDateString();
           return (
             <div
-              key={i}
+              key={index}
               className={cn(
                 "flex-1 border-l border-border/50 py-2 text-center text-xs",
                 isToday ? "font-medium text-text-strong" : "text-text-secondary"
               )}
             >
-              <span className={isToday ? "inline-flex h-6 min-w-6 items-center justify-center rounded-full bg-primary text-white px-1" : ""}>
-                {weekdays[d.getDay()]} {d.getDate()}
+              <span className={isToday ? "inline-flex h-6 min-w-6 items-center justify-center rounded-full bg-primary px-1 text-white" : ""}>
+                {weekdays[date.getDay()]} {date.getDate()}
               </span>
             </div>
           );
         })}
       </div>
 
-      {/* All-day events area */}
       {hasAnyAllDay && (
         <div className="flex border-b border-border">
           <div className="w-10 md:w-14 shrink-0 flex items-center justify-end pr-2">
             <span className="text-[10px] text-text-muted">종일</span>
           </div>
-          {dayDates.map((d, i) => {
-            const allDayEvts = getAllDayEvents(d);
+          {dayDates.map((date, index) => {
+            const allDayEvents = getAllDayEvents(date);
             return (
-              <div key={i} className="flex-1 border-l border-border/50 px-0.5 py-1 space-y-0.5">
-                {allDayEvts.map((e) => {
-                  const cal = calMap.get(e.calendar_id);
+              <div key={index} className="flex-1 border-l border-border/50 px-0.5 py-1 space-y-0.5">
+                {allDayEvents.map((event) => {
+                  const calendar = calMap.get(event.calendar_id);
                   return (
                     <div
-                      key={e.id}
+                      key={event.id}
                       className="cursor-pointer truncate rounded px-1 py-0.5 text-[10px] leading-tight text-white"
-                      style={{ backgroundColor: getEventColor(e.color_id, cal?.color_id ?? null) }}
-                      onClick={() => onEventClick(e)}
+                      style={{ backgroundColor: getEventColor(event.color_id, calendar?.color_id ?? null) }}
+                      onClick={() => onEventClick(event)}
                     >
-                      {e.title || "(제목 없음)"}
+                      {event.title || "(제목 없음)"}
                     </div>
                   );
                 })}
@@ -635,36 +1070,46 @@ function WeekView({
         </div>
       )}
 
-      {/* Time grid */}
       <div className="flex flex-1 min-h-0 overflow-auto">
         <div className="w-10 md:w-14 shrink-0">
-          {/* 30min spacer before first hour */}
           <div className="relative h-6" />
-          {hours.map((h) => (
-            <div key={h} className="relative h-12">
-              <span className="absolute -top-2 right-2 text-[10px] text-text-muted">
-                {String(h).padStart(2, "0")}:00
+          {hours.map((hour) => (
+            <div key={hour} className="relative h-12">
+              <span className="absolute -top-2 right-2 text-[10px] text-text-muted tabular-nums">
+                {String(hour).padStart(2, "0")}:00
               </span>
             </div>
           ))}
         </div>
-        {dayDates.map((d, di) => {
-          const dayEvents = getTimedEvents(d);
+
+        {dayDates.map((date, dayIndex) => {
+          const dayEvents = getTimedEvents(date);
           const positioned = positionEvents(dayEvents);
 
           return (
-            <div key={di} className="relative flex-1 border-l border-border/50">
-              {/* 30min spacer with dashed line */}
-              <div className="h-6 border-b border-dashed border-border/40" />
-              {hours.map((h) => (
-                <div key={h} className="h-12 border-b border-border/30" />
+            <div key={dayIndex} className="relative flex-1 border-l border-border/50">
+              <button
+                type="button"
+                className="block h-6 w-full border-b border-dashed border-border/40"
+                onClick={(event) => onSlotClick(date, startHour, event)}
+              />
+              {hours.map((hour) => (
+                <button
+                  key={hour}
+                  type="button"
+                  className="block h-12 w-full border-b border-border/30 hover:bg-surface-accent/30"
+                  onClick={(event) => onSlotClick(date, hour, event)}
+                />
               ))}
+
               {positioned.map(({ event, column, totalColumns }) => {
-                const startH = new Date(event.start_time).getHours() + new Date(event.start_time).getMinutes() / 60;
-                const endH = new Date(event.end_time).getHours() + new Date(event.end_time).getMinutes() / 60;
-                const top = (startH - startHour) * 48 + 24; // +24 for 30min spacer
-                const height = Math.max((endH - startH) * 48, 20);
-                const cal = calMap.get(event.calendar_id);
+                const start = new Date(event.start_time);
+                const end = new Date(event.end_time);
+                const startPosition = start.getHours() + start.getMinutes() / 60;
+                const endPosition = end.getHours() + end.getMinutes() / 60;
+                const top = (startPosition - startHour) * 48 + 24;
+                const height = Math.max((endPosition - startPosition) * 48, 20);
+                const calendar = calMap.get(event.calendar_id);
                 const width = `calc(${100 / totalColumns}% - 2px)`;
                 const left = `calc(${(column / totalColumns) * 100}% + 1px)`;
 
@@ -677,16 +1122,17 @@ function WeekView({
                       height: `${height}px`,
                       width,
                       left,
-                      backgroundColor: getEventColor(event.color_id, cal?.color_id ?? null),
+                      backgroundColor: getEventColor(event.color_id, calendar?.color_id ?? null),
                     }}
-                    onClick={() => onEventClick(event)}
+                    onClick={(clickEvent) => {
+                      clickEvent.stopPropagation();
+                      onEventClick(event);
+                    }}
                   >
-                    <div className="font-medium truncate">{event.title || "(제목 없음)"}</div>
+                    <div className="truncate font-medium">{event.title || "(제목 없음)"}</div>
                     {height > 30 && (
-                      <div className="truncate opacity-80">
-                        {new Date(event.start_time).toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" })}
-                        {" - "}
-                        {new Date(event.end_time).toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" })}
+                      <div className="truncate opacity-80 tabular-nums">
+                        {formatTimeRangeLabel(event.start_time, event.end_time)}
                       </div>
                     )}
                   </div>
@@ -708,14 +1154,14 @@ function positionEvents(events: EventData[]): { event: EventData; column: number
   let currentGroup: EventData[] = [];
   let groupEnd = "";
 
-  for (const e of sorted) {
-    if (currentGroup.length === 0 || e.start_time < groupEnd) {
-      currentGroup.push(e);
-      if (e.end_time > groupEnd) groupEnd = e.end_time;
+  for (const event of sorted) {
+    if (currentGroup.length === 0 || event.start_time < groupEnd) {
+      currentGroup.push(event);
+      if (event.end_time > groupEnd) groupEnd = event.end_time;
     } else {
       groups.push(currentGroup);
-      currentGroup = [e];
-      groupEnd = e.end_time;
+      currentGroup = [event];
+      groupEnd = event.end_time;
     }
   }
   if (currentGroup.length > 0) groups.push(currentGroup);
@@ -723,45 +1169,51 @@ function positionEvents(events: EventData[]): { event: EventData; column: number
   const result: { event: EventData; column: number; totalColumns: number }[] = [];
   for (const group of groups) {
     const columns: string[][] = [];
-    for (const e of group) {
+    for (const event of group) {
       let placed = false;
-      for (let c = 0; c < columns.length; c++) {
-        const lastEnd = columns[c][columns[c].length - 1];
-        if (e.start_time >= lastEnd) {
-          columns[c].push(e.end_time);
-          result.push({ event: e, column: c, totalColumns: 0 });
+      for (let column = 0; column < columns.length; column += 1) {
+        const lastEnd = columns[column][columns[column].length - 1];
+        if (event.start_time >= lastEnd) {
+          columns[column].push(event.end_time);
+          result.push({ event, column, totalColumns: 0 });
           placed = true;
           break;
         }
       }
       if (!placed) {
-        columns.push([e.end_time]);
-        result.push({ event: e, column: columns.length - 1, totalColumns: 0 });
+        columns.push([event.end_time]);
+        result.push({ event, column: columns.length - 1, totalColumns: 0 });
       }
     }
-    const totalCols = columns.length;
-    for (const r of result) {
-      if (group.includes(r.event)) r.totalColumns = totalCols;
+
+    const totalColumns = columns.length;
+    for (const row of result) {
+      if (group.includes(row.event)) row.totalColumns = totalColumns;
     }
   }
+
   return result;
 }
 
 /* ===== Agenda View ===== */
 function AgendaView({
-  events, calendars, onEventClick,
+  events,
+  calendars,
+  onEventClick,
 }: {
   events: EventData[];
   calendars: CalendarData[];
-  onEventClick: (e: EventData) => void;
+  onEventClick: (event: EventData) => void;
 }) {
-  const calMap = new Map(calendars.map((c) => [c.id, c]));
+  const calMap = new Map(calendars.map((calendar) => [calendar.id, calendar]));
   const grouped = new Map<string, EventData[]>();
-  for (const e of events) {
-    const dateStr = e.start_time.split("T")[0];
-    if (!grouped.has(dateStr)) grouped.set(dateStr, []);
-    grouped.get(dateStr)!.push(e);
+
+  for (const event of events) {
+    const dateKey = event.start_time.split("T")[0];
+    if (!grouped.has(dateKey)) grouped.set(dateKey, []);
+    grouped.get(dateKey)!.push(event);
   }
+
   const sortedDates = Array.from(grouped.keys()).sort();
 
   if (sortedDates.length === 0) {
@@ -770,33 +1222,31 @@ function AgendaView({
 
   return (
     <div className="divide-y divide-border/50 p-4">
-      {sortedDates.map((date) => (
-        <div key={date} className="py-3">
+      {sortedDates.map((dateKey) => (
+        <div key={dateKey} className="py-3">
           <h3 className="mb-2 text-sm font-medium text-text-secondary">
-            {new Date(date + "T00:00:00").toLocaleDateString("ko-KR", {
+            {new Date(dateKey + "T00:00:00").toLocaleDateString("ko-KR", {
               year: "numeric", month: "long", day: "numeric", weekday: "short",
             })}
           </h3>
           <div className="space-y-1">
-            {grouped.get(date)!.map((e) => {
-              const cal = calMap.get(e.calendar_id);
+            {grouped.get(dateKey)!.map((event) => {
+              const calendar = calMap.get(event.calendar_id);
               return (
                 <div
-                  key={e.id}
+                  key={event.id}
                   className="flex cursor-pointer items-center gap-3 rounded-lg px-3 py-2 hover:bg-surface-accent/50"
-                  onClick={() => onEventClick(e)}
+                  onClick={() => onEventClick(event)}
                 >
                   <div
                     className="h-3 w-3 shrink-0 rounded-full"
-                    style={{ backgroundColor: getEventColor(e.color_id, cal?.color_id ?? null) }}
+                    style={{ backgroundColor: getEventColor(event.color_id, calendar?.color_id ?? null) }}
                   />
                   <div className="min-w-0 flex-1">
-                    <span className="text-sm text-text-primary">{e.title || "(제목 없음)"}</span>
+                    <span className="text-sm text-text-primary">{event.title || "(제목 없음)"}</span>
                   </div>
-                  <span className="shrink-0 text-xs text-text-muted">
-                    {e.is_all_day
-                      ? "종일"
-                      : `${new Date(e.start_time).toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" })} - ${new Date(e.end_time).toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" })}`}
+                  <span className="shrink-0 text-xs text-text-muted tabular-nums inline-block min-w-[140px] text-right">
+                    {event.is_all_day ? "종일" : formatTimeRangeLabel(event.start_time, event.end_time)}
                   </span>
                 </div>
               );
@@ -809,31 +1259,31 @@ function AgendaView({
 }
 
 /* ===== Helpers ===== */
-function getDateRange(date: Date, view: CalendarViewMode): { start: string; end: string } {
-  const d = new Date(date);
-  let start: Date, end: Date;
+function getDateRange(date: Date, view: CalendarViewMode, weekStartsOn: number): { start: string; end: string } {
+  const target = new Date(date);
+  let start: Date;
+  let end: Date;
 
   if (view === "year-compact" || view === "year-timeline") {
-    start = new Date(d.getFullYear(), 0, 1);
-    end = new Date(d.getFullYear(), 11, 31, 23, 59, 59);
+    start = new Date(target.getFullYear(), 0, 1);
+    end = new Date(target.getFullYear(), 11, 31, 23, 59, 59);
   } else if (view === "month") {
-    start = new Date(d.getFullYear(), d.getMonth(), 1);
-    end = new Date(d.getFullYear(), d.getMonth() + 1, 0, 23, 59, 59);
+    return getFixedMonthFetchRangeWithWeekStart(target, weekStartsOn);
   } else if (view === "week") {
-    start = new Date(d);
-    start.setDate(d.getDate() - d.getDay());
+    start = new Date(target);
+    start.setDate(target.getDate() - ((target.getDay() - weekStartsOn + 7) % 7));
     end = new Date(start);
     end.setDate(start.getDate() + 6);
     end.setHours(23, 59, 59);
   } else if (view === "3day") {
-    start = new Date(d);
-    end = new Date(d);
-    end.setDate(d.getDate() + 2);
+    start = new Date(target);
+    end = new Date(target);
+    end.setDate(target.getDate() + 2);
     end.setHours(23, 59, 59);
   } else {
-    start = new Date(d);
-    end = new Date(d);
-    end.setDate(d.getDate() + 30);
+    start = new Date(target);
+    end = new Date(target);
+    end.setDate(target.getDate() + 30);
   }
 
   return { start: start.toISOString(), end: end.toISOString() };
@@ -842,15 +1292,15 @@ function getDateRange(date: Date, view: CalendarViewMode): { start: string; end:
 function getHeaderLabel(date: Date, view: CalendarViewMode): string {
   if (view === "year-compact" || view === "year-timeline") return `${date.getFullYear()}년`;
   if (view === "month") return `${date.getFullYear()}년 ${date.getMonth() + 1}월`;
-  if (view === "week" || view === "3day")
+  if (view === "week" || view === "3day") {
     return `${date.getFullYear()}년 ${date.getMonth() + 1}월 ${date.getDate()}일`;
+  }
   return `${date.getFullYear()}년 ${date.getMonth() + 1}월`;
 }
 
-function formatEventTime(e: EventData): string {
-  if (e.is_all_day) return "종일";
-  const start = new Date(e.start_time);
-  const end = new Date(e.end_time);
-  const opts: Intl.DateTimeFormatOptions = { month: "long", day: "numeric", hour: "2-digit", minute: "2-digit" };
-  return `${start.toLocaleDateString("ko-KR", opts)} - ${end.toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" })}`;
+function formatEventTime(event: EventData): string {
+  if (event.is_all_day) return "종일";
+  const start = new Date(event.start_time);
+  const dateLabel = start.toLocaleDateString("ko-KR", { month: "long", day: "numeric" });
+  return `${dateLabel} ${formatTimeRangeLabel(event.start_time, event.end_time)}`;
 }

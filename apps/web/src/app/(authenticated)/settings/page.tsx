@@ -123,6 +123,26 @@ export default function SettingsPage() {
                   </Select>
                 </SettingRow>
                 <Separator />
+                <SettingRow label="주 시작 요일">
+                  <Select
+                    value={get("calendar_week_start", "0")}
+                    onValueChange={(v) => updateSetting("calendar_week_start", v)}
+                  >
+                    <SelectTrigger className="w-28 h-8 text-xs">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="0">일요일</SelectItem>
+                      <SelectItem value="1">월요일</SelectItem>
+                      <SelectItem value="2">화요일</SelectItem>
+                      <SelectItem value="3">수요일</SelectItem>
+                      <SelectItem value="4">목요일</SelectItem>
+                      <SelectItem value="5">금요일</SelectItem>
+                      <SelectItem value="6">토요일</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </SettingRow>
+                <Separator />
                 <SettingRow label="주간 뷰 시작 시간">
                   <Select
                     value={get("week_start_hour", "8")}

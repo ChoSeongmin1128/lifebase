@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import {
   View,
   Text,
@@ -8,46 +8,76 @@ import {
 } from "react-native";
 import { api } from "../../lib/api";
 import { getAccessToken } from "../../lib/auth";
+import {
+  buildFixedMonthGridWithWeekStart,
+  getFixedMonthFetchRangeWithWeekStart,
+} from "../../lib/calendar/month-grid";
 
 type CalendarEvent = {
   id: string;
   title: string;
   start_time: string;
   end_time: string;
-  all_day: boolean;
+  is_all_day: boolean;
   color?: string;
 };
+
+type SettingsResponse = {
+  settings: Record<string, string>;
+};
+
+function toDateKey(date: Date): string {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, "0");
+  const d = String(date.getDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
+}
+
+function parseWeekStartsOn(settings: Record<string, string>): number {
+  const raw = Number.parseInt(settings.calendar_week_start || "0", 10);
+  if (Number.isNaN(raw)) return 0;
+  const normalized = raw % 7;
+  return normalized < 0 ? normalized + 7 : normalized;
+}
 
 export default function CalendarScreen() {
   const [events, setEvents] = useState<CalendarEvent[]>([]);
   const [currentDate, setCurrentDate] = useState(new Date());
+  const [selectedDateKey, setSelectedDateKey] = useState<string | null>(null);
+  const [weekStartsOn, setWeekStartsOn] = useState(0);
+
+  const loadSettings = useCallback(async () => {
+    const token = await getAccessToken();
+    if (!token) return;
+
+    try {
+      const data = await api<SettingsResponse>("/settings", { token });
+      setWeekStartsOn(parseWeekStartsOn(data.settings || {}));
+    } catch {
+      setWeekStartsOn(0);
+    }
+  }, []);
 
   const load = useCallback(async () => {
     const token = await getAccessToken();
     if (!token) return;
-    const start = new Date(
-      currentDate.getFullYear(),
-      currentDate.getMonth(),
-      1
-    );
-    const end = new Date(
-      currentDate.getFullYear(),
-      currentDate.getMonth() + 1,
-      0,
-      23,
-      59,
-      59
-    );
+
+    const { start, end } = getFixedMonthFetchRangeWithWeekStart(currentDate, weekStartsOn);
+
     try {
       const data = await api<{ events: CalendarEvent[] }>(
-        `/events?start=${start.toISOString()}&end=${end.toISOString()}`,
+        `/events?start=${encodeURIComponent(start)}&end=${encodeURIComponent(end)}`,
         { token }
       );
       setEvents(data.events || []);
     } catch {
       setEvents([]);
     }
-  }, [currentDate]);
+  }, [currentDate, weekStartsOn]);
+
+  useEffect(() => {
+    loadSettings();
+  }, [loadSettings]);
 
   useEffect(() => {
     load();
@@ -67,28 +97,26 @@ export default function CalendarScreen() {
 
   const year = currentDate.getFullYear();
   const month = currentDate.getMonth();
-  const firstDay = new Date(year, month, 1).getDay();
-  const daysInMonth = new Date(year, month + 1, 0).getDate();
-  const today = new Date();
+  const todayKey = toDateKey(new Date());
 
-  const weeks: (number | null)[][] = [];
-  let week: (number | null)[] = Array(firstDay).fill(null);
-  for (let d = 1; d <= daysInMonth; d++) {
-    week.push(d);
-    if (week.length === 7) {
-      weeks.push(week);
-      week = [];
-    }
-  }
-  if (week.length > 0) {
-    while (week.length < 7) week.push(null);
-    weeks.push(week);
-  }
+  const cells = useMemo(
+    () => buildFixedMonthGridWithWeekStart(currentDate, weekStartsOn),
+    [currentDate, weekStartsOn]
+  );
+  const weeks = useMemo(
+    () => Array.from({ length: 6 }, (_, i) => cells.slice(i * 7, i * 7 + 7)),
+    [cells]
+  );
+  const weekLabels = useMemo(() => {
+    const labels = ["일", "월", "화", "수", "목", "금", "토"];
+    return Array.from({ length: 7 }, (_, i) => labels[(weekStartsOn + i) % 7]);
+  }, [weekStartsOn]);
 
-  const getEventsForDay = (day: number) =>
-    events.filter((e) => {
-      const d = new Date(e.start_time).getDate();
-      return d === day;
+  const getEventsForDateKey = (dateKey: string) =>
+    events.filter((event) => {
+      const start = event.start_time.split("T")[0];
+      const end = event.end_time.split("T")[0];
+      return dateKey >= start && dateKey <= end;
     });
 
   return (
@@ -106,7 +134,7 @@ export default function CalendarScreen() {
       </View>
 
       <View style={styles.weekHeader}>
-        {["일", "월", "화", "수", "목", "금", "토"].map((d) => (
+        {weekLabels.map((d) => (
           <Text key={d} style={styles.weekDay}>
             {d}
           </Text>
@@ -114,48 +142,53 @@ export default function CalendarScreen() {
       </View>
 
       <ScrollView>
-        {weeks.map((w, i) => (
+        {weeks.map((weekCells, i) => (
           <View key={i} style={styles.weekRow}>
-            {w.map((day, j) => {
-              const isToday =
-                day !== null &&
-                year === today.getFullYear() &&
-                month === today.getMonth() &&
-                day === today.getDate();
-              const dayEvents = day ? getEventsForDay(day) : [];
+            {weekCells.map((cell, j) => {
+              const isToday = cell.dateKey === todayKey;
+              const isSelected = selectedDateKey === cell.dateKey;
+              const dayEvents = getEventsForDateKey(cell.dateKey);
+
               return (
-                <View key={j} style={styles.dayCell}>
-                  {day !== null && (
-                    <>
-                      <Text
-                        style={[
-                          styles.dayText,
-                          isToday && styles.todayText,
-                        ]}
-                      >
-                        {day}
+                <TouchableOpacity
+                  key={j}
+                  style={[
+                    styles.dayCell,
+                    !cell.inCurrentMonth && styles.dayCellOutside,
+                    isSelected && styles.dayCellSelected,
+                  ]}
+                  onPress={() => setSelectedDateKey(cell.dateKey)}
+                  activeOpacity={0.85}
+                >
+                  <Text
+                    style={[
+                      styles.dayText,
+                      !cell.inCurrentMonth && styles.dayTextOutside,
+                      isToday && styles.todayText,
+                    ]}
+                  >
+                    {cell.day}
+                  </Text>
+
+                  {dayEvents.slice(0, 2).map((event) => (
+                    <View
+                      key={event.id}
+                      style={[
+                        styles.eventDot,
+                        { backgroundColor: event.color || "#4285F4" },
+                        !cell.inCurrentMonth && styles.eventDotOutside,
+                      ]}
+                    >
+                      <Text style={[styles.eventText, !cell.inCurrentMonth && styles.eventTextOutside]} numberOfLines={1}>
+                        {event.title}
                       </Text>
-                      {dayEvents.slice(0, 2).map((e) => (
-                        <View
-                          key={e.id}
-                          style={[
-                            styles.eventDot,
-                            { backgroundColor: e.color || "#4285F4" },
-                          ]}
-                        >
-                          <Text style={styles.eventText} numberOfLines={1}>
-                            {e.title}
-                          </Text>
-                        </View>
-                      ))}
-                      {dayEvents.length > 2 && (
-                        <Text style={styles.moreText}>
-                          +{dayEvents.length - 2}
-                        </Text>
-                      )}
-                    </>
+                    </View>
+                  ))}
+
+                  {dayEvents.length > 2 && (
+                    <Text style={styles.moreText}>+{dayEvents.length - 2}</Text>
                   )}
-                </View>
+                </TouchableOpacity>
               );
             })}
           </View>
@@ -194,7 +227,16 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: "#f5f5f5",
   },
-  dayText: { fontSize: 13, textAlign: "center", marginBottom: 2 },
+  dayCellOutside: {
+    backgroundColor: "#fafafa",
+  },
+  dayCellSelected: {
+    backgroundColor: "#eaf4ff",
+  },
+  dayText: { fontSize: 13, textAlign: "center", marginBottom: 2, color: "#333" },
+  dayTextOutside: {
+    color: "#9ca3af",
+  },
   todayText: {
     color: "#fff",
     backgroundColor: "#4285F4",
@@ -210,6 +252,12 @@ const styles = StyleSheet.create({
     paddingVertical: 1,
     marginTop: 1,
   },
+  eventDotOutside: {
+    opacity: 0.55,
+  },
   eventText: { fontSize: 9, color: "#fff" },
+  eventTextOutside: {
+    color: "#f1f5f9",
+  },
   moreText: { fontSize: 9, color: "#999", textAlign: "center", marginTop: 1 },
 });
