@@ -88,8 +88,8 @@ func (r *fileRepo) ListRecent(ctx context.Context, userID string, limit int) ([]
 
 func (r *fileRepo) Update(ctx context.Context, file *domain.File) error {
 	_, err := r.db.Exec(ctx,
-		`UPDATE files SET folder_id = $2, name = $3, updated_at = $4 WHERE id = $1`,
-		file.ID, file.FolderID, file.Name, file.UpdatedAt,
+		`UPDATE files SET folder_id = $2, name = $3, size_bytes = $4, storage_path = $5, mime_type = $6, updated_at = $7 WHERE id = $1`,
+		file.ID, file.FolderID, file.Name, file.SizeBytes, file.StoragePath, file.MimeType, file.UpdatedAt,
 	)
 	return err
 }

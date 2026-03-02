@@ -20,6 +20,10 @@ interface SearchResponse {
   files?: CloudFile[];
 }
 
+interface TextFileContentResponse {
+  content: string;
+}
+
 export class HttpCloudRepository implements CloudRepository {
   private getToken(): string {
     const token = getAccessToken();
@@ -91,6 +95,21 @@ export class HttpCloudRepository implements CloudRepository {
   downloadFile(fileId: string): Promise<{ blob: Blob; filename: string }> {
     const token = this.getToken();
     return apiDownload(`/cloud/files/${fileId}/download`, token);
+  }
+
+  async getTextFileContent(fileId: string): Promise<string> {
+    const token = this.getToken();
+    const data = await api<TextFileContentResponse>(`/cloud/files/${fileId}/content`, { token });
+    return data.content || "";
+  }
+
+  async updateTextFileContent(fileId: string, content: string): Promise<void> {
+    const token = this.getToken();
+    await api(`/cloud/files/${fileId}/content`, {
+      method: "PATCH",
+      body: { content },
+      token,
+    });
   }
 
   async deleteFolder(folderId: string): Promise<void> {

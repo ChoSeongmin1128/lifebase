@@ -220,6 +220,8 @@ func main() {
 				r.Post("/files/upload", cloudHandler.UploadFile)
 				r.Get("/files/{fileID}", cloudHandler.GetFile)
 				r.Get("/files/{fileID}/download", cloudHandler.DownloadFile)
+				r.Get("/files/{fileID}/content", cloudHandler.GetFileContent)
+				r.Patch("/files/{fileID}/content", cloudHandler.UpdateFileContent)
 				r.Patch("/files/{fileID}/rename", cloudHandler.RenameFile)
 				r.Patch("/files/{fileID}/move", cloudHandler.MoveFile)
 				r.Delete("/files/{fileID}", cloudHandler.DeleteFile)

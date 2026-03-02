@@ -131,9 +131,34 @@ async function parseResponse<T>(res: Response): Promise<T> {
 
 async function parseDownloadResponse(res: Response): Promise<{ blob: Blob; filename: string }> {
   const disposition = res.headers.get("Content-Disposition") || "";
-  const match = disposition.match(/filename="(.+?)"/);
-  const filename = match ? match[1] : "download";
+  const filename = parseFilenameFromDisposition(disposition) || "download";
   return { blob: await res.blob(), filename };
+}
+
+function parseFilenameFromDisposition(disposition: string): string | null {
+  // RFC 5987: filename*=UTF-8''encoded-name
+  const encodedMatch = disposition.match(/filename\*\s*=\s*UTF-8''([^;]+)/i);
+  if (encodedMatch && encodedMatch[1]) {
+    try {
+      return decodeURIComponent(encodedMatch[1].trim().replace(/^"|"$/g, ""));
+    } catch {
+      // fallthrough
+    }
+  }
+
+  // filename="name.ext"
+  const quotedMatch = disposition.match(/filename\s*=\s*"([^"]+)"/i);
+  if (quotedMatch && quotedMatch[1]) {
+    return quotedMatch[1];
+  }
+
+  // filename=name.ext
+  const plainMatch = disposition.match(/filename\s*=\s*([^;]+)/i);
+  if (plainMatch && plainMatch[1]) {
+    return plainMatch[1].trim().replace(/^"|"$/g, "");
+  }
+
+  return null;
 }
 
 function handleAuthFailure() {

@@ -3,6 +3,7 @@ package http
 import (
 	"encoding/json"
 	"io"
+	"mime"
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
@@ -179,9 +180,30 @@ func (h *CloudHandler) DownloadFile(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", file.MimeType)
-	w.Header().Set("Content-Disposition", "attachment; filename=\""+file.Name+"\"")
+	disposition := mime.FormatMediaType("attachment", map[string]string{"filename": file.Name})
+	if disposition == "" {
+		disposition = "attachment"
+	}
+	w.Header().Set("Content-Disposition", disposition)
 	w.WriteHeader(http.StatusOK)
 	w.Write(data)
+}
+
+func (h *CloudHandler) GetFileContent(w http.ResponseWriter, r *http.Request) {
+	userID := middleware.GetUserID(r.Context())
+	fileID := chi.URLParam(r, "fileID")
+
+	content, file, err := h.cloud.GetFileContent(r.Context(), userID, fileID)
+	if err != nil {
+		response.Error(w, http.StatusBadRequest, "READ_CONTENT_FAILED", err.Error())
+		return
+	}
+
+	response.JSON(w, http.StatusOK, map[string]any{
+		"content":   content,
+		"name":      file.Name,
+		"mime_type": file.MimeType,
+	})
 }
 
 func (h *CloudHandler) GetFile(w http.ResponseWriter, r *http.Request) {
@@ -209,6 +231,24 @@ func (h *CloudHandler) RenameFile(w http.ResponseWriter, r *http.Request) {
 
 	if err := h.cloud.RenameFile(r.Context(), userID, fileID, req.Name); err != nil {
 		response.Error(w, http.StatusBadRequest, "RENAME_FAILED", err.Error())
+		return
+	}
+	response.NoContent(w)
+}
+
+func (h *CloudHandler) UpdateFileContent(w http.ResponseWriter, r *http.Request) {
+	userID := middleware.GetUserID(r.Context())
+	fileID := chi.URLParam(r, "fileID")
+	var req struct {
+		Content string `json:"content"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		response.Error(w, http.StatusBadRequest, "INVALID_REQUEST", "invalid request body")
+		return
+	}
+
+	if err := h.cloud.UpdateFileContent(r.Context(), userID, fileID, req.Content); err != nil {
+		response.Error(w, http.StatusBadRequest, "UPDATE_CONTENT_FAILED", err.Error())
 		return
 	}
 	response.NoContent(w)

@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/google/uuid"
 
@@ -13,6 +14,8 @@ import (
 	portin "lifebase/internal/cloud/port/in"
 	portout "lifebase/internal/cloud/port/out"
 )
+
+const maxEditableFileBytes = 2 * 1024 * 1024
 
 type cloudUseCase struct {
 	folders portout.FolderRepository
@@ -230,6 +233,40 @@ func (uc *cloudUseCase) DownloadFile(ctx context.Context, userID, fileID string)
 	return data, file, nil
 }
 
+func isEditableTextFile(name, mimeType string) bool {
+	ext := strings.ToLower(filepath.Ext(name))
+	if ext == ".md" || ext == ".txt" {
+		return true
+	}
+	if strings.HasPrefix(strings.ToLower(mimeType), "text/") {
+		return true
+	}
+	return false
+}
+
+func (uc *cloudUseCase) GetFileContent(ctx context.Context, userID, fileID string) (string, *domain.File, error) {
+	file, err := uc.files.FindByID(ctx, userID, fileID)
+	if err != nil {
+		return "", nil, fmt.Errorf("file not found")
+	}
+	if !isEditableTextFile(file.Name, file.MimeType) {
+		return "", nil, fmt.Errorf("file is not editable")
+	}
+	if file.SizeBytes > maxEditableFileBytes {
+		return "", nil, fmt.Errorf("file is too large to edit")
+	}
+
+	data, err := uc.storage.Read(file.StoragePath)
+	if err != nil {
+		return "", nil, fmt.Errorf("read file: %w", err)
+	}
+	if !utf8.Valid(data) {
+		return "", nil, fmt.Errorf("file is not valid utf-8")
+	}
+
+	return string(data), file, nil
+}
+
 func (uc *cloudUseCase) RenameFile(ctx context.Context, userID, fileID, newName string) error {
 	file, err := uc.files.FindByID(ctx, userID, fileID)
 	if err != nil {
@@ -238,6 +275,42 @@ func (uc *cloudUseCase) RenameFile(ctx context.Context, userID, fileID, newName 
 	file.Name = newName
 	file.UpdatedAt = time.Now()
 	return uc.files.Update(ctx, file)
+}
+
+func (uc *cloudUseCase) UpdateFileContent(ctx context.Context, userID, fileID, content string) error {
+	file, err := uc.files.FindByID(ctx, userID, fileID)
+	if err != nil {
+		return fmt.Errorf("file not found")
+	}
+	if !isEditableTextFile(file.Name, file.MimeType) {
+		return fmt.Errorf("file is not editable")
+	}
+
+	data := []byte(content)
+	if int64(len(data)) > maxEditableFileBytes {
+		return fmt.Errorf("file is too large to edit")
+	}
+
+	storagePath, err := uc.storage.Save(userID, file.ID, data)
+	if err != nil {
+		return fmt.Errorf("save file: %w", err)
+	}
+
+	delta := int64(len(data)) - file.SizeBytes
+	file.StoragePath = storagePath
+	file.SizeBytes = int64(len(data))
+	file.UpdatedAt = time.Now()
+
+	if err := uc.files.Update(ctx, file); err != nil {
+		return fmt.Errorf("update file metadata: %w", err)
+	}
+	if delta != 0 {
+		if err := uc.files.UpdateStorageUsed(ctx, userID, delta); err != nil {
+			return fmt.Errorf("update storage used: %w", err)
+		}
+	}
+
+	return nil
 }
 
 func (uc *cloudUseCase) MoveFile(ctx context.Context, userID, fileID string, newFolderID *string) error {
@@ -341,7 +414,18 @@ func (uc *cloudUseCase) ListRecent(ctx context.Context, userID string) ([]portin
 	if err != nil {
 		return nil, err
 	}
-	return toFileItems(files), nil
+
+	cache := map[string]string{}
+	items := make([]portin.FolderItem, 0, len(files))
+	for _, f := range files {
+		path, _ := uc.buildFolderPath(ctx, userID, f.FolderID, cache)
+		items = append(items, portin.FolderItem{
+			Type: "file",
+			File: f,
+			Path: path,
+		})
+	}
+	return items, nil
 }
 
 func (uc *cloudUseCase) ListShared(ctx context.Context, userID string) ([]portin.FolderItem, error) {
@@ -438,4 +522,32 @@ func toFileItems(files []*domain.File) []portin.FolderItem {
 		items = append(items, portin.FolderItem{Type: "file", File: f})
 	}
 	return items
+}
+
+func (uc *cloudUseCase) buildFolderPath(
+	ctx context.Context,
+	userID string,
+	folderID *string,
+	cache map[string]string,
+) (string, error) {
+	if folderID == nil || *folderID == "" {
+		return "내 클라우드", nil
+	}
+
+	if cached, ok := cache[*folderID]; ok {
+		return cached, nil
+	}
+
+	folder, err := uc.folders.FindByID(ctx, userID, *folderID)
+	if err != nil || folder == nil {
+		return "내 클라우드", err
+	}
+
+	parentPath, err := uc.buildFolderPath(ctx, userID, folder.ParentID, cache)
+	if err != nil {
+		parentPath = "내 클라우드"
+	}
+	fullPath := parentPath + " / " + folder.Name
+	cache[*folderID] = fullPath
+	return fullPath, nil
 }

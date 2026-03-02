@@ -17,6 +17,8 @@ export function useCloudActions() {
       uploadFile: (file: File, folderId?: string | null) => useCase.uploadFile(file, folderId),
       createTextFile: (name: string, extension: "md" | "txt", folderId?: string | null) =>
         useCase.createTextFile(name, extension, folderId),
+      getTextFileContent: (fileId: string) => useCase.getTextFileContent(fileId),
+      updateTextFileContent: (fileId: string, content: string) => useCase.updateTextFileContent(fileId, content),
       downloadFile: (fileId: string) => useCase.downloadFile(fileId),
       deleteFolder: (folderId: string) => useCase.deleteFolder(folderId),
       deleteFile: (fileId: string) => useCase.deleteFile(fileId),

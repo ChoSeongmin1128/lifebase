@@ -28,6 +28,14 @@ export class ManageCloudUseCase {
     return this.repo.createTextFile(fileName, "", mimeType, folderId);
   }
 
+  getTextFileContent(fileId: string) {
+    return this.repo.getTextFileContent(fileId);
+  }
+
+  updateTextFileContent(fileId: string, content: string) {
+    return this.repo.updateTextFileContent(fileId, content);
+  }
+
   downloadFile(fileId: string) {
     return this.repo.downloadFile(fileId);
   }

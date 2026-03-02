@@ -15,6 +15,8 @@ export interface CloudRepository {
     mimeType: string,
     folderId?: string | null,
   ): Promise<void>;
+  getTextFileContent(fileId: string): Promise<string>;
+  updateTextFileContent(fileId: string, content: string): Promise<void>;
   downloadFile(fileId: string): Promise<{ blob: Blob; filename: string }>;
   deleteFolder(folderId: string): Promise<void>;
   deleteFile(fileId: string): Promise<void>;

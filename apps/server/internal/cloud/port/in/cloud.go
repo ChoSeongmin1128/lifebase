@@ -10,6 +10,7 @@ type FolderItem struct {
 	Type   string         `json:"type"`
 	Folder *domain.Folder `json:"folder,omitempty"`
 	File   *domain.File   `json:"file,omitempty"`
+	Path   string         `json:"path,omitempty"`
 }
 
 type StarItem struct {
@@ -30,7 +31,9 @@ type CloudUseCase interface {
 	UploadFile(ctx context.Context, userID string, folderID *string, name string, mimeType string, size int64, data []byte) (*domain.File, error)
 	GetFile(ctx context.Context, userID, fileID string) (*domain.File, error)
 	DownloadFile(ctx context.Context, userID, fileID string) ([]byte, *domain.File, error)
+	GetFileContent(ctx context.Context, userID, fileID string) (string, *domain.File, error)
 	RenameFile(ctx context.Context, userID, fileID, newName string) error
+	UpdateFileContent(ctx context.Context, userID, fileID, content string) error
 	MoveFile(ctx context.Context, userID, fileID string, newFolderID *string) error
 	DeleteFile(ctx context.Context, userID, fileID string) error
 
