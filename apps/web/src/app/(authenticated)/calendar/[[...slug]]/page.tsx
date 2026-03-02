@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, useMemo, type MouseEvent as ReactMouseEvent } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef, type MouseEvent as ReactMouseEvent } from "react";
 import { useRouter, useParams } from "next/navigation";
 import { useCalendarActions } from "@/features/calendar/ui/hooks/useCalendarActions";
 import type {
@@ -964,9 +964,34 @@ function WeekView({
     return date;
   });
 
+  const TOP_SPACER_HEIGHT = 24;
+  const DEFAULT_HOUR_HEIGHT = 48;
+
   const today = new Date();
   const hours = Array.from({ length: endHour - startHour }, (_, index) => index + startHour);
   const calMap = new Map(calendars.map((calendar) => [calendar.id, calendar]));
+  const gridBodyRef = useRef<HTMLDivElement | null>(null);
+  const [hourHeight, setHourHeight] = useState(DEFAULT_HOUR_HEIGHT);
+
+  useEffect(() => {
+    const element = gridBodyRef.current;
+    if (!element) return;
+
+    const recalculateHourHeight = () => {
+      const totalSlots = Math.max(hours.length, 1);
+      const availableHeight = element.clientHeight - TOP_SPACER_HEIGHT;
+      if (availableHeight <= 0) {
+        setHourHeight(DEFAULT_HOUR_HEIGHT);
+        return;
+      }
+      setHourHeight(availableHeight / totalSlots);
+    };
+
+    recalculateHourHeight();
+    const observer = new ResizeObserver(recalculateHourHeight);
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [hours.length]);
 
   const getEventsForDay = (date: Date) => {
     const dateKey = toDateStr(date);
@@ -1033,11 +1058,11 @@ function WeekView({
         </div>
       )}
 
-      <div className="flex flex-1 min-h-0 overflow-auto">
+      <div ref={gridBodyRef} className="flex flex-1 min-h-0 overflow-auto">
         <div className="w-10 md:w-14 shrink-0">
           <div className="relative h-6" />
           {hours.map((hour) => (
-            <div key={hour} className="relative h-12">
+            <div key={hour} className="relative" style={{ height: `${hourHeight}px` }}>
               <span className="absolute -top-2 right-2 text-[10px] text-text-muted tabular-nums">
                 {String(hour).padStart(2, "0")}:00
               </span>
@@ -1060,7 +1085,8 @@ function WeekView({
                 <button
                   key={hour}
                   type="button"
-                  className="block h-12 w-full border-b border-border/30 hover:bg-surface-accent/30"
+                  className="block w-full border-b border-border/30 hover:bg-surface-accent/30"
+                  style={{ height: `${hourHeight}px` }}
                   onClick={(event) => onSlotClick(date, hour, event)}
                 />
               ))}
@@ -1070,8 +1096,8 @@ function WeekView({
                 const end = new Date(event.end_time);
                 const startPosition = start.getHours() + start.getMinutes() / 60;
                 const endPosition = end.getHours() + end.getMinutes() / 60;
-                const top = (startPosition - startHour) * 48 + 24;
-                const height = Math.max((endPosition - startPosition) * 48, 20);
+                const top = (startPosition - startHour) * hourHeight + TOP_SPACER_HEIGHT;
+                const height = Math.max((endPosition - startPosition) * hourHeight, 20);
                 const calendar = calMap.get(event.calendar_id);
                 const width = `calc(${100 / totalColumns}% - 2px)`;
                 const left = `calc(${(column / totalColumns) * 100}% + 1px)`;
