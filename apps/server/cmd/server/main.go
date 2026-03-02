@@ -204,6 +204,8 @@ func main() {
 			r.Use(middleware.Auth(cfg.JWT.Secret))
 
 			r.Post("/auth/logout", authHandler.Logout)
+			r.Get("/auth/google-accounts", authHandler.GetGoogleAccounts)
+			r.Post("/auth/google-accounts/link", authHandler.LinkGoogleAccount)
 
 			r.Get("/me", func(w http.ResponseWriter, r *http.Request) {
 				userID := middleware.GetUserID(r.Context())

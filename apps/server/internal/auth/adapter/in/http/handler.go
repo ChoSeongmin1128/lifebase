@@ -108,6 +108,56 @@ func (h *AuthHandler) RefreshToken(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+func (h *AuthHandler) GetGoogleAccounts(w http.ResponseWriter, r *http.Request) {
+	userID := middleware.GetUserID(r.Context())
+	accounts, err := h.auth.ListGoogleAccounts(r.Context(), userID)
+	if err != nil {
+		response.Error(w, http.StatusInternalServerError, "LIST_FAILED", "failed to list google accounts")
+		return
+	}
+
+	response.JSON(w, http.StatusOK, map[string]any{
+		"accounts": accounts,
+	})
+}
+
+func (h *AuthHandler) LinkGoogleAccount(w http.ResponseWriter, r *http.Request) {
+	userID := middleware.GetUserID(r.Context())
+	var req struct {
+		Code  string `json:"code"`
+		State string `json:"state"`
+		App   string `json:"app"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		response.Error(w, http.StatusBadRequest, "INVALID_REQUEST", "invalid request body")
+		return
+	}
+	if req.Code == "" {
+		response.Error(w, http.StatusBadRequest, "MISSING_CODE", "authorization code is required")
+		return
+	}
+
+	app := "web"
+	if req.State != "" {
+		verifiedApp, err := oauthstate.Verify(req.State, h.stateHMACKey)
+		if err != nil {
+			response.Error(w, http.StatusBadRequest, "INVALID_STATE", "invalid oauth state")
+			return
+		}
+		app = verifiedApp
+	} else if req.App == "admin" {
+		// Backward-compatible fallback for gradual client rollout.
+		app = "admin"
+	}
+
+	if err := h.auth.LinkGoogleAccount(r.Context(), userID, req.Code, app); err != nil {
+		response.Error(w, http.StatusBadRequest, "LINK_FAILED", err.Error())
+		return
+	}
+
+	response.NoContent(w)
+}
+
 func (h *AuthHandler) Logout(w http.ResponseWriter, r *http.Request) {
 	userID := middleware.GetUserID(r.Context())
 	if err := h.auth.Logout(r.Context(), userID); err != nil {

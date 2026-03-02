@@ -86,6 +86,88 @@ func (uc *authUseCase) HandleCallbackForApp(ctx context.Context, code, app strin
 	return uc.issueTokens(ctx, user.ID)
 }
 
+func (uc *authUseCase) ListGoogleAccounts(ctx context.Context, userID string) ([]portin.GoogleAccountSummary, error) {
+	if userID == "" {
+		return nil, fmt.Errorf("user id is required")
+	}
+
+	accounts, err := uc.googleAccts.FindByUserID(ctx, userID)
+	if err != nil {
+		return nil, fmt.Errorf("list google accounts: %w", err)
+	}
+
+	summaries := make([]portin.GoogleAccountSummary, 0, len(accounts))
+	for _, account := range accounts {
+		summaries = append(summaries, portin.GoogleAccountSummary{
+			ID:          account.ID,
+			GoogleEmail: account.GoogleEmail,
+			Status:      account.Status,
+			IsPrimary:   account.IsPrimary,
+			ConnectedAt: account.ConnectedAt,
+		})
+	}
+	return summaries, nil
+}
+
+func (uc *authUseCase) LinkGoogleAccount(ctx context.Context, userID, code, app string) error {
+	if userID == "" {
+		return fmt.Errorf("user id is required")
+	}
+	if code == "" {
+		return fmt.Errorf("authorization code is required")
+	}
+
+	token, err := uc.googleAuth.ExchangeCodeForApp(ctx, code, app)
+	if err != nil {
+		return fmt.Errorf("oauth exchange: %w", err)
+	}
+
+	userInfo, err := uc.googleAuth.FetchUserInfo(ctx, *token)
+	if err != nil {
+		return fmt.Errorf("fetch user info: %w", err)
+	}
+
+	existing, _ := uc.googleAccts.FindByGoogleID(ctx, userInfo.GoogleID)
+	now := time.Now()
+	if existing != nil {
+		if existing.UserID != userID {
+			return fmt.Errorf("google account already linked to another user")
+		}
+
+		existing.AccessToken = token.AccessToken
+		if token.RefreshToken != "" {
+			existing.RefreshToken = token.RefreshToken
+		}
+		existing.TokenExpiresAt = &token.Expiry
+		existing.Status = "active"
+		existing.UpdatedAt = now
+		return uc.googleAccts.Update(ctx, existing)
+	}
+
+	userAccounts, err := uc.googleAccts.FindByUserID(ctx, userID)
+	if err != nil {
+		return fmt.Errorf("list google accounts: %w", err)
+	}
+
+	account := &domain.GoogleAccount{
+		ID:             uuid.New().String(),
+		UserID:         userID,
+		GoogleEmail:    userInfo.Email,
+		GoogleID:       userInfo.GoogleID,
+		AccessToken:    token.AccessToken,
+		RefreshToken:   token.RefreshToken,
+		TokenExpiresAt: &token.Expiry,
+		Scopes:         "openid email profile calendar tasks",
+		Status:         "active",
+		IsPrimary:      len(userAccounts) == 0,
+		ConnectedAt:    now,
+		CreatedAt:      now,
+		UpdatedAt:      now,
+	}
+
+	return uc.googleAccts.Create(ctx, account)
+}
+
 func (uc *authUseCase) RefreshAccessToken(ctx context.Context, refreshTokenStr string) (*portin.LoginResult, error) {
 	hash := hashToken(refreshTokenStr)
 
@@ -145,12 +227,22 @@ func (uc *authUseCase) upsertGoogleAccount(ctx context.Context, userID string, i
 	now := time.Now()
 
 	if existing != nil {
+		if existing.UserID != userID {
+			return fmt.Errorf("google account already linked to another user")
+		}
 		existing.AccessToken = token.AccessToken
-		existing.RefreshToken = token.RefreshToken
+		if token.RefreshToken != "" {
+			existing.RefreshToken = token.RefreshToken
+		}
 		existing.TokenExpiresAt = &token.Expiry
 		existing.Status = "active"
 		existing.UpdatedAt = now
 		return uc.googleAccts.Update(ctx, existing)
+	}
+
+	userAccounts, err := uc.googleAccts.FindByUserID(ctx, userID)
+	if err != nil {
+		return fmt.Errorf("list google accounts: %w", err)
 	}
 
 	account := &domain.GoogleAccount{
@@ -163,7 +255,7 @@ func (uc *authUseCase) upsertGoogleAccount(ctx context.Context, userID string, i
 		TokenExpiresAt: &token.Expiry,
 		Scopes:         "openid email profile calendar tasks",
 		Status:         "active",
-		IsPrimary:      true,
+		IsPrimary:      len(userAccounts) == 0,
 		ConnectedAt:    now,
 		CreatedAt:      now,
 		UpdatedAt:      now,
