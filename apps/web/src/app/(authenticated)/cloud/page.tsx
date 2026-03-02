@@ -67,7 +67,13 @@ interface CloudClipboard {
   itemID: string;
   itemName: string;
 }
-const INTERNAL_FILE_DRAG_TYPE = "application/x-lifebase-cloud-file-id";
+interface CloudDragItem {
+  itemType: ClipboardItemType;
+  itemID: string;
+  parentFolderID: string | null;
+}
+
+const INTERNAL_ITEM_DRAG_TYPE = "application/x-lifebase-cloud-item";
 
 const isTextInputTarget = (target: EventTarget | null) => {
   if (!(target instanceof HTMLElement)) return false;
@@ -81,6 +87,7 @@ function CloudPageInner() {
   const searchParams = useSearchParams();
   const section = parseCloudSection(searchParams.get("section")) as CloudSection;
   const folderFromUrl = searchParams.get("folder");
+  const quickAction = searchParams.get("quick");
   const isMyFilesSection = section === "";
   const isTrashSection = section === "trash";
   const isRecentSection = section === "recent";
@@ -110,9 +117,9 @@ function CloudPageInner() {
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState<CloudFile[] | null>(null);
   const [dragOver, setDragOver] = useState(false);
-  const [draggingFileId, setDraggingFileId] = useState<string | null>(null);
+  const [draggingItem, setDraggingItem] = useState<CloudDragItem | null>(null);
   const [dropTargetFolderId, setDropTargetFolderId] = useState<string | null>(null);
-  const [movingFileId, setMovingFileId] = useState<string | null>(null);
+  const [movingItemKey, setMovingItemKey] = useState<string | null>(null);
   const [clipboard, setClipboard] = useState<CloudClipboard | null>(null);
   const [clipboardBusy, setClipboardBusy] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -120,6 +127,7 @@ function CloudPageInner() {
   const [starredKeys, setStarredKeys] = useState<Set<string>>(new Set());
 
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const quickActionHandledRef = useRef(false);
 
   const currentFolderID = useMemo(() => {
     const fromPath = path[path.length - 1].id;
@@ -226,12 +234,24 @@ function CloudPageInner() {
     setSearchQuery("");
     setSelectedIds(new Set());
     setDragOver(false);
-    setDraggingFileId(null);
+    setDraggingItem(null);
     setDropTargetFolderId(null);
-    setMovingFileId(null);
+    setMovingItemKey(null);
     loadStars();
     loadItems();
   }, [isMyFilesSection, loadItems, loadStars]);
+  useEffect(() => {
+    if (quickAction !== "upload") return;
+    if (quickActionHandledRef.current) return;
+    if (!isMyFilesSection || !authed) return;
+
+    quickActionHandledRef.current = true;
+    setTimeout(() => {
+      fileInputRef.current?.click();
+    }, 0);
+
+    router.replace(buildCloudHref(section, currentFolderID), { scroll: false });
+  }, [quickAction, isMyFilesSection, authed, router, buildCloudHref, section, currentFolderID]);
 
   const navigateToFolder = (folder: FolderData) => {
     if (!isMyFilesSection) return;
@@ -468,46 +488,89 @@ function CloudPageInner() {
     }
   };
 
-  const getDraggedFileId = (e: React.DragEvent): string | null => {
-    const fromData = e.dataTransfer.getData(INTERNAL_FILE_DRAG_TYPE);
+  const getDragItemFromRow = (item: FolderItem): CloudDragItem => {
+    if (item.type === "folder") {
+      return {
+        itemType: "folder",
+        itemID: item.folder!.id,
+        parentFolderID: item.folder!.parent_id,
+      };
+    }
+    return {
+      itemType: "file",
+      itemID: item.file!.id,
+      parentFolderID: item.file!.folder_id,
+    };
+  };
+
+  const parseDraggedItem = (raw: string): CloudDragItem | null => {
+    if (!raw) return null;
+    try {
+      const parsed = JSON.parse(raw) as Partial<CloudDragItem>;
+      if (
+        (parsed.itemType === "file" || parsed.itemType === "folder")
+        && typeof parsed.itemID === "string"
+        && (parsed.parentFolderID === null || typeof parsed.parentFolderID === "string")
+      ) {
+        return {
+          itemType: parsed.itemType,
+          itemID: parsed.itemID,
+          parentFolderID: parsed.parentFolderID,
+        };
+      }
+      return null;
+    } catch {
+      return null;
+    }
+  };
+
+  const getDraggedItem = (e: React.DragEvent): CloudDragItem | null => {
+    const fromData = parseDraggedItem(e.dataTransfer.getData(INTERNAL_ITEM_DRAG_TYPE));
     if (fromData) return fromData;
-    return draggingFileId;
+    return draggingItem;
+  };
+
+  const canDropToFolder = (dragItem: CloudDragItem, folderId: string) => {
+    if (dragItem.itemType === "folder" && dragItem.itemID === folderId) return false;
+    if (dragItem.parentFolderID === folderId) return false;
+    return true;
   };
 
   const isUploadDragEvent = (e: React.DragEvent) => Array.from(e.dataTransfer.types).includes("Files");
 
-  const handleMoveFileToFolder = async (fileId: string, folderId: string) => {
-    if (!authed || !isMyFilesSection || movingFileId) return;
-    const source = displayItems.find((item) => item.type === "file" && item.file?.id === fileId);
-    if (!source || source.type !== "file") return;
-    if (source.file!.folder_id === folderId) return;
+  const handleMoveItemToFolder = async (dragItem: CloudDragItem, folderId: string) => {
+    if (!authed || !isMyFilesSection || movingItemKey) return;
+    if (!canDropToFolder(dragItem, folderId)) return;
 
-    setMovingFileId(fileId);
+    setMovingItemKey(`${dragItem.itemType}:${dragItem.itemID}`);
     try {
-      await cloud.moveFile(fileId, folderId);
+      if (dragItem.itemType === "file") {
+        await cloud.moveFile(dragItem.itemID, folderId);
+      } else {
+        await cloud.moveFolder(dragItem.itemID, folderId);
+      }
       setSelectedIds((prev) => {
-        if (!prev.has(fileId)) return prev;
+        if (!prev.has(dragItem.itemID)) return prev;
         const next = new Set(prev);
-        next.delete(fileId);
+        next.delete(dragItem.itemID);
         return next;
       });
       await loadItems();
     } catch (err) {
-      console.error("Move file failed:", err);
+      const prefix = dragItem.itemType === "folder" ? "폴더 이동에 실패했습니다" : "파일 이동에 실패했습니다";
+      console.error(prefix, err);
       const msg = err instanceof Error ? err.message : "알 수 없는 오류";
-      toast.error("파일 이동에 실패했습니다", msg);
+      toast.error(prefix, msg);
     } finally {
-      setMovingFileId(null);
+      setMovingItemKey(null);
     }
   };
 
   const handleFolderDragOver = (e: React.DragEvent, folderId: string) => {
-    if (!isMyFilesSection || movingFileId) return;
-    const fileId = getDraggedFileId(e);
-    if (!fileId) return;
-    const source = displayItems.find((item) => item.type === "file" && item.file?.id === fileId);
-    if (!source || source.type !== "file") return;
-    if (source.file!.folder_id === folderId) return;
+    if (!isMyFilesSection || movingItemKey) return;
+    const dragItem = getDraggedItem(e);
+    if (!dragItem) return;
+    if (!canDropToFolder(dragItem, folderId)) return;
 
     e.preventDefault();
     e.stopPropagation();
@@ -520,10 +583,10 @@ function CloudPageInner() {
   const handleFolderDrop = async (e: React.DragEvent, folderId: string) => {
     e.preventDefault();
     e.stopPropagation();
-    const fileId = getDraggedFileId(e);
+    const dragItem = getDraggedItem(e);
     setDropTargetFolderId(null);
-    if (!fileId) return;
-    await handleMoveFileToFolder(fileId, folderId);
+    if (!dragItem) return;
+    await handleMoveItemToFolder(dragItem, folderId);
   };
 
   const handleDrop = (e: React.DragEvent) => {
@@ -1109,7 +1172,8 @@ function CloudPageInner() {
                 const isSelected = selectedIds.has(id);
                 const recentPath = isRecentSection && item.type === "file" ? formatRecentFilePath(item) : "";
                 const isDropTarget = isMyFilesSection && item.type === "folder" && dropTargetFolderId === id;
-                const isDraggingItem = isMyFilesSection && item.type === "file" && draggingFileId === id;
+                const isDraggingItem =
+                  isMyFilesSection && draggingItem?.itemType === item.type && draggingItem.itemID === id;
                 const isCutClipboardItem =
                   clipboard?.mode === "cut" && clipboard.itemType === item.type && clipboard.itemID === id;
 
@@ -1122,16 +1186,17 @@ function CloudPageInner() {
                       isDraggingItem ? "opacity-60" : ""
                     } ${isCutClipboardItem ? "opacity-60" : ""}
                     }`}
-                    draggable={isMyFilesSection && item.type === "file"}
+                    draggable={isMyFilesSection}
                     onDragStart={(e) => {
-                      if (!isMyFilesSection || item.type !== "file" || movingFileId) return;
-                      setDraggingFileId(item.file!.id);
+                      if (!isMyFilesSection || movingItemKey) return;
+                      const dragItem = getDragItemFromRow(item);
+                      setDraggingItem(dragItem);
                       e.dataTransfer.effectAllowed = "move";
-                      e.dataTransfer.setData(INTERNAL_FILE_DRAG_TYPE, item.file!.id);
-                      e.dataTransfer.setData("text/plain", item.file!.id);
+                      e.dataTransfer.setData(INTERNAL_ITEM_DRAG_TYPE, JSON.stringify(dragItem));
+                      e.dataTransfer.setData("text/plain", dragItem.itemID);
                     }}
                     onDragEnd={() => {
-                      setDraggingFileId(null);
+                      setDraggingItem(null);
                       setDropTargetFolderId(null);
                     }}
                     onDragOver={(e) => {
@@ -1322,7 +1387,8 @@ function CloudPageInner() {
               const isSelected = selectedIds.has(id);
               const recentPath = isRecentSection && item.type === "file" ? formatRecentFilePath(item) : "";
               const isDropTarget = isMyFilesSection && item.type === "folder" && dropTargetFolderId === id;
-              const isDraggingItem = isMyFilesSection && item.type === "file" && draggingFileId === id;
+              const isDraggingItem =
+                isMyFilesSection && draggingItem?.itemType === item.type && draggingItem.itemID === id;
               const isCutClipboardItem =
                 clipboard?.mode === "cut" && clipboard.itemType === item.type && clipboard.itemID === id;
 
@@ -1335,16 +1401,17 @@ function CloudPageInner() {
                     isDraggingItem ? "opacity-60" : ""
                   } ${isCutClipboardItem ? "opacity-60" : ""}
                   }`}
-                  draggable={isMyFilesSection && item.type === "file"}
+                  draggable={isMyFilesSection}
                   onDragStart={(e) => {
-                    if (!isMyFilesSection || item.type !== "file" || movingFileId) return;
-                    setDraggingFileId(item.file!.id);
+                    if (!isMyFilesSection || movingItemKey) return;
+                    const dragItem = getDragItemFromRow(item);
+                    setDraggingItem(dragItem);
                     e.dataTransfer.effectAllowed = "move";
-                    e.dataTransfer.setData(INTERNAL_FILE_DRAG_TYPE, item.file!.id);
-                    e.dataTransfer.setData("text/plain", item.file!.id);
+                    e.dataTransfer.setData(INTERNAL_ITEM_DRAG_TYPE, JSON.stringify(dragItem));
+                    e.dataTransfer.setData("text/plain", dragItem.itemID);
                   }}
                   onDragEnd={() => {
-                    setDraggingFileId(null);
+                    setDraggingItem(null);
                     setDropTargetFolderId(null);
                   }}
                   onDragOver={(e) => {
