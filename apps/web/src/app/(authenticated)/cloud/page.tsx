@@ -3,8 +3,9 @@
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useState, useEffect, useCallback, useRef, Suspense } from "react";
-import { api, apiUpload, apiDownload } from "@/lib/api";
-import { getAccessToken } from "@/lib/auth";
+import { useCloudActions } from "@/features/cloud/ui/hooks/useCloudActions";
+import type { CloudFile, CloudSection, FolderData, FolderItem } from "@/features/cloud/domain/CloudItem";
+import { isAuthenticated } from "@/features/auth/infrastructure/token-auth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -42,46 +43,13 @@ import {
   Undo2,
 } from "lucide-react";
 
-interface FolderData {
-  id: string;
-  user_id: string;
-  parent_id: string | null;
-  name: string;
-  created_at: string;
-  updated_at: string;
-}
-
-interface CloudFile {
-  id: string;
-  user_id: string;
-  folder_id: string | null;
-  name: string;
-  mime_type: string;
-  size_bytes: number;
-  thumb_status: string;
-  taken_at: string | null;
-  created_at: string;
-  updated_at: string;
-}
-
-interface FolderItem {
-  type: "folder" | "file";
-  folder?: FolderData;
-  file?: CloudFile;
-}
-
-interface StarItem {
-  id: string;
-  type: "folder" | "file";
-}
-
 type SortBy = "name" | "size" | "updated_at" | "created_at";
 type SortDir = "asc" | "desc";
 type ViewMode = "list" | "grid";
 
 function CloudPageInner() {
   const searchParams = useSearchParams();
-  const section = parseCloudSection(searchParams.get("section"));
+  const section = parseCloudSection(searchParams.get("section")) as CloudSection;
   const isMyFilesSection = section === "";
   const isTrashSection = section === "trash";
   const isRecentSection = section === "recent";
@@ -110,7 +78,8 @@ function CloudPageInner() {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const currentFolderID = path[path.length - 1].id;
-  const token = getAccessToken();
+  const authed = isAuthenticated();
+  const cloud = useCloudActions();
 
   const toItemMeta = (item: FolderItem): { id: string; type: "folder" | "file" } => {
     if (item.type === "folder") {
@@ -127,69 +96,47 @@ function CloudPageInner() {
   };
 
   const loadItems = useCallback(async () => {
-    if (!token) {
+    if (!authed) {
       setLoading(false);
       return;
     }
 
     setLoading(true);
     try {
-      if (isTrashSection) {
-        const data = await api<{ items: FolderItem[] }>("/cloud/trash", { token });
-        setItems(data.items || []);
-        return;
-      }
-      if (isRecentSection) {
-        const data = await api<{ items: FolderItem[] }>("/cloud/recent", { token });
-        setItems(data.items || []);
-        return;
-      }
-      if (isSharedSection) {
-        const data = await api<{ items: FolderItem[] }>("/cloud/shared", { token });
-        setItems(data.items || []);
-        return;
-      }
-      if (isStarredSection) {
-        const data = await api<{ items: FolderItem[] }>("/cloud/starred", { token });
-        setItems(data.items || []);
-        return;
-      }
-
-      const params = new URLSearchParams({ sort_by: sortBy, sort_dir: sortDir });
-      if (currentFolderID) {
-        params.set("folder_id", currentFolderID);
-      }
-      const data = await api<{ items: FolderItem[] }>(`/cloud/folders?${params.toString()}`, { token });
-      setItems(data.items || []);
+      const nextItems = await cloud.listItems({
+        section,
+        folderId: currentFolderID,
+        sortBy,
+        sortDir,
+      });
+      setItems(nextItems);
     } catch {
       setItems([]);
     } finally {
       setLoading(false);
     }
   }, [
+    authed,
     currentFolderID,
-    isRecentSection,
-    isSharedSection,
-    isStarredSection,
-    isTrashSection,
+    cloud,
+    section,
     sortBy,
     sortDir,
-    token,
   ]);
 
   const loadStars = useCallback(async () => {
-    if (!token) {
+    if (!authed) {
       setStarredKeys(new Set());
       return;
     }
     try {
-      const data = await api<{ stars: StarItem[] }>("/cloud/stars", { token });
-      const next = new Set((data.stars || []).map((star) => toStarKey(star.id, star.type)));
+      const stars = await cloud.listStars();
+      const next = new Set((stars || []).map((star) => toStarKey(star.id, star.type)));
       setStarredKeys(next);
     } catch {
       setStarredKeys(new Set());
     }
-  }, [token]);
+  }, [authed, cloud]);
 
   useEffect(() => {
     if (!isMyFilesSection) {
@@ -216,13 +163,10 @@ function CloudPageInner() {
   };
 
   const handleUpload = async (files: FileList | null) => {
-    if (!files || !token || !isMyFilesSection) return;
+    if (!files || !authed || !isMyFilesSection) return;
     for (const file of Array.from(files)) {
-      const formData = new FormData();
-      formData.append("file", file);
-      if (currentFolderID) formData.append("folder_id", currentFolderID);
       try {
-        await apiUpload("/cloud/files/upload", formData, token);
+        await cloud.uploadFile(file, currentFolderID);
       } catch (err) {
         console.error("Upload failed:", err);
       }
@@ -231,12 +175,9 @@ function CloudPageInner() {
   };
 
   const handleDownload = async (file: CloudFile) => {
-    if (!token) return;
+    if (!authed) return;
     try {
-      const { blob, filename } = await apiDownload(
-        `/cloud/files/${file.id}/download`,
-        token
-      );
+      const { blob, filename } = await cloud.downloadFile(file.id);
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
@@ -249,12 +190,12 @@ function CloudPageInner() {
   };
 
   const handleDelete = async (item: FolderItem) => {
-    if (!token || !isMyFilesSection) return;
+    if (!authed || !isMyFilesSection) return;
     try {
       if (item.type === "folder" && item.folder) {
-        await api(`/cloud/folders/${item.folder.id}`, { method: "DELETE", token });
+        await cloud.deleteFolder(item.folder.id);
       } else if (item.type === "file" && item.file) {
-        await api(`/cloud/files/${item.file.id}`, { method: "DELETE", token });
+        await cloud.deleteFile(item.file.id);
       }
       loadItems();
     } catch (err) {
@@ -263,15 +204,15 @@ function CloudPageInner() {
   };
 
   const handleBulkDelete = async () => {
-    if (!token || !isMyFilesSection) return;
+    if (!authed || !isMyFilesSection) return;
     for (const item of displayItems) {
       const id = item.type === "folder" ? item.folder!.id : item.file!.id;
       if (!selectedIds.has(id)) continue;
       try {
         if (item.type === "folder") {
-          await api(`/cloud/folders/${id}`, { method: "DELETE", token });
+          await cloud.deleteFolder(id);
         } else {
-          await api(`/cloud/files/${id}`, { method: "DELETE", token });
+          await cloud.deleteFile(id);
         }
       } catch (err) {
         console.error("Delete failed:", err);
@@ -292,22 +233,14 @@ function CloudPageInner() {
   };
 
   const handleToggleStar = async (item: FolderItem) => {
-    if (!token) return;
+    if (!authed) return;
     const { id, type } = toItemMeta(item);
     const isStarred = starredKeys.has(toStarKey(id, type));
     try {
       if (isStarred) {
-        await api("/cloud/stars", {
-          method: "DELETE",
-          body: { id, type },
-          token,
-        });
+        await cloud.removeStar(id, type);
       } else {
-        await api("/cloud/stars", {
-          method: "POST",
-          body: { id, type },
-          token,
-        });
+        await cloud.addStar(id, type);
       }
       await loadStars();
       if (isStarredSection) {
@@ -319,15 +252,11 @@ function CloudPageInner() {
   };
 
   const handleRestore = async (item: FolderItem) => {
-    if (!token || !isTrashSection) return;
+    if (!authed || !isTrashSection) return;
     try {
       const id = item.type === "folder" ? item.folder?.id : item.file?.id;
       if (!id) return;
-      await api("/cloud/trash/restore", {
-        method: "POST",
-        body: { id, type: item.type },
-        token,
-      });
+      await cloud.restoreTrashItem(id, item.type);
       await loadItems();
     } catch (err) {
       console.error("Restore failed:", err);
@@ -335,16 +264,12 @@ function CloudPageInner() {
   };
 
   const handleBulkRestore = async () => {
-    if (!token || !isTrashSection) return;
+    if (!authed || !isTrashSection) return;
     for (const item of displayItems) {
       const id = item.type === "folder" ? item.folder?.id : item.file?.id;
       if (!id || !selectedIds.has(id)) continue;
       try {
-        await api("/cloud/trash/restore", {
-          method: "POST",
-          body: { id, type: item.type },
-          token,
-        });
+        await cloud.restoreTrashItem(id, item.type);
       } catch (err) {
         console.error("Restore failed:", err);
       }
@@ -354,9 +279,9 @@ function CloudPageInner() {
   };
 
   const handleEmptyTrash = async () => {
-    if (!token || !isTrashSection) return;
+    if (!authed || !isTrashSection) return;
     try {
-      await api("/cloud/trash", { method: "DELETE", token });
+      await cloud.emptyTrash();
       setSelectedIds(new Set());
       await loadItems();
     } catch (err) {
@@ -365,20 +290,12 @@ function CloudPageInner() {
   };
 
   const handleRename = async () => {
-    if (!renaming || !token || !renaming.name.trim() || !isMyFilesSection) return;
+    if (!renaming || !authed || !renaming.name.trim() || !isMyFilesSection) return;
     try {
       if (renaming.type === "folder") {
-        await api(`/cloud/folders/${renaming.id}/rename`, {
-          method: "PATCH",
-          body: { name: renaming.name },
-          token,
-        });
+        await cloud.renameFolder(renaming.id, renaming.name);
       } else {
-        await api(`/cloud/files/${renaming.id}/rename`, {
-          method: "PATCH",
-          body: { name: renaming.name },
-          token,
-        });
+        await cloud.renameFile(renaming.id, renaming.name);
       }
       setRenaming(null);
       loadItems();
@@ -388,14 +305,10 @@ function CloudPageInner() {
   };
 
   const handleCreateFolder = async () => {
-    if (!token || !newFolderName.trim() || !isMyFilesSection || creatingFolder) return;
+    if (!authed || !newFolderName.trim() || !isMyFilesSection || creatingFolder) return;
     setCreatingFolder(true);
     try {
-      await api("/cloud/folders", {
-        method: "POST",
-        body: { name: newFolderName, parent_id: currentFolderID },
-        token,
-      });
+      await cloud.createFolder(newFolderName, currentFolderID);
       setShowNewFolder(false);
       setNewFolderName("");
       loadItems();
@@ -407,16 +320,13 @@ function CloudPageInner() {
   };
 
   const handleSearch = async () => {
-    if (!token || !searchQuery.trim() || !isMyFilesSection) {
+    if (!authed || !searchQuery.trim() || !isMyFilesSection) {
       setSearchResults(null);
       return;
     }
     try {
-      const data = await api<{ files: CloudFile[] }>(
-        `/cloud/search?q=${encodeURIComponent(searchQuery)}`,
-        { token }
-      );
-      setSearchResults(data.files || []);
+      const files = await cloud.searchFiles(searchQuery);
+      setSearchResults(files || []);
     } catch {
       setSearchResults([]);
     }
@@ -951,7 +861,6 @@ function CloudPageInner() {
                       <ThumbnailImage
                         fileId={item.file!.id}
                         size="medium"
-                        token={token}
                         alt={item.file!.name}
                         fill
                         className="object-cover"

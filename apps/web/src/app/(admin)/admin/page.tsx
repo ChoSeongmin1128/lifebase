@@ -2,26 +2,23 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { getAdminAccessToken } from "@/lib/admin-auth";
-import { adminApi } from "@/lib/admin-api";
+import { useAdminActions } from "@/features/admin/ui/hooks/useAdminActions";
 
 export default function AdminHomePage() {
   const [loading, setLoading] = useState(true);
   const [userCount, setUserCount] = useState<number | null>(null);
   const [adminCount, setAdminCount] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const { listUsers, listAdmins } = useAdminActions();
 
   useEffect(() => {
-    const token = getAdminAccessToken();
-    if (!token) return;
-
     const run = async () => {
       try {
-        const users = await adminApi<{ users: Array<unknown> }>("/admin/users?limit=1", { token });
+        const users = await listUsers();
         setUserCount(users.users.length);
         try {
-          const admins = await adminApi<{ admins: Array<unknown> }>("/admin/admins", { token });
-          setAdminCount(admins.admins.length);
+          const admins = await listAdmins();
+          setAdminCount(admins.length);
         } catch {
           setAdminCount(null);
         }
@@ -32,7 +29,7 @@ export default function AdminHomePage() {
       }
     };
     run();
-  }, []);
+  }, [listAdmins, listUsers]);
 
   return (
     <div className="space-y-6">
@@ -67,4 +64,3 @@ export default function AdminHomePage() {
     </div>
   );
 }
-

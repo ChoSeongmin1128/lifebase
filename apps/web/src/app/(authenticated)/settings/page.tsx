@@ -1,8 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { api } from "@/lib/api";
-import { getAccessToken } from "@/lib/auth";
+import { useSettingsActions } from "@/features/settings/ui/hooks/useSettingsActions";
 import { useThemeContext } from "@/components/providers/ThemeProvider";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
@@ -14,31 +13,28 @@ export default function SettingsPage() {
   const [settings, setSettings] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
   const { theme, setTheme } = useThemeContext();
-
-  const token = getAccessToken();
+  const { getSettings, updateSetting } = useSettingsActions();
 
   const loadSettings = useCallback(async () => {
-    if (!token) return;
     setLoading(true);
     try {
-      const data = await api<{ settings: Record<string, string> }>("/settings", { token });
-      setSettings(data.settings || {});
+      const next = await getSettings();
+      setSettings(next);
     } catch {
       setSettings({});
     } finally {
       setLoading(false);
     }
-  }, [token]);
+  }, [getSettings]);
 
   useEffect(() => {
     loadSettings();
   }, [loadSettings]);
 
-  const updateSetting = async (key: string, value: string) => {
-    if (!token) return;
+  const handleUpdateSetting = async (key: string, value: string) => {
     setSettings((prev) => ({ ...prev, [key]: value }));
     try {
-      await api("/settings", { method: "PATCH", body: { [key]: value }, token });
+      await updateSetting(key, value);
     } catch (err) {
       console.error("Update setting failed:", err);
     }
@@ -49,7 +45,7 @@ export default function SettingsPage() {
 
   const handleThemeChange = (value: "light" | "dark" | "system") => {
     setTheme(value);
-    updateSetting("theme", value);
+    handleUpdateSetting("theme", value);
   };
 
   return (
@@ -107,7 +103,7 @@ export default function SettingsPage() {
                 <SettingRow label="기본 뷰">
                   <Select
                     value={get("calendar_default_view", "month")}
-                    onValueChange={(v) => updateSetting("calendar_default_view", v)}
+                    onValueChange={(v) => handleUpdateSetting("calendar_default_view", v)}
                   >
                     <SelectTrigger className="w-32 h-8 text-xs">
                       <SelectValue />
@@ -126,7 +122,7 @@ export default function SettingsPage() {
                 <SettingRow label="주 시작 요일">
                   <Select
                     value={get("calendar_week_start", "0")}
-                    onValueChange={(v) => updateSetting("calendar_week_start", v)}
+                    onValueChange={(v) => handleUpdateSetting("calendar_week_start", v)}
                   >
                     <SelectTrigger className="w-28 h-8 text-xs">
                       <SelectValue />
@@ -146,7 +142,7 @@ export default function SettingsPage() {
                 <SettingRow label="주간 뷰 시작 시간">
                   <Select
                     value={get("week_start_hour", "8")}
-                    onValueChange={(v) => updateSetting("week_start_hour", v)}
+                    onValueChange={(v) => handleUpdateSetting("week_start_hour", v)}
                   >
                     <SelectTrigger className="w-24 h-8 text-xs">
                       <SelectValue />
@@ -164,7 +160,7 @@ export default function SettingsPage() {
                 <SettingRow label="주간 뷰 종료 시간">
                   <Select
                     value={get("week_end_hour", "22")}
-                    onValueChange={(v) => updateSetting("week_end_hour", v)}
+                    onValueChange={(v) => handleUpdateSetting("week_end_hour", v)}
                   >
                     <SelectTrigger className="w-24 h-8 text-xs">
                       <SelectValue />
@@ -187,7 +183,7 @@ export default function SettingsPage() {
                 <SettingRow label="기본 정렬">
                   <Select
                     value={get("todo_default_sort", "due")}
-                    onValueChange={(v) => updateSetting("todo_default_sort", v)}
+                    onValueChange={(v) => handleUpdateSetting("todo_default_sort", v)}
                   >
                     <SelectTrigger className="w-32 h-8 text-xs">
                       <SelectValue />
@@ -211,7 +207,7 @@ export default function SettingsPage() {
                         key={opt.value}
                         variant={get("show_done_in_calendar", "false") === opt.value ? "primary" : "ghost"}
                         size="sm"
-                        onClick={() => updateSetting("show_done_in_calendar", opt.value)}
+                        onClick={() => handleUpdateSetting("show_done_in_calendar", opt.value)}
                       >
                         {opt.label}
                       </Button>
@@ -234,7 +230,7 @@ export default function SettingsPage() {
                         key={opt.value}
                         variant={get("push_enabled", "true") === opt.value ? "primary" : "ghost"}
                         size="sm"
-                        onClick={() => updateSetting("push_enabled", opt.value)}
+                        onClick={() => handleUpdateSetting("push_enabled", opt.value)}
                       >
                         {opt.label}
                       </Button>
@@ -252,7 +248,7 @@ export default function SettingsPage() {
                         key={opt.value}
                         variant={get("dnd_enabled", "true") === opt.value ? "primary" : "ghost"}
                         size="sm"
-                        onClick={() => updateSetting("dnd_enabled", opt.value)}
+                        onClick={() => handleUpdateSetting("dnd_enabled", opt.value)}
                       >
                         {opt.label}
                       </Button>
@@ -263,7 +259,7 @@ export default function SettingsPage() {
                 <SettingRow label="방해 금지 시작">
                   <Select
                     value={get("dnd_start", "23")}
-                    onValueChange={(v) => updateSetting("dnd_start", v)}
+                    onValueChange={(v) => handleUpdateSetting("dnd_start", v)}
                   >
                     <SelectTrigger
                       disabled={!dndEnabled}
@@ -284,7 +280,7 @@ export default function SettingsPage() {
                 <SettingRow label="방해 금지 종료">
                   <Select
                     value={get("dnd_end", "7")}
-                    onValueChange={(v) => updateSetting("dnd_end", v)}
+                    onValueChange={(v) => handleUpdateSetting("dnd_end", v)}
                   >
                     <SelectTrigger
                       disabled={!dndEnabled}
@@ -313,7 +309,7 @@ export default function SettingsPage() {
                         variant={get("dnd_urgent_only", "false") === opt.value ? "primary" : "ghost"}
                         size="sm"
                         disabled={!dndEnabled}
-                        onClick={() => updateSetting("dnd_urgent_only", opt.value)}
+                        onClick={() => handleUpdateSetting("dnd_urgent_only", opt.value)}
                       >
                         {opt.label}
                       </Button>
@@ -338,7 +334,7 @@ export default function SettingsPage() {
                 <SettingRow label="기본 정렬">
                   <Select
                     value={get("cloud_default_sort", "name")}
-                    onValueChange={(v) => updateSetting("cloud_default_sort", v)}
+                    onValueChange={(v) => handleUpdateSetting("cloud_default_sort", v)}
                   >
                     <SelectTrigger className="w-32 h-8 text-xs">
                       <SelectValue />

@@ -1,8 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
-import { api } from "@/lib/api";
-import { getAccessToken } from "@/lib/auth";
+import { useGalleryActions } from "@/features/gallery/ui/hooks/useGalleryActions";
 import { Button } from "@/components/ui/button";
 import {
   Select,
@@ -63,31 +62,29 @@ export default function GalleryPage() {
   const [selectedFile, setSelectedFile] = useState<MediaFile | null>(null);
   const sentinelRef = useRef<HTMLDivElement>(null);
 
-  const token = getAccessToken();
+  const { listMedia } = useGalleryActions();
 
   const loadMedia = useCallback(
     async (cursor?: string) => {
-      if (!token) return;
       const isLoadMore = !!cursor;
       if (isLoadMore) setLoadingMore(true);
       else setLoading(true);
 
       try {
-        const params = new URLSearchParams({ sort_by: sortBy, sort_dir: sortDir, limit: "50" });
-        if (mediaType !== "all") params.set("type", mediaType);
-        if (cursor) params.set("cursor", cursor);
-
-        const data = await api<{ items: MediaFile[]; next_cursor?: string }>(
-          `/gallery?${params}`,
-          { token }
-        );
+        const data = await listMedia({
+          mediaType,
+          sortBy,
+          sortDir,
+          cursor,
+          limit: 50,
+        });
 
         if (isLoadMore) {
           setItems((prev) => [...prev, ...(data.items || [])]);
         } else {
           setItems(data.items || []);
         }
-        setNextCursor(data.next_cursor || "");
+        setNextCursor(data.nextCursor || "");
       } catch {
         if (!isLoadMore) setItems([]);
       } finally {
@@ -95,7 +92,7 @@ export default function GalleryPage() {
         setLoadingMore(false);
       }
     },
-    [token, mediaType, sortBy, sortDir]
+    [listMedia, mediaType, sortBy, sortDir]
   );
 
   useEffect(() => { loadMedia(); }, [loadMedia]);
@@ -162,7 +159,6 @@ export default function GalleryPage() {
           <ThumbnailImage
             fileId={file.id}
             size="small"
-            token={token}
             alt={file.name}
             fill
             sizes="(max-width: 768px) 33vw, (max-width: 1280px) 16vw, 150px"
@@ -302,7 +298,6 @@ export default function GalleryPage() {
                           <ThumbnailImage
                             fileId={file.id}
                             size="small"
-                            token={token}
                             alt=""
                             fill
                             sizes="32px"
@@ -375,7 +370,6 @@ export default function GalleryPage() {
                 <ThumbnailImage
                   fileId={selectedFile.id}
                   size="medium"
-                  token={token}
                   alt={selectedFile.name}
                   width={1200}
                   height={1200}

@@ -2,7 +2,12 @@
 
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { isAuthenticated, isTokenExpiringSoon, refreshAccessToken, clearTokens } from "@/lib/auth";
+import {
+  isAuthenticated,
+  isTokenExpiringSoon,
+  refreshAccessToken,
+  clearTokens,
+} from "@/features/auth/infrastructure/token-auth";
 import { Sidebar } from "@/components/layout/Sidebar";
 import { BottomTabBar } from "@/components/layout/BottomTabBar";
 import { useSidebar } from "@/hooks/useSidebar";

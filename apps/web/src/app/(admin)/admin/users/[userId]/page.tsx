@@ -4,26 +4,9 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { getAdminAccessToken } from "@/lib/admin-auth";
-import { adminApi } from "@/lib/admin-api";
 import { formatBytes, splitBytes, toBytes, type ByteUnit } from "@/lib/bytes";
-
-type GoogleAccount = {
-  ID: string;
-  GoogleEmail: string;
-  GoogleID: string;
-  Status: "active" | "reauth_required" | "revoked";
-  IsPrimary: boolean;
-  ConnectedAt: string;
-};
-
-type UserDetail = {
-  ID: string;
-  Email: string;
-  Name: string;
-  StorageQuotaBytes: number;
-  StorageUsedBytes: number;
-};
+import { useAdminActions } from "@/features/admin/ui/hooks/useAdminActions";
+import type { GoogleAccount, UserDetail } from "@/features/admin/domain/AdminEntities";
 
 export default function AdminUserDetailPage() {
   const params = useParams<{ userId: string }>();
@@ -37,6 +20,13 @@ export default function AdminUserDetailPage() {
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const {
+    getUser,
+    updateUserQuota,
+    recalculateStorage,
+    resetStorage: resetUserStorage,
+    updateGoogleAccountStatus,
+  } = useAdminActions();
 
   const statusLabel: Record<GoogleAccount["Status"], string> = {
     active: "정상",
@@ -47,17 +37,13 @@ export default function AdminUserDetailPage() {
   const expectedConfirm = useMemo(() => (user ? `DELETE ${user.Email}` : ""), [user]);
 
   const load = useCallback(async () => {
-    const token = getAdminAccessToken();
-    if (!token) return;
     setLoading(true);
     setError(null);
     setMessage(null);
     try {
-      const data = await adminApi<{ user: UserDetail; google_accounts: GoogleAccount[] }>(`/admin/users/${userID}`, {
-        token,
-      });
+      const data = await getUser(userID);
       setUser(data.user);
-      setAccounts(data.google_accounts);
+      setAccounts(data.googleAccounts);
       const quota = splitBytes(data.user.StorageQuotaBytes);
       setQuotaValue(quota.value);
       setQuotaUnit(quota.unit);
@@ -66,15 +52,14 @@ export default function AdminUserDetailPage() {
     } finally {
       setLoading(false);
     }
-  }, [userID]);
+  }, [getUser, userID]);
 
   useEffect(() => {
     load();
   }, [load]);
 
   const saveQuota = async () => {
-    const token = getAdminAccessToken();
-    if (!token || !user) return;
+    if (!user) return;
     setError(null);
     setMessage(null);
     try {
@@ -84,11 +69,7 @@ export default function AdminUserDetailPage() {
         return;
       }
 
-      await adminApi(`/admin/users/${user.ID}/quota`, {
-        method: "PATCH",
-        token,
-        body: { quota_bytes: quotaBytes },
-      });
+      await updateUserQuota(user.ID, quotaBytes);
       setMessage("할당량을 업데이트했습니다.");
       load();
     } catch (e) {
@@ -97,15 +78,11 @@ export default function AdminUserDetailPage() {
   };
 
   const recalc = async () => {
-    const token = getAdminAccessToken();
-    if (!token || !user) return;
+    if (!user) return;
     setError(null);
     setMessage(null);
     try {
-      await adminApi(`/admin/users/${user.ID}/recalculate-storage`, {
-        method: "POST",
-        token,
-      });
+      await recalculateStorage(user.ID);
       setMessage("사용량 재계산을 완료했습니다.");
       load();
     } catch (e) {
@@ -114,16 +91,11 @@ export default function AdminUserDetailPage() {
   };
 
   const resetStorage = async () => {
-    const token = getAdminAccessToken();
-    if (!token || !user) return;
+    if (!user) return;
     setError(null);
     setMessage(null);
     try {
-      await adminApi(`/admin/users/${user.ID}/reset-storage`, {
-        method: "POST",
-        token,
-        body: { confirm },
-      });
+      await resetUserStorage(user.ID, confirm);
       setMessage("스토리지 초기화를 완료했습니다.");
       setConfirm("");
       load();
@@ -133,16 +105,11 @@ export default function AdminUserDetailPage() {
   };
 
   const changeAccountStatus = async (accountID: string, status: GoogleAccount["Status"]) => {
-    const token = getAdminAccessToken();
-    if (!token || !user) return;
+    if (!user) return;
     setError(null);
     setMessage(null);
     try {
-      await adminApi(`/admin/users/${user.ID}/google-accounts/${accountID}/status`, {
-        method: "PATCH",
-        token,
-        body: { status },
-      });
+      await updateGoogleAccountStatus(user.ID, accountID, status);
       setMessage("Google 계정 상태를 변경했습니다.");
       load();
     } catch (e) {

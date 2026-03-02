@@ -1,17 +1,13 @@
 "use client";
 
 import Image from "next/image";
-import { useState, useEffect } from "react";
-
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:38117";
-
-type ThumbSize = "small" | "medium";
+import type { ThumbSize } from "@/features/gallery/domain/MediaFile";
+import { useThumbnailSource } from "@/features/gallery/ui/hooks/useThumbnailSource";
 
 type ThumbnailImageProps =
   | {
       fileId: string;
       size: ThumbSize;
-      token: string | null;
       alt: string;
       className?: string;
       sizes?: string;
@@ -23,7 +19,6 @@ type ThumbnailImageProps =
   | {
       fileId: string;
       size: ThumbSize;
-      token: string | null;
       alt: string;
       className?: string;
       sizes?: string;
@@ -34,43 +29,8 @@ type ThumbnailImageProps =
     };
 
 export function ThumbnailImage(props: ThumbnailImageProps) {
-  const { fileId, size, token, alt, className, sizes, fallback } = props;
-  const [src, setSrc] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (!token) {
-      setSrc(null);
-      return;
-    }
-
-    const controller = new AbortController();
-    let objectURL: string | null = null;
-    let active = true;
-
-    const load = async () => {
-      try {
-        const res = await fetch(`${API_URL}/api/v1/gallery/thumbnails/${fileId}/${size}`, {
-          headers: { Authorization: `Bearer ${token}` },
-          signal: controller.signal,
-        });
-        if (!res.ok) throw new Error(`thumbnail ${res.status}`);
-
-        const blob = await res.blob();
-        objectURL = URL.createObjectURL(blob);
-        if (active) setSrc(objectURL);
-      } catch {
-        if (active) setSrc(null);
-      }
-    };
-
-    load();
-
-    return () => {
-      active = false;
-      controller.abort();
-      if (objectURL) URL.revokeObjectURL(objectURL);
-    };
-  }, [fileId, size, token]);
+  const { fileId, size, alt, className, sizes, fallback } = props;
+  const src = useThumbnailSource(fileId, size);
 
   if (!src) return <>{fallback ?? null}</>;
 

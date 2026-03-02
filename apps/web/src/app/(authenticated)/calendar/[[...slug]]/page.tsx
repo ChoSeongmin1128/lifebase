@@ -2,8 +2,13 @@
 
 import { useState, useEffect, useCallback, useMemo, type MouseEvent as ReactMouseEvent } from "react";
 import { useRouter, useParams } from "next/navigation";
-import { api } from "@/lib/api";
-import { getAccessToken } from "@/lib/auth";
+import { useCalendarActions } from "@/features/calendar/ui/hooks/useCalendarActions";
+import type {
+  CalendarData,
+  CreateEventInput,
+  EventData,
+  EventPayload,
+} from "@/features/calendar/domain/CalendarEntities";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -33,32 +38,6 @@ import {
 } from "@/lib/calendar/month-grid";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { cn } from "@/lib/utils";
-
-interface CalendarData {
-  id: string;
-  name: string;
-  color_id: string | null;
-  is_primary: boolean;
-  is_visible: boolean;
-}
-
-interface EventData {
-  id: string;
-  calendar_id: string;
-  title: string;
-  description: string;
-  location: string;
-  start_time: string;
-  end_time: string;
-  timezone: string;
-  is_all_day: boolean;
-  color_id: string | null;
-  recurrence_rule: string | null;
-}
-
-interface SettingsResponse {
-  settings: Record<string, string>;
-}
 
 interface EventEditorForm {
   title: string;
@@ -218,15 +197,7 @@ function makeDefaultEditorForm(start: Date, end: Date, calendarId: string): Even
   };
 }
 
-function buildEventPayload(form: EventEditorForm, timezone: string): {
-  title: string;
-  description: string;
-  location: string;
-  start_time: string;
-  end_time: string;
-  timezone: string;
-  is_all_day: boolean;
-} {
+function buildEventPayload(form: EventEditorForm, timezone: string): EventPayload {
   const startDate = fromLocalDateTimeInput(form.startLocal);
   let endDate = fromLocalDateTimeInput(form.endLocal);
 
@@ -288,7 +259,7 @@ export default function CalendarPage() {
     makeDefaultEditorForm(new Date(), new Date(Date.now() + 60 * 60 * 1000), "")
   );
 
-  const token = getAccessToken();
+  const { listCalendars, getSettings, listEvents, createEvent, updateEvent, deleteEvent } = useCalendarActions();
 
   const timezone = useMemo(
     () => Intl.DateTimeFormat().resolvedOptions().timeZone || "Asia/Seoul",
@@ -307,19 +278,17 @@ export default function CalendarPage() {
   }, [defaultCalendarID, editorForm.calendarId]);
 
   const loadCalendars = useCallback(async () => {
-    if (!token) return;
     try {
-      const data = await api<{ calendars: CalendarData[] }>("/calendars", { token });
-      setCalendars(data.calendars || []);
+      const next = await listCalendars();
+      setCalendars(next || []);
     } catch {
       setCalendars([]);
     }
-  }, [token]);
+  }, [listCalendars]);
 
   const loadSettings = useCallback(async () => {
-    if (!token) return;
     try {
-      const data = await api<SettingsResponse>("/settings", { token });
+      const data = await getSettings();
       const settings = data.settings || {};
       setWeekHours(parseWeekHourRange(settings));
       setWeekStartsOn(parseWeekStartsOn(settings));
@@ -327,24 +296,20 @@ export default function CalendarPage() {
       setWeekHours({ start: 8, end: 22 });
       setWeekStartsOn(0);
     }
-  }, [token]);
+  }, [getSettings]);
 
   const loadEvents = useCallback(async () => {
-    if (!token) return;
     setLoading(true);
     const { start, end } = getDateRange(currentDate, view, weekStartsOn);
     try {
-      const data = await api<{ events: EventData[] }>(
-        `/events?start=${encodeURIComponent(start)}&end=${encodeURIComponent(end)}`,
-        { token }
-      );
-      setEvents(data.events || []);
+      const next = await listEvents(start, end);
+      setEvents(next || []);
     } catch {
       setEvents([]);
     } finally {
       setLoading(false);
     }
-  }, [token, currentDate, view, weekStartsOn]);
+  }, [currentDate, listEvents, view, weekStartsOn]);
 
   useEffect(() => { loadCalendars(); }, [loadCalendars]);
   useEffect(() => { loadSettings(); }, [loadSettings]);
@@ -433,22 +398,18 @@ export default function CalendarPage() {
     end_local: string;
     calendar_id: string;
   }) => {
-    if (!token) return;
     try {
-      await api("/events", {
-        method: "POST",
-        body: {
-          calendar_id: data.calendar_id || defaultCalendarID,
-          title: data.title,
-          start_time: fromLocalDateTimeInput(data.start_local).toISOString(),
-          end_time: fromLocalDateTimeInput(data.end_local).toISOString(),
-          is_all_day: false,
-          timezone,
-          description: "",
-          location: "",
-        },
-        token,
-      });
+      const payload: CreateEventInput = {
+        calendar_id: data.calendar_id || defaultCalendarID,
+        title: data.title,
+        start_time: fromLocalDateTimeInput(data.start_local).toISOString(),
+        end_time: fromLocalDateTimeInput(data.end_local).toISOString(),
+        is_all_day: false,
+        timezone,
+        description: "",
+        location: "",
+      };
+      await createEvent(payload);
       await loadEvents();
       setQuickCreateOpen(false);
     } catch (err) {
@@ -498,27 +459,18 @@ export default function CalendarPage() {
   };
 
   const handleEditorSubmit = async () => {
-    if (!token) return;
     if (!editorForm.title.trim()) return;
     if (!editorForm.startLocal || !editorForm.endLocal) return;
 
     try {
       const payload = buildEventPayload(editorForm, timezone);
       if (editorMode === "create") {
-        await api("/events", {
-          method: "POST",
-          body: {
-            calendar_id: editorForm.calendarId || defaultCalendarID,
-            ...payload,
-          },
-          token,
+        await createEvent({
+          calendar_id: editorForm.calendarId || defaultCalendarID,
+          ...payload,
         });
       } else if (editingEventID) {
-        await api(`/events/${editingEventID}`, {
-          method: "PATCH",
-          body: payload,
-          token,
-        });
+        await updateEvent(editingEventID, payload);
       }
 
       setEditorOpen(false);
@@ -530,9 +482,8 @@ export default function CalendarPage() {
   };
 
   const handleDeleteEvent = async (eventID: string) => {
-    if (!token) return;
     try {
-      await api(`/events/${eventID}`, { method: "DELETE", token });
+      await deleteEvent(eventID);
       setSelectedEvent(null);
       await loadEvents();
     } catch (err) {

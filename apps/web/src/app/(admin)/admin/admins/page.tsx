@@ -1,19 +1,10 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { getAdminAccessToken } from "@/lib/admin-auth";
-import { adminApi } from "@/lib/admin-api";
-
-type AdminUser = {
-  ID: string;
-  UserID: string;
-  Email: string;
-  Name: string;
-  Role: "admin" | "super_admin";
-  IsActive: boolean;
-};
+import { useAdminActions } from "@/features/admin/ui/hooks/useAdminActions";
+import type { AdminUser } from "@/features/admin/domain/AdminEntities";
 
 export default function AdminAdminsPage() {
   const [admins, setAdmins] = useState<AdminUser[]>([]);
@@ -22,41 +13,34 @@ export default function AdminAdminsPage() {
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const { listAdmins, addAdmin: addAdminUser, updateAdminRole, deactivateAdmin } = useAdminActions();
   const roleLabel: Record<AdminUser["Role"], string> = {
     admin: "관리자",
     super_admin: "최고 관리자",
   };
 
-  const load = async () => {
-    const token = getAdminAccessToken();
-    if (!token) return;
+  const load = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const data = await adminApi<{ admins: AdminUser[] }>("/admin/admins", { token });
-      setAdmins(data.admins);
+      const data = await listAdmins();
+      setAdmins(data);
     } catch (e) {
       setError(e instanceof Error ? e.message : "조회 실패");
     } finally {
       setLoading(false);
     }
-  };
+  }, [listAdmins]);
 
   useEffect(() => {
     load();
-  }, []);
+  }, [load]);
 
   const addAdmin = async () => {
-    const token = getAdminAccessToken();
-    if (!token) return;
     setError(null);
     setMessage(null);
     try {
-      await adminApi("/admin/admins", {
-        method: "POST",
-        token,
-        body: { email: email.trim(), role },
-      });
+      await addAdminUser(email.trim(), role);
       setMessage("관리자를 추가했습니다.");
       setEmail("");
       load();
@@ -66,16 +50,10 @@ export default function AdminAdminsPage() {
   };
 
   const updateRole = async (adminID: string, nextRole: "admin" | "super_admin") => {
-    const token = getAdminAccessToken();
-    if (!token) return;
     setError(null);
     setMessage(null);
     try {
-      await adminApi(`/admin/admins/${adminID}/role`, {
-        method: "PATCH",
-        token,
-        body: { role: nextRole },
-      });
+      await updateAdminRole(adminID, nextRole);
       setMessage("역할을 변경했습니다.");
       load();
     } catch (e) {
@@ -84,15 +62,10 @@ export default function AdminAdminsPage() {
   };
 
   const deactivate = async (adminID: string) => {
-    const token = getAdminAccessToken();
-    if (!token) return;
     setError(null);
     setMessage(null);
     try {
-      await adminApi(`/admin/admins/${adminID}/deactivate`, {
-        method: "PATCH",
-        token,
-      });
+      await deactivateAdmin(adminID);
       setMessage("관리자를 비활성화했습니다.");
       load();
     } catch (e) {

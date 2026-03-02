@@ -2,29 +2,23 @@
 
 import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { adminApi } from "@/lib/admin-api";
-import { setAdminTokens } from "@/lib/admin-auth";
+import { setAdminTokens } from "@/features/admin/infrastructure/admin-auth";
 import { Button } from "@/components/ui/button";
+import { useAdminActions } from "@/features/admin/ui/hooks/useAdminActions";
 
 function CallbackContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [error, setError] = useState<string | null>(null);
   const code = searchParams.get("code");
+  const { exchangeCode } = useAdminActions();
 
   useEffect(() => {
     if (!code) return;
-    const exchangeCode = async () => {
+    const runExchange = async () => {
       try {
         const state = sessionStorage.getItem("oauth_state_admin") || undefined;
-        const data = await adminApi<{
-          access_token: string;
-          refresh_token: string;
-          expires_in: number;
-        }>("/auth/callback", {
-          method: "POST",
-          body: { code, state, app: "admin" },
-        });
+        const data = await exchangeCode(code, state);
 
         setAdminTokens(data.access_token, data.refresh_token);
         router.replace("/admin");
@@ -34,8 +28,8 @@ function CallbackContent() {
         sessionStorage.removeItem("oauth_state_admin");
       }
     };
-    exchangeCode();
-  }, [code, router]);
+    runExchange();
+  }, [code, exchangeCode, router]);
 
   if (!code) {
     return (
@@ -83,4 +77,3 @@ export default function AdminAuthCallbackPage() {
     </Suspense>
   );
 }
-

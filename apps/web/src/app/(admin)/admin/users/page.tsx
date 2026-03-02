@@ -4,17 +4,9 @@ import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { getAdminAccessToken } from "@/lib/admin-auth";
-import { adminApi } from "@/lib/admin-api";
 import { formatBytes } from "@/lib/bytes";
-
-type UserItem = {
-  ID: string;
-  Email: string;
-  Name: string;
-  StorageQuotaBytes: number;
-  StorageUsedBytes: number;
-};
+import { useAdminActions } from "@/features/admin/ui/hooks/useAdminActions";
+import type { UserItem } from "@/features/admin/domain/AdminEntities";
 
 export default function AdminUsersPage() {
   const [q, setQ] = useState("");
@@ -22,29 +14,21 @@ export default function AdminUsersPage() {
   const [nextCursor, setNextCursor] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const { listUsers } = useAdminActions();
 
   const load = useCallback(async (cursor?: string, query: string = "") => {
-    const token = getAdminAccessToken();
-    if (!token) return;
     setLoading(true);
     setError(null);
     try {
-      const params = new URLSearchParams();
-      params.set("limit", "20");
-      if (query) params.set("q", query);
-      if (cursor) params.set("cursor", cursor);
-      const data = await adminApi<{ users: UserItem[]; next_cursor?: string }>(
-        `/admin/users?${params.toString()}`,
-        { token }
-      );
+      const data = await listUsers(cursor, query);
       setUsers((prev) => (cursor ? [...prev, ...data.users] : data.users));
-      setNextCursor(data.next_cursor || "");
+      setNextCursor(data.nextCursor || "");
     } catch (e) {
       setError(e instanceof Error ? e.message : "조회 실패");
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [listUsers]);
 
   useEffect(() => {
     load();

@@ -2,8 +2,6 @@
 
 import { useState, useEffect, useCallback, useMemo, useRef, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { api } from "@/lib/api";
-import { getAccessToken } from "@/lib/auth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
@@ -20,6 +18,7 @@ import { TodoToolbar, type TodoSortBy, type TodoFilterMode } from "@/components/
 import { TodoRow } from "@/components/todo/TodoRow";
 import { CreateTodoDialog } from "@/components/todo/CreateTodoDialog";
 import { useCreateTodo } from "@/features/todo/ui/hooks/useCreateTodo";
+import { useTodoActions } from "@/features/todo/ui/hooks/useTodoActions";
 import {
   DndContext,
   closestCenter,
@@ -87,23 +86,17 @@ function TodoPageInner() {
   const [offsetLeft, setOffsetLeft] = useState(0);
   const dragSnapshotRef = useRef<TodoItem[]>([]);
 
-  const token = getAccessToken();
   const { createTodo, creating } = useCreateTodo();
+  const { listLists, createList, deleteList, listTodos, updateTodo, deleteTodo, reorder } = useTodoActions();
   const defaultListId = lists.length > 0 ? lists[0].id : null;
 
   const loadLists = useCallback(async () => {
-    if (!token) return;
     try {
-      const data = await api<{ lists: TodoList[] }>("/todo/lists", { token });
-      const fetchedLists = data.lists || [];
+      const fetchedLists = await listLists();
 
       if (fetchedLists.length === 0) {
         try {
-          const list = await api<TodoList>("/todo/lists", {
-            method: "POST",
-            body: { name: "할 일" },
-            token,
-          });
+          const list = await createList("할 일");
           setLists([list]);
           setActiveListId(list.id);
           return;
@@ -122,36 +115,28 @@ function TodoPageInner() {
     } catch {
       setLists([]);
     }
-  }, [token, setActiveListId]);
+  }, [createList, listLists, setActiveListId]);
 
   const loadTodos = useCallback(async () => {
-    if (!token || !activeListId) return;
+    if (!activeListId) return;
     setLoading(true);
     try {
-      const params = new URLSearchParams({
-        list_id: activeListId,
-        include_done: filter === "done" ? "true" : "false",
-      });
-      const data = await api<{ todos: TodoItem[] }>(`/todo?${params}`, { token });
-      setTodos(data.todos || []);
+      const next = await listTodos(activeListId, filter === "done");
+      setTodos(next || []);
     } catch {
       setTodos([]);
     } finally {
       setLoading(false);
     }
-  }, [token, activeListId, filter]);
+  }, [activeListId, filter, listTodos]);
 
   useEffect(() => { loadLists(); }, [loadLists]);
   useEffect(() => { loadTodos(); }, [loadTodos]);
 
   const handleCreateList = async () => {
-    if (!token || !newListName.trim()) return;
+    if (!newListName.trim()) return;
     try {
-      const list = await api<TodoList>("/todo/lists", {
-        method: "POST",
-        body: { name: newListName },
-        token,
-      });
+      const list = await createList(newListName);
       setNewListName("");
       setShowNewList(false);
       setLists((prev) => [...prev, list]);
@@ -194,9 +179,8 @@ function TodoPageInner() {
   };
 
   const handleToggleDone = async (todo: TodoItem) => {
-    if (!token) return;
     try {
-      await api(`/todo/${todo.id}`, { method: "PATCH", body: { is_done: !todo.is_done }, token });
+      await updateTodo(todo.id, { is_done: !todo.is_done });
       loadTodos();
     } catch (err) {
       console.error("Toggle failed:", err);
@@ -204,9 +188,8 @@ function TodoPageInner() {
   };
 
   const handleTogglePin = async (todo: TodoItem) => {
-    if (!token) return;
     try {
-      await api(`/todo/${todo.id}`, { method: "PATCH", body: { is_pinned: !todo.is_pinned }, token });
+      await updateTodo(todo.id, { is_pinned: !todo.is_pinned });
       loadTodos();
     } catch (err) {
       console.error("Pin toggle failed:", err);
@@ -214,9 +197,8 @@ function TodoPageInner() {
   };
 
   const handleDeleteTodo = async (todoId: string) => {
-    if (!token) return;
     try {
-      await api(`/todo/${todoId}`, { method: "DELETE", token });
+      await deleteTodo(todoId);
       setEditingTodo(null);
       loadTodos();
     } catch (err) {
@@ -225,9 +207,8 @@ function TodoPageInner() {
   };
 
   const handleUpdateTodo = async (todoId: string, updates: Record<string, unknown>) => {
-    if (!token) return;
     try {
-      await api(`/todo/${todoId}`, { method: "PATCH", body: updates, token });
+      await updateTodo(todoId, updates);
       setEditingTodo(null);
       loadTodos();
     } catch (err) {
@@ -236,9 +217,9 @@ function TodoPageInner() {
   };
 
   const handleDeleteList = async (listId: string) => {
-    if (!token || listId === defaultListId) return;
+    if (listId === defaultListId) return;
     try {
-      await api(`/todo/lists/${listId}`, { method: "DELETE", token });
+      await deleteList(listId);
       setLists((prev) => prev.filter((l) => l.id !== listId));
       if (activeListId === listId && lists.length > 1) {
         const remaining = lists.filter((l) => l.id !== listId);
@@ -327,7 +308,7 @@ function TodoPageInner() {
     setDragOverId(null);
     setOffsetLeft(0);
 
-    if (!currentOverId || currentActiveId === currentOverId || !token) return;
+    if (!currentOverId || currentActiveId === currentOverId) return;
 
     const currentProjection = getProjection(allFlat, currentActiveId, currentOverId, event.delta.x);
     const { changes } = computeReorderChanges(allFlat, currentActiveId, currentOverId, currentProjection);
@@ -347,17 +328,13 @@ function TodoPageInner() {
 
     // Persist to server
     try {
-      await api("/todo/reorder", {
-        method: "PATCH",
-        body: { items: changes },
-        token,
-      });
+      await reorder(changes);
     } catch (err) {
       console.error("Reorder failed:", err);
       setTodos(dragSnapshotRef.current);
       loadTodos();
     }
-  }, [token, allFlat, todos, loadTodos]);
+  }, [allFlat, loadTodos, reorder, todos]);
 
   const handleDragCancel = useCallback(() => {
     setDragActiveId(null);

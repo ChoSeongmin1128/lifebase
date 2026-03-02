@@ -8,7 +8,7 @@ import {
   isAdminAuthenticated,
   isAdminTokenExpiringSoon,
   refreshAdminAccessToken,
-} from "@/lib/admin-auth";
+} from "@/features/admin/infrastructure/admin-auth";
 import { Button } from "@/components/ui/button";
 
 const PUBLIC_PATHS = new Set(["/admin/login", "/admin/auth/callback"]);

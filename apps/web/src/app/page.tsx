@@ -2,13 +2,14 @@
 
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { isAuthenticated } from "@/lib/auth";
-import { api } from "@/lib/api";
+import { isAuthenticated } from "@/features/auth/infrastructure/token-auth";
+import { useAuthFlow } from "@/features/auth/ui/hooks/useAuthFlow";
 import { Button } from "@/components/ui/button";
 import Image from "next/image";
 
 export default function Home() {
   const router = useRouter();
+  const { requestAuthUrl } = useAuthFlow();
 
   useEffect(() => {
     if (isAuthenticated()) {
@@ -19,7 +20,7 @@ export default function Home() {
 
   const handleLogin = async () => {
     try {
-      const data = await api<{ url: string; state: string }>("/auth/url");
+      const data = await requestAuthUrl();
       sessionStorage.setItem("oauth_state", data.state);
       window.location.href = data.url;
     } catch {

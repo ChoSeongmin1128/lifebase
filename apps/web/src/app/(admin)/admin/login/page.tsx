@@ -2,16 +2,17 @@
 
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
-import { adminApi } from "@/lib/admin-api";
-import { clearAdminTokens } from "@/lib/admin-auth";
+import { clearAdminTokens } from "@/features/admin/infrastructure/admin-auth";
+import { useAdminActions } from "@/features/admin/ui/hooks/useAdminActions";
 
 export default function AdminLoginPage() {
   const router = useRouter();
+  const { requestAuthUrl } = useAdminActions();
 
   const handleLogin = async () => {
     try {
       clearAdminTokens();
-      const data = await adminApi<{ url: string; state: string }>("/auth/url?app=admin");
+      const data = await requestAuthUrl();
       sessionStorage.setItem("oauth_state_admin", data.state);
       window.location.href = data.url;
     } catch {

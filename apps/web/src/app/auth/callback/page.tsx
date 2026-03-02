@@ -2,8 +2,8 @@
 
 import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { api } from "@/lib/api";
-import { setTokens } from "@/lib/auth";
+import { useAuthFlow } from "@/features/auth/ui/hooks/useAuthFlow";
+import { setTokens } from "@/features/auth/infrastructure/token-auth";
 import { Button } from "@/components/ui/button";
 
 function CallbackContent() {
@@ -11,21 +11,15 @@ function CallbackContent() {
   const searchParams = useSearchParams();
   const [error, setError] = useState<string | null>(null);
   const code = searchParams.get("code");
+  const { exchangeCode } = useAuthFlow();
 
   useEffect(() => {
     if (!code) return;
 
-    const exchangeCode = async () => {
+    const runExchange = async () => {
       try {
         const state = sessionStorage.getItem("oauth_state") || undefined;
-        const data = await api<{
-          access_token: string;
-          refresh_token: string;
-          expires_in: number;
-        }>("/auth/callback", {
-          method: "POST",
-          body: { code, state, app: "web" },
-        });
+        const data = await exchangeCode({ code, state, app: "web" });
 
         setTokens(data.access_token, data.refresh_token);
         router.replace("/cloud");
@@ -36,8 +30,8 @@ function CallbackContent() {
       }
     };
 
-    exchangeCode();
-  }, [code, router]);
+    runExchange();
+  }, [code, exchangeCode, router]);
 
   if (!code) {
     return (
