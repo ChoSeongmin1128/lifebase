@@ -19,6 +19,7 @@ type UserRepository interface {
 
 type GoogleAccountRepository interface {
 	FindByGoogleID(ctx context.Context, googleID string) (*domain.GoogleAccount, error)
+	FindByID(ctx context.Context, userID, id string) (*domain.GoogleAccount, error)
 	FindByUserID(ctx context.Context, userID string) ([]*domain.GoogleAccount, error)
 	Create(ctx context.Context, account *domain.GoogleAccount) error
 	Update(ctx context.Context, account *domain.GoogleAccount) error
@@ -45,12 +46,36 @@ type OAuthUserInfo struct {
 	Picture  string
 }
 
+type OAuthCalendar struct {
+	GoogleID  string
+	Name      string
+	ColorID   *string
+	IsPrimary bool
+	IsVisible bool
+}
+
+type OAuthTaskList struct {
+	GoogleID string
+	Name     string
+}
+
 type GoogleAuthClient interface {
 	AuthURL(state string) string
 	AuthURLForApp(state, app string) string
 	ExchangeCode(ctx context.Context, code string) (*OAuthToken, error)
 	ExchangeCodeForApp(ctx context.Context, code, app string) (*OAuthToken, error)
 	FetchUserInfo(ctx context.Context, token OAuthToken) (*OAuthUserInfo, error)
+	ListCalendars(ctx context.Context, token OAuthToken) ([]OAuthCalendar, error)
+	ListTaskLists(ctx context.Context, token OAuthToken) ([]OAuthTaskList, error)
+}
+
+type GoogleSyncOptions struct {
+	SyncCalendar bool
+	SyncTodo     bool
+}
+
+type GoogleAccountSyncer interface {
+	SyncAccount(ctx context.Context, userID string, account *domain.GoogleAccount, options GoogleSyncOptions) error
 }
 
 type UserBootstrapper interface {

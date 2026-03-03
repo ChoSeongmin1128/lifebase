@@ -57,13 +57,7 @@ func (c *oauthClient) ExchangeCodeForApp(ctx context.Context, code, app string) 
 }
 
 func (c *oauthClient) FetchUserInfo(ctx context.Context, token portout.OAuthToken) (*portout.OAuthUserInfo, error) {
-	ot := &oauth2.Token{
-		AccessToken:  token.AccessToken,
-		RefreshToken: token.RefreshToken,
-		Expiry:       token.Expiry,
-	}
-
-	client := c.oauthConfig("web").Client(ctx, ot)
+	client := c.apiClient(ctx, token)
 	resp, err := client.Get("https://www.googleapis.com/oauth2/v3/userinfo")
 	if err != nil {
 		return nil, err
@@ -90,6 +84,137 @@ func (c *oauthClient) FetchUserInfo(ctx context.Context, token portout.OAuthToke
 		Name:     info.Name,
 		Picture:  info.Picture,
 	}, nil
+}
+
+func (c *oauthClient) ListCalendars(ctx context.Context, token portout.OAuthToken) ([]portout.OAuthCalendar, error) {
+	client := c.apiClient(ctx, token)
+	pageToken := ""
+	calendars := make([]portout.OAuthCalendar, 0, 8)
+
+	for {
+		url := "https://www.googleapis.com/calendar/v3/users/me/calendarList"
+		if pageToken != "" {
+			url += "?pageToken=" + pageToken
+		}
+
+		resp, err := client.Get(url)
+		if err != nil {
+			return nil, err
+		}
+
+		var payload struct {
+			Items []struct {
+				ID       string `json:"id"`
+				Summary  string `json:"summary"`
+				ColorID  string `json:"colorId"`
+				Primary  bool   `json:"primary"`
+				Selected *bool  `json:"selected"`
+			} `json:"items"`
+			NextPageToken string `json:"nextPageToken"`
+		}
+
+		decodeErr := json.NewDecoder(resp.Body).Decode(&payload)
+		_ = resp.Body.Close()
+		if resp.StatusCode != http.StatusOK {
+			return nil, fmt.Errorf("google calendar list returned %d", resp.StatusCode)
+		}
+		if decodeErr != nil {
+			return nil, decodeErr
+		}
+
+		for _, item := range payload.Items {
+			isVisible := true
+			if item.Selected != nil {
+				isVisible = *item.Selected
+			}
+			name := item.Summary
+			if name == "" {
+				name = "Google Calendar"
+			}
+
+			var colorID *string
+			if item.ColorID != "" {
+				colorID = &item.ColorID
+			}
+
+			calendars = append(calendars, portout.OAuthCalendar{
+				GoogleID:  item.ID,
+				Name:      name,
+				ColorID:   colorID,
+				IsPrimary: item.Primary,
+				IsVisible: isVisible,
+			})
+		}
+
+		if payload.NextPageToken == "" {
+			break
+		}
+		pageToken = payload.NextPageToken
+	}
+
+	return calendars, nil
+}
+
+func (c *oauthClient) ListTaskLists(ctx context.Context, token portout.OAuthToken) ([]portout.OAuthTaskList, error) {
+	client := c.apiClient(ctx, token)
+	pageToken := ""
+	lists := make([]portout.OAuthTaskList, 0, 8)
+
+	for {
+		url := "https://tasks.googleapis.com/tasks/v1/users/@me/lists"
+		if pageToken != "" {
+			url += "?pageToken=" + pageToken
+		}
+
+		resp, err := client.Get(url)
+		if err != nil {
+			return nil, err
+		}
+
+		var payload struct {
+			Items []struct {
+				ID    string `json:"id"`
+				Title string `json:"title"`
+			} `json:"items"`
+			NextPageToken string `json:"nextPageToken"`
+		}
+
+		decodeErr := json.NewDecoder(resp.Body).Decode(&payload)
+		_ = resp.Body.Close()
+		if resp.StatusCode != http.StatusOK {
+			return nil, fmt.Errorf("google task list returned %d", resp.StatusCode)
+		}
+		if decodeErr != nil {
+			return nil, decodeErr
+		}
+
+		for _, item := range payload.Items {
+			name := item.Title
+			if name == "" {
+				name = "Google Tasks"
+			}
+			lists = append(lists, portout.OAuthTaskList{
+				GoogleID: item.ID,
+				Name:     name,
+			})
+		}
+
+		if payload.NextPageToken == "" {
+			break
+		}
+		pageToken = payload.NextPageToken
+	}
+
+	return lists, nil
+}
+
+func (c *oauthClient) apiClient(ctx context.Context, token portout.OAuthToken) *http.Client {
+	ot := &oauth2.Token{
+		AccessToken:  token.AccessToken,
+		RefreshToken: token.RefreshToken,
+		Expiry:       token.Expiry,
+	}
+	return c.oauthConfig("web").Client(ctx, ot)
 }
 
 func (c *oauthClient) oauthConfig(app string) *oauth2.Config {

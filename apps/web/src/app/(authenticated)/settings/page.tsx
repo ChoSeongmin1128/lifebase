@@ -21,7 +21,7 @@ export default function SettingsPage() {
   const { theme, setTheme } = useThemeContext();
   const toast = useToast();
   const { getSettings, updateSetting } = useSettingsActions();
-  const { requestAuthUrl, listGoogleAccounts } = useAuthFlow();
+  const { requestAuthUrl, listGoogleAccounts, syncGoogleAccount } = useAuthFlow();
 
   const loadSettings = useCallback(async () => {
     setLoading(true);
@@ -89,6 +89,42 @@ export default function SettingsPage() {
     }
   };
 
+  const getAccountSyncEnabled = (accountID: string, type: "calendar" | "todo") =>
+    get(`google_account_sync_${type}_${accountID}`, "true") === "true";
+
+  const handleToggleAccountSync = async (
+    account: GoogleAccountSummary,
+    type: "calendar" | "todo",
+    enabled: boolean,
+  ) => {
+    if (account.status !== "active") return;
+
+    const settingKey = `google_account_sync_${type}_${account.id}`;
+    const previous = get(settingKey, "true");
+    const nextValue = enabled ? "true" : "false";
+    const calendarEnabled = type === "calendar" ? enabled : getAccountSyncEnabled(account.id, "calendar");
+    const todoEnabled = type === "todo" ? enabled : getAccountSyncEnabled(account.id, "todo");
+
+    setSettings((prev) => ({ ...prev, [settingKey]: nextValue }));
+    try {
+      await updateSetting(settingKey, nextValue);
+      if (enabled) {
+        await syncGoogleAccount(account.id, {
+          sync_calendar: calendarEnabled,
+          sync_todo: todoEnabled,
+        });
+      }
+    } catch {
+      try {
+        await updateSetting(settingKey, previous);
+      } catch {
+        // noop
+      }
+      setSettings((prev) => ({ ...prev, [settingKey]: previous }));
+      toast.error("동기화 설정 변경 실패", "잠시 후 다시 시도해 주세요.");
+    }
+  };
+
   return (
     <Tabs defaultValue="general" className="flex h-full flex-col">
       <TabsList className="px-4 md:px-6">
@@ -152,19 +188,38 @@ export default function SettingsPage() {
                     googleAccounts.map((account) => (
                       <div
                         key={account.id}
-                        className="flex items-center justify-between rounded-md border border-border/70 px-3 py-2"
+                        className="rounded-md border border-border/70 px-3 py-2"
                       >
-                        <div className="min-w-0">
-                          <p className="truncate text-sm font-medium text-text-strong">{account.google_email}</p>
-                          <p className="text-xs text-text-muted">
-                            연결일: {new Date(account.connected_at).toLocaleDateString("ko-KR")}
-                          </p>
+                        <div className="flex items-center justify-between gap-3">
+                          <div className="min-w-0">
+                            <p className="truncate text-sm font-medium text-text-strong">{account.google_email}</p>
+                            <p className="text-xs text-text-muted">
+                              연결일: {new Date(account.connected_at).toLocaleDateString("ko-KR")}
+                            </p>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            {account.is_primary ? <Badge variant="primary">기본</Badge> : null}
+                            <Badge variant={getGoogleAccountStatusBadgeVariant(account.status)}>
+                              {getGoogleAccountStatusLabel(account.status)}
+                            </Badge>
+                          </div>
                         </div>
-                        <div className="flex items-center gap-2">
-                          {account.is_primary ? <Badge variant="primary">기본</Badge> : null}
-                          <Badge variant={getGoogleAccountStatusBadgeVariant(account.status)}>
-                            {getGoogleAccountStatusLabel(account.status)}
-                          </Badge>
+                        <div className="mt-3 flex flex-wrap items-center gap-2">
+                          <SyncToggle
+                            label="캘린더 동기화"
+                            enabled={getAccountSyncEnabled(account.id, "calendar")}
+                            disabled={account.status !== "active"}
+                            onToggle={(next) => handleToggleAccountSync(account, "calendar", next)}
+                          />
+                          <SyncToggle
+                            label="Todo 동기화"
+                            enabled={getAccountSyncEnabled(account.id, "todo")}
+                            disabled={account.status !== "active"}
+                            onToggle={(next) => handleToggleAccountSync(account, "todo", next)}
+                          />
+                          {account.status !== "active" ? (
+                            <span className="text-xs text-text-muted">비활성 계정은 동기화 설정을 변경할 수 없습니다.</span>
+                          ) : null}
                         </div>
                       </div>
                     ))
@@ -446,6 +501,34 @@ function SettingRow({ label, children }: { label: string; children: React.ReactN
     <div className="flex items-center justify-between">
       <span className="text-sm text-text-secondary">{label}</span>
       {children}
+    </div>
+  );
+}
+
+function SyncToggle({
+  label,
+  enabled,
+  disabled,
+  onToggle,
+}: {
+  label: string;
+  enabled: boolean;
+  disabled?: boolean;
+  onToggle: (next: boolean) => void;
+}) {
+  return (
+    <div className="inline-flex items-center gap-2 rounded-md border border-border/70 px-2 py-1">
+      <span className="text-xs text-text-secondary">{label}</span>
+      <Button
+        type="button"
+        size="sm"
+        variant={enabled ? "primary" : "ghost"}
+        className="h-6 px-2 text-xs"
+        disabled={disabled}
+        onClick={() => onToggle(!enabled)}
+      >
+        {enabled ? "켜짐" : "꺼짐"}
+      </Button>
     </div>
   );
 }

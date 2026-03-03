@@ -30,6 +30,7 @@ type authUseCase struct {
 	googleAccts   portout.GoogleAccountRepository
 	refreshTokens portout.RefreshTokenRepository
 	googleAuth    portout.GoogleAuthClient
+	googleSyncer  portout.GoogleAccountSyncer
 	bootstrapper  portout.UserBootstrapper
 }
 
@@ -39,6 +40,7 @@ func NewAuthUseCase(
 	googleAccts portout.GoogleAccountRepository,
 	refreshTokens portout.RefreshTokenRepository,
 	googleAuth portout.GoogleAuthClient,
+	googleSyncer portout.GoogleAccountSyncer,
 	bootstrapper portout.UserBootstrapper,
 ) portin.AuthUseCase {
 	return &authUseCase{
@@ -47,6 +49,7 @@ func NewAuthUseCase(
 		googleAccts:   googleAccts,
 		refreshTokens: refreshTokens,
 		googleAuth:    googleAuth,
+		googleSyncer:  googleSyncer,
 		bootstrapper:  bootstrapper,
 	}
 }
@@ -82,6 +85,11 @@ func (uc *authUseCase) HandleCallbackForApp(ctx context.Context, code, app strin
 	if err := uc.upsertGoogleAccount(ctx, user.ID, userInfo, *token); err != nil {
 		return nil, fmt.Errorf("upsert google account: %w", err)
 	}
+	// Login should not fail just because background sync fails.
+	_ = uc.syncGoogleAccountByGoogleID(ctx, user.ID, userInfo.GoogleID, portout.GoogleSyncOptions{
+		SyncCalendar: true,
+		SyncTodo:     true,
+	})
 
 	return uc.issueTokens(ctx, user.ID)
 }
@@ -141,7 +149,13 @@ func (uc *authUseCase) LinkGoogleAccount(ctx context.Context, userID, code, app 
 		existing.TokenExpiresAt = &token.Expiry
 		existing.Status = "active"
 		existing.UpdatedAt = now
-		return uc.googleAccts.Update(ctx, existing)
+		if err := uc.googleAccts.Update(ctx, existing); err != nil {
+			return err
+		}
+		return uc.syncGoogleAccountByGoogleID(ctx, userID, userInfo.GoogleID, portout.GoogleSyncOptions{
+			SyncCalendar: true,
+			SyncTodo:     true,
+		})
 	}
 
 	userAccounts, err := uc.googleAccts.FindByUserID(ctx, userID)
@@ -165,7 +179,39 @@ func (uc *authUseCase) LinkGoogleAccount(ctx context.Context, userID, code, app 
 		UpdatedAt:      now,
 	}
 
-	return uc.googleAccts.Create(ctx, account)
+	if err := uc.googleAccts.Create(ctx, account); err != nil {
+		return err
+	}
+	return uc.syncGoogleAccountByGoogleID(ctx, userID, userInfo.GoogleID, portout.GoogleSyncOptions{
+		SyncCalendar: true,
+		SyncTodo:     true,
+	})
+}
+
+func (uc *authUseCase) SyncGoogleAccount(
+	ctx context.Context,
+	userID, accountID string,
+	input portin.SyncGoogleAccountInput,
+) error {
+	if userID == "" {
+		return fmt.Errorf("user id is required")
+	}
+	if accountID == "" {
+		return fmt.Errorf("account id is required")
+	}
+	if uc.googleSyncer == nil {
+		return fmt.Errorf("google sync is not configured")
+	}
+
+	account, err := uc.googleAccts.FindByID(ctx, userID, accountID)
+	if err != nil {
+		return fmt.Errorf("google account not found")
+	}
+
+	return uc.googleSyncer.SyncAccount(ctx, userID, account, portout.GoogleSyncOptions{
+		SyncCalendar: input.SyncCalendar,
+		SyncTodo:     input.SyncTodo,
+	})
 }
 
 func (uc *authUseCase) RefreshAccessToken(ctx context.Context, refreshTokenStr string) (*portin.LoginResult, error) {
@@ -262,6 +308,23 @@ func (uc *authUseCase) upsertGoogleAccount(ctx context.Context, userID string, i
 	}
 
 	return uc.googleAccts.Create(ctx, account)
+}
+
+func (uc *authUseCase) syncGoogleAccountByGoogleID(
+	ctx context.Context,
+	userID, googleID string,
+	options portout.GoogleSyncOptions,
+) error {
+	if uc.googleSyncer == nil {
+		return nil
+	}
+
+	account, err := uc.googleAccts.FindByGoogleID(ctx, googleID)
+	if err != nil {
+		return err
+	}
+
+	return uc.googleSyncer.SyncAccount(ctx, userID, account, options)
 }
 
 func (uc *authUseCase) issueTokens(ctx context.Context, userID string) (*portin.LoginResult, error) {

@@ -36,6 +36,24 @@ func (r *googleAccountRepo) FindByGoogleID(ctx context.Context, googleID string)
 	return &a, nil
 }
 
+func (r *googleAccountRepo) FindByID(ctx context.Context, userID, id string) (*domain.GoogleAccount, error) {
+	var a domain.GoogleAccount
+	err := r.db.QueryRow(ctx,
+		`SELECT id, user_id, google_email, google_id, access_token, refresh_token, token_expires_at,
+		        scopes, status, is_primary, connected_at, created_at, updated_at
+		 FROM user_google_accounts WHERE user_id = $1 AND id = $2`,
+		userID, id,
+	).Scan(&a.ID, &a.UserID, &a.GoogleEmail, &a.GoogleID, &a.AccessToken, &a.RefreshToken,
+		&a.TokenExpiresAt, &a.Scopes, &a.Status, &a.IsPrimary, &a.ConnectedAt, &a.CreatedAt, &a.UpdatedAt)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, err
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &a, nil
+}
+
 func (r *googleAccountRepo) FindByUserID(ctx context.Context, userID string) ([]*domain.GoogleAccount, error) {
 	rows, err := r.db.Query(ctx,
 		`SELECT id, user_id, google_email, google_id, access_token, refresh_token, token_expires_at,

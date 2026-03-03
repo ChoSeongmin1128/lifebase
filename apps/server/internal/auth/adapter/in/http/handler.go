@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"net/http"
 
+	"github.com/go-chi/chi/v5"
+
 	portin "lifebase/internal/auth/port/in"
 	"lifebase/internal/shared/middleware"
 	"lifebase/internal/shared/oauthstate"
@@ -152,6 +154,28 @@ func (h *AuthHandler) LinkGoogleAccount(w http.ResponseWriter, r *http.Request) 
 
 	if err := h.auth.LinkGoogleAccount(r.Context(), userID, req.Code, app); err != nil {
 		response.Error(w, http.StatusBadRequest, "LINK_FAILED", err.Error())
+		return
+	}
+
+	response.NoContent(w)
+}
+
+func (h *AuthHandler) SyncGoogleAccount(w http.ResponseWriter, r *http.Request) {
+	userID := middleware.GetUserID(r.Context())
+	accountID := chi.URLParam(r, "accountID")
+	if accountID == "" {
+		response.Error(w, http.StatusBadRequest, "INVALID_REQUEST", "account id is required")
+		return
+	}
+
+	var req portin.SyncGoogleAccountInput
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		response.Error(w, http.StatusBadRequest, "INVALID_REQUEST", "invalid request body")
+		return
+	}
+
+	if err := h.auth.SyncGoogleAccount(r.Context(), userID, accountID, req); err != nil {
+		response.Error(w, http.StatusBadRequest, "SYNC_FAILED", err.Error())
 		return
 	}
 

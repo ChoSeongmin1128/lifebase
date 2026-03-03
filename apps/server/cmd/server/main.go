@@ -120,6 +120,7 @@ func main() {
 		"admin": cfg.Server.AdminOrigin + "/admin/auth/callback",
 	}
 	authOAuthClient := authgoogle.NewOAuthClient(cfg.Google.ClientID, cfg.Google.ClientSecret, redirects)
+	googleAccountSyncer := authpg.NewGoogleAccountSyncer(dbpool, authOAuthClient)
 	authBootstrapper := authbootstrap.NewTodoBootstrapper(todoListRepo)
 	authUC := authusecase.NewAuthUseCase(
 		authusecase.JWTOptions{
@@ -131,6 +132,7 @@ func main() {
 		googleAccountRepo,
 		refreshTokenRepo,
 		authOAuthClient,
+		googleAccountSyncer,
 		authBootstrapper,
 	)
 	thumbnailQueue := cloudasynq.NewThumbnailQueue(asynqClient)
@@ -206,6 +208,7 @@ func main() {
 			r.Post("/auth/logout", authHandler.Logout)
 			r.Get("/auth/google-accounts", authHandler.GetGoogleAccounts)
 			r.Post("/auth/google-accounts/link", authHandler.LinkGoogleAccount)
+			r.Post("/auth/google-accounts/{accountID}/sync", authHandler.SyncGoogleAccount)
 
 			r.Get("/me", func(w http.ResponseWriter, r *http.Request) {
 				userID := middleware.GetUserID(r.Context())

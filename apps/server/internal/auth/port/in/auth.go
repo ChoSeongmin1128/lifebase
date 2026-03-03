@@ -19,6 +19,11 @@ type GoogleAccountSummary struct {
 	ConnectedAt time.Time `json:"connected_at"`
 }
 
+type SyncGoogleAccountInput struct {
+	SyncCalendar bool `json:"sync_calendar"`
+	SyncTodo     bool `json:"sync_todo"`
+}
+
 type AuthUseCase interface {
 	GetAuthURL(state string) string
 	GetAuthURLForApp(state, app string) string
@@ -26,6 +31,7 @@ type AuthUseCase interface {
 	HandleCallbackForApp(ctx context.Context, code, app string) (*LoginResult, error)
 	ListGoogleAccounts(ctx context.Context, userID string) ([]GoogleAccountSummary, error)
 	LinkGoogleAccount(ctx context.Context, userID, code, app string) error
+	SyncGoogleAccount(ctx context.Context, userID, accountID string, input SyncGoogleAccountInput) error
 	RefreshAccessToken(ctx context.Context, refreshToken string) (*LoginResult, error)
 	Logout(ctx context.Context, userID string) error
 }

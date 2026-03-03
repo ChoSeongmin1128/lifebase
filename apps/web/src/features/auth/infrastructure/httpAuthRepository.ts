@@ -7,6 +7,7 @@ import type {
   AuthTokenPair,
   AuthUrlResponse,
   GoogleAccountSummary,
+  SyncGoogleAccountInput,
 } from "@/features/auth/domain/AuthSession";
 
 interface GoogleAccountsResponse {
@@ -42,6 +43,15 @@ export class HttpAuthRepository implements AuthRepository {
   async linkGoogleAccount(input: AuthCallbackInput): Promise<void> {
     const token = this.getToken();
     await api("/auth/google-accounts/link", {
+      method: "POST",
+      body: input,
+      token,
+    });
+  }
+
+  async syncGoogleAccount(accountID: string, input: SyncGoogleAccountInput): Promise<void> {
+    const token = this.getToken();
+    await api(`/auth/google-accounts/${encodeURIComponent(accountID)}/sync`, {
       method: "POST",
       body: input,
       token,

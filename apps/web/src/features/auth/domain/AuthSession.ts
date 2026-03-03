@@ -24,3 +24,8 @@ export interface GoogleAccountSummary {
   is_primary: boolean;
   connected_at: string;
 }
+
+export interface SyncGoogleAccountInput {
+  sync_calendar: boolean;
+  sync_todo: boolean;
+}
