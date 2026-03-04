@@ -4,6 +4,11 @@ export interface TodoListItem {
   id: string;
   name: string;
   sort_order: number;
+  google_account_id?: string | null;
+  active_count?: number;
+  done_count?: number;
+  total_count?: number;
+  source?: "google" | "local" | string;
 }
 
 export interface ReorderItem {

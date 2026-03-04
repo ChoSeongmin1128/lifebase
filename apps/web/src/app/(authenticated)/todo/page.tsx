@@ -19,6 +19,8 @@ import { TodoRow } from "@/components/todo/TodoRow";
 import { CreateTodoDialog } from "@/components/todo/CreateTodoDialog";
 import { useCreateTodo } from "@/features/todo/ui/hooks/useCreateTodo";
 import { useTodoActions } from "@/features/todo/ui/hooks/useTodoActions";
+import { useSettingsActions } from "@/features/settings/ui/hooks/useSettingsActions";
+import { useAuthFlow } from "@/features/auth/ui/hooks/useAuthFlow";
 import {
   DndContext,
   closestCenter,
@@ -47,7 +49,14 @@ interface TodoList {
   id: string;
   name: string;
   sort_order: number;
+  google_account_id?: string | null;
+  active_count?: number;
+  done_count?: number;
+  total_count?: number;
+  source?: "google" | "local" | string;
 }
+
+const PAGE_ACTION_SYNC_COOLDOWN_MS = 15_000;
 
 function TodoPageInner() {
   const router = useRouter();
@@ -56,11 +65,18 @@ function TodoPageInner() {
   const quickAction = searchParams.get("quick");
 
   const [lists, setLists] = useState<TodoList[]>([]);
+  const [settings, setSettings] = useState<Record<string, string>>({});
   const [activeListId, setActiveListIdState] = useState<string>(listFromUrl);
+  const activeListIdRef = useRef<string>(listFromUrl);
 
   const setActiveListId = useCallback((id: string) => {
+    activeListIdRef.current = id;
     setActiveListIdState(id);
   }, []);
+
+  useEffect(() => {
+    activeListIdRef.current = activeListId;
+  }, [activeListId]);
 
   useEffect(() => {
     if (!activeListId) return;
@@ -81,6 +97,7 @@ function TodoPageInner() {
   const [showCreateDialog, setShowCreateDialog] = useState(false);
   const [createParentId, setCreateParentId] = useState<string | undefined>();
   const quickActionHandledRef = useRef(false);
+  const syncThrottleRef = useRef<Record<string, number>>({});
 
   // DnD state
   const [dragActiveId, setDragActiveId] = useState<string | null>(null);
@@ -90,7 +107,45 @@ function TodoPageInner() {
 
   const { createTodo, creating } = useCreateTodo();
   const { listLists, createList, deleteList, listTodos, updateTodo, deleteTodo, reorder } = useTodoActions();
+  const { getSettings } = useSettingsActions();
+  const { triggerGoogleSync } = useAuthFlow();
   const defaultListId = lists.length > 0 ? lists[0].id : null;
+
+  const getListActiveCount = useCallback((list: TodoList) => {
+    if (typeof list.active_count === "number") return list.active_count;
+    const total = typeof list.total_count === "number" ? list.total_count : 0;
+    const done = typeof list.done_count === "number" ? list.done_count : 0;
+    return Math.max(total - done, 0);
+  }, []);
+
+  const getListDoneCount = useCallback((list: TodoList) => {
+    if (typeof list.done_count === "number") return list.done_count;
+    return 0;
+  }, []);
+
+  const getListSourceLabel = useCallback((list: TodoList) => {
+    if (list.source === "google") return "Google";
+    if (list.source === "local") return "로컬";
+    return list.google_account_id ? "Google" : "로컬";
+  }, []);
+
+  const isTodoAccountEnabled = useCallback((accountID: string | null | undefined) => {
+    if (!accountID) return true;
+    return settings[`google_account_sync_todo_${accountID}`] !== "false";
+  }, [settings]);
+
+  const filterVisibleLists = useCallback((items: TodoList[]): TodoList[] => {
+    return items.filter((list) => isTodoAccountEnabled(list.google_account_id ?? null));
+  }, [isTodoAccountEnabled]);
+
+  const loadSettings = useCallback(async () => {
+    try {
+      const next = await getSettings();
+      setSettings(next || {});
+    } catch {
+      setSettings({});
+    }
+  }, [getSettings]);
 
   const loadLists = useCallback(async () => {
     try {
@@ -107,33 +162,89 @@ function TodoPageInner() {
         }
       }
 
-      setLists(fetchedLists);
+      const visibleLists = filterVisibleLists(fetchedLists);
+      setLists(visibleLists);
       setActiveListIdState((prev) => {
-        if (!prev && fetchedLists.length > 0) {
-          return fetchedLists[0].id;
+        if (!prev && visibleLists.length > 0) {
+          return visibleLists[0].id;
+        }
+        if (prev && !visibleLists.some((list) => list.id === prev)) {
+          return visibleLists[0]?.id ?? "";
         }
         return prev;
       });
     } catch {
       setLists([]);
     }
-  }, [createList, listLists, setActiveListId]);
+  }, [createList, filterVisibleLists, listLists, setActiveListId]);
 
-  const loadTodos = useCallback(async () => {
-    if (!activeListId) return;
+  const loadTodos = useCallback(async (listID?: string) => {
+    const targetListID = listID ?? activeListIdRef.current;
+    if (!targetListID) {
+      setTodos([]);
+      setLoading(false);
+      return;
+    }
     setLoading(true);
     try {
-      const next = await listTodos(activeListId, filter === "done");
+      const next = await listTodos(targetListID, filter === "done");
       setTodos(next || []);
     } catch {
       setTodos([]);
     } finally {
       setLoading(false);
     }
-  }, [activeListId, filter, listTodos]);
+  }, [filter, listTodos]);
 
-  useEffect(() => { loadLists(); }, [loadLists]);
-  useEffect(() => { loadTodos(); }, [loadTodos]);
+  const triggerTodoSync = useCallback(
+    (reason: "page_enter" | "page_action" | "tab_heartbeat", throttleMs = 0) => {
+      const key = `todo:${reason}`;
+      const now = Date.now();
+      const last = syncThrottleRef.current[key] || 0;
+      if (throttleMs > 0 && now-last < throttleMs) {
+        return;
+      }
+      syncThrottleRef.current[key] = now;
+      triggerGoogleSync({ area: "todo", reason }).catch(() => undefined);
+    },
+    [triggerGoogleSync]
+  );
+
+  const triggerTodoSyncAndRefresh = useCallback(
+    async (reason: "page_enter" | "tab_heartbeat", throttleMs = 0) => {
+      const key = `todo:${reason}`;
+      const now = Date.now();
+      const last = syncThrottleRef.current[key] || 0;
+      if (throttleMs > 0 && now-last < throttleMs) {
+        return;
+      }
+      syncThrottleRef.current[key] = now;
+
+      try {
+        const scheduled = await triggerGoogleSync({ area: "todo", reason });
+        if (scheduled > 0) {
+          await loadLists();
+          await loadTodos(activeListIdRef.current);
+        }
+      } catch {
+        // ignore sync refresh failures
+      }
+    },
+    [loadLists, loadTodos, triggerGoogleSync]
+  );
+
+  useEffect(() => { loadSettings(); }, [loadSettings]);
+  useEffect(() => { loadLists(); }, [loadLists, settings]);
+  useEffect(() => { loadTodos(activeListId); }, [activeListId, loadTodos]);
+  useEffect(() => {
+    triggerTodoSyncAndRefresh("page_enter", 5_000);
+  }, [triggerTodoSyncAndRefresh]);
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      triggerTodoSyncAndRefresh("tab_heartbeat", 9 * 60_000);
+    }, 10 * 60_000);
+    return () => window.clearInterval(timer);
+  }, [triggerTodoSyncAndRefresh]);
   useEffect(() => {
     if (quickAction !== "create") return;
     if (quickActionHandledRef.current) return;
@@ -157,8 +268,9 @@ function TodoPageInner() {
       const list = await createList(newListName);
       setNewListName("");
       setShowNewList(false);
-      setLists((prev) => [...prev, list]);
       setActiveListId(list.id);
+      await loadLists();
+      triggerTodoSync("page_action", PAGE_ACTION_SYNC_COOLDOWN_MS);
     } catch (err) {
       console.error("Create list failed:", err);
     }
@@ -190,7 +302,9 @@ function TodoPageInner() {
       }
       setShowCreateDialog(false);
       setCreateParentId(undefined);
-      loadTodos();
+      await loadTodos();
+      await loadLists();
+      triggerTodoSync("page_action", PAGE_ACTION_SYNC_COOLDOWN_MS);
     } catch (err) {
       console.error("Create todo failed:", err);
     }
@@ -199,7 +313,9 @@ function TodoPageInner() {
   const handleToggleDone = async (todo: TodoItem) => {
     try {
       await updateTodo(todo.id, { is_done: !todo.is_done });
-      loadTodos();
+      await loadTodos();
+      await loadLists();
+      triggerTodoSync("page_action", PAGE_ACTION_SYNC_COOLDOWN_MS);
     } catch (err) {
       console.error("Toggle failed:", err);
     }
@@ -208,7 +324,8 @@ function TodoPageInner() {
   const handleTogglePin = async (todo: TodoItem) => {
     try {
       await updateTodo(todo.id, { is_pinned: !todo.is_pinned });
-      loadTodos();
+      await loadTodos();
+      triggerTodoSync("page_action", PAGE_ACTION_SYNC_COOLDOWN_MS);
     } catch (err) {
       console.error("Pin toggle failed:", err);
     }
@@ -218,7 +335,9 @@ function TodoPageInner() {
     try {
       await deleteTodo(todoId);
       setEditingTodo(null);
-      loadTodos();
+      await loadTodos();
+      await loadLists();
+      triggerTodoSync("page_action", PAGE_ACTION_SYNC_COOLDOWN_MS);
     } catch (err) {
       console.error("Delete failed:", err);
     }
@@ -228,7 +347,14 @@ function TodoPageInner() {
     try {
       await updateTodo(todoId, updates);
       setEditingTodo(null);
-      loadTodos();
+      await loadTodos();
+      const needsListRefresh =
+        Object.prototype.hasOwnProperty.call(updates, "is_done") ||
+        Object.prototype.hasOwnProperty.call(updates, "list_id");
+      if (needsListRefresh) {
+        await loadLists();
+      }
+      triggerTodoSync("page_action", PAGE_ACTION_SYNC_COOLDOWN_MS);
     } catch (err) {
       console.error("Update failed:", err);
     }
@@ -238,11 +364,8 @@ function TodoPageInner() {
     if (listId === defaultListId) return;
     try {
       await deleteList(listId);
-      setLists((prev) => prev.filter((l) => l.id !== listId));
-      if (activeListId === listId && lists.length > 1) {
-        const remaining = lists.filter((l) => l.id !== listId);
-        if (remaining.length > 0) setActiveListId(remaining[0].id);
-      }
+      await loadLists();
+      triggerTodoSync("page_action", PAGE_ACTION_SYNC_COOLDOWN_MS);
     } catch (err) {
       console.error("Delete list failed:", err);
     }
@@ -347,12 +470,13 @@ function TodoPageInner() {
     // Persist to server
     try {
       await reorder(changes);
+      triggerTodoSync("page_action", PAGE_ACTION_SYNC_COOLDOWN_MS);
     } catch (err) {
       console.error("Reorder failed:", err);
       setTodos(dragSnapshotRef.current);
       loadTodos();
     }
-  }, [allFlat, loadTodos, reorder, todos]);
+  }, [allFlat, loadTodos, reorder, todos, triggerTodoSync]);
 
   const handleDragCancel = useCallback(() => {
     setDragActiveId(null);
@@ -471,13 +595,25 @@ function TodoPageInner() {
               <button
                 onClick={() => setActiveListId(list.id)}
                 className={cn(
-                  "mb-0.5 flex w-full items-center justify-between rounded-lg px-3 py-2 text-sm transition-colors",
+                  "mb-0.5 flex w-full items-start justify-between rounded-lg px-3 py-2 transition-colors",
                   activeListId === list.id
-                    ? "border-l-2 border-primary bg-surface-accent font-medium text-text-strong"
+                    ? "border-l-2 border-primary bg-surface-accent text-text-strong"
                     : "text-text-secondary hover:bg-surface-accent/50"
                 )}
               >
-                <span className="truncate">{list.name}</span>
+                <div className="min-w-0 flex-1 text-left">
+                  <p className="truncate text-sm font-medium">{list.name}</p>
+                  <div className={cn(
+                    "mt-0.5 flex items-center gap-1 text-[11px]",
+                    activeListId === list.id ? "text-text-secondary" : "text-text-muted",
+                  )}>
+                    <span className="tabular-nums">진행 {getListActiveCount(list)}</span>
+                    <span>·</span>
+                    <span className="tabular-nums">완료 {getListDoneCount(list)}</span>
+                    <span className="mx-1 text-border">|</span>
+                    <span>{getListSourceLabel(list)}</span>
+                  </div>
+                </div>
                 {index !== 0 && (
                   <span
                     onClick={(e) => {
@@ -532,7 +668,13 @@ function TodoPageInner() {
                 : "bg-surface-accent text-text-secondary"
             )}
           >
-            {list.name}
+            <span className="max-w-[9rem] truncate">{list.name}</span>
+            <span className={cn(
+              "rounded-full px-1.5 py-0.5 text-[10px] tabular-nums",
+              activeListId === list.id ? "bg-white/20 text-white" : "bg-surface text-text-muted",
+            )}>
+              진행 {getListActiveCount(list)}
+            </span>
           </button>
         ))}
         <button
