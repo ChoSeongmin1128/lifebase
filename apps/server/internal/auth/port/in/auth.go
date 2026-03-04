@@ -24,6 +24,11 @@ type SyncGoogleAccountInput struct {
 	SyncTodo     bool `json:"sync_todo"`
 }
 
+type TriggerGoogleSyncInput struct {
+	Area   string `json:"area"`   // calendar | todo | both
+	Reason string `json:"reason"` // page_enter | page_action | tab_heartbeat | hourly | manual
+}
+
 type AuthUseCase interface {
 	GetAuthURL(state string) string
 	GetAuthURLForApp(state, app string) string
@@ -32,6 +37,9 @@ type AuthUseCase interface {
 	ListGoogleAccounts(ctx context.Context, userID string) ([]GoogleAccountSummary, error)
 	LinkGoogleAccount(ctx context.Context, userID, code, app string) error
 	SyncGoogleAccount(ctx context.Context, userID, accountID string, input SyncGoogleAccountInput) error
+	TriggerGoogleSync(ctx context.Context, userID string, input TriggerGoogleSyncInput) (int, error)
+	RunHourlyGoogleSync(ctx context.Context) (int, error)
+	ProcessGooglePushOutbox(ctx context.Context, limit int) (int, error)
 	RefreshAccessToken(ctx context.Context, refreshToken string) (*LoginResult, error)
 	Logout(ctx context.Context, userID string) error
 }

@@ -22,6 +22,7 @@ import (
 	authbootstrap "lifebase/internal/auth/adapter/out/bootstrap"
 	authgoogle "lifebase/internal/auth/adapter/out/google"
 	authpg "lifebase/internal/auth/adapter/out/postgres"
+	authportin "lifebase/internal/auth/port/in"
 	authusecase "lifebase/internal/auth/usecase"
 	calendarhttp "lifebase/internal/calendar/adapter/in/http"
 	calendarpg "lifebase/internal/calendar/adapter/out/postgres"
@@ -121,6 +122,8 @@ func main() {
 	}
 	authOAuthClient := authgoogle.NewOAuthClient(cfg.Google.ClientID, cfg.Google.ClientSecret, redirects)
 	googleAccountSyncer := authpg.NewGoogleAccountSyncer(dbpool, authOAuthClient)
+	googleSyncCoordinator := authpg.NewGoogleSyncCoordinator(dbpool, googleAccountSyncer)
+	googlePushProcessor := authpg.NewGooglePushProcessor(dbpool, authOAuthClient)
 	authBootstrapper := authbootstrap.NewTodoBootstrapper(todoListRepo)
 	authUC := authusecase.NewAuthUseCase(
 		authusecase.JWTOptions{
@@ -133,13 +136,17 @@ func main() {
 		refreshTokenRepo,
 		authOAuthClient,
 		googleAccountSyncer,
+		googleSyncCoordinator,
+		googlePushProcessor,
 		authBootstrapper,
 	)
+	eventOutboxRepo := calendarpg.NewEventPushOutboxRepo(dbpool)
+	todoOutboxRepo := todopg.NewTodoPushOutboxRepo(dbpool)
 	thumbnailQueue := cloudasynq.NewThumbnailQueue(asynqClient)
 	cloudUC := cloudusecase.NewCloudUseCase(folderRepo, fileRepo, cloudSharedRepo, starRepo, storage, thumbnailQueue)
 	galleryUC := galleryusecase.NewGalleryUseCase(mediaRepo)
-	calendarUC := calendarusecase.NewCalendarUseCase(calendarRepo, eventRepo, reminderRepo)
-	todoUC := todousecase.NewTodoUseCase(todoListRepo, todoItemRepo)
+	calendarUC := calendarusecase.NewCalendarUseCase(calendarRepo, eventRepo, reminderRepo, eventOutboxRepo)
+	todoUC := todousecase.NewTodoUseCase(todoListRepo, todoItemRepo, todoOutboxRepo)
 	sharingUC := sharingusecase.NewSharingUseCase(shareRepo, inviteRepo)
 	settingsUC := settingsusecase.NewSettingsUseCase(settingspg.NewSettingsRepo(dbpool))
 	homeUC := homeusecase.NewHomeUseCase(homeRepo)
@@ -209,6 +216,7 @@ func main() {
 			r.Get("/auth/google-accounts", authHandler.GetGoogleAccounts)
 			r.Post("/auth/google-accounts/link", authHandler.LinkGoogleAccount)
 			r.Post("/auth/google-accounts/{accountID}/sync", authHandler.SyncGoogleAccount)
+			r.Post("/auth/google-sync/trigger", authHandler.TriggerGoogleSync)
 
 			r.Get("/me", func(w http.ResponseWriter, r *http.Request) {
 				userID := middleware.GetUserID(r.Context())
@@ -351,11 +359,17 @@ func main() {
 		}
 	}()
 
+	bgCtx, bgCancel := context.WithCancel(context.Background())
+	defer bgCancel()
+	go runGoogleBackgroundPullSync(bgCtx, authUC)
+	go runGooglePushOutboxWorker(bgCtx, authUC)
+
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	<-quit
 
 	slog.Info("shutting down server")
+	bgCancel()
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
@@ -365,4 +379,61 @@ func main() {
 	}
 
 	slog.Info("server stopped")
+}
+
+func runGoogleBackgroundPullSync(ctx context.Context, authUC authportin.AuthUseCase) {
+	ticker := time.NewTicker(10 * time.Minute)
+	defer ticker.Stop()
+
+	run := func() {
+		runCtx, cancel := context.WithTimeout(ctx, 3*time.Minute)
+		defer cancel()
+
+		count, err := authUC.RunHourlyGoogleSync(runCtx)
+		if err != nil {
+			slog.Warn("google background pull sync failed", "error", err)
+			return
+		}
+		if count > 0 {
+			slog.Info("google background pull sync completed", "scheduled_accounts", count)
+		}
+	}
+
+	// Warm start once shortly after boot.
+	startupDelay := time.NewTimer(15 * time.Second)
+	defer startupDelay.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-startupDelay.C:
+			run()
+		case <-ticker.C:
+			run()
+		}
+	}
+}
+
+func runGooglePushOutboxWorker(ctx context.Context, authUC authportin.AuthUseCase) {
+	ticker := time.NewTicker(5 * time.Second)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			runCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+			processed, err := authUC.ProcessGooglePushOutbox(runCtx, 100)
+			cancel()
+			if err != nil {
+				slog.Warn("google push outbox worker failed", "error", err)
+				continue
+			}
+			if processed > 0 {
+				slog.Info("google push outbox worker processed", "items", processed)
+			}
+		}
+	}
 }

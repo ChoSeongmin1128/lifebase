@@ -182,6 +182,25 @@ func (h *AuthHandler) SyncGoogleAccount(w http.ResponseWriter, r *http.Request) 
 	response.NoContent(w)
 }
 
+func (h *AuthHandler) TriggerGoogleSync(w http.ResponseWriter, r *http.Request) {
+	userID := middleware.GetUserID(r.Context())
+	var req portin.TriggerGoogleSyncInput
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		response.Error(w, http.StatusBadRequest, "INVALID_REQUEST", "invalid request body")
+		return
+	}
+
+	count, err := h.auth.TriggerGoogleSync(r.Context(), userID, req)
+	if err != nil {
+		response.Error(w, http.StatusBadRequest, "SYNC_TRIGGER_FAILED", err.Error())
+		return
+	}
+
+	response.JSON(w, http.StatusAccepted, map[string]any{
+		"scheduled_accounts": count,
+	})
+}
+
 func (h *AuthHandler) Logout(w http.ResponseWriter, r *http.Request) {
 	userID := middleware.GetUserID(r.Context())
 	if err := h.auth.Logout(r.Context(), userID); err != nil {

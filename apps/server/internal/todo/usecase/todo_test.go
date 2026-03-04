@@ -173,7 +173,7 @@ func (m *mockTodoRepo) NextSortOrder(_ context.Context, userID, listID string, p
 func TestCreateTodo_DefaultPriority(t *testing.T) {
 	listRepo := newMockListRepo()
 	todoRepo := newMockTodoRepo()
-	uc := NewTodoUseCase(listRepo, todoRepo)
+	uc := NewTodoUseCase(listRepo, todoRepo, nil)
 
 	ctx := context.Background()
 	list, _ := uc.CreateList(ctx, "user1", "My List")
@@ -193,7 +193,7 @@ func TestCreateTodo_DefaultPriority(t *testing.T) {
 func TestCreateTodo_MaxNestingDepth(t *testing.T) {
 	listRepo := newMockListRepo()
 	todoRepo := newMockTodoRepo()
-	uc := NewTodoUseCase(listRepo, todoRepo)
+	uc := NewTodoUseCase(listRepo, todoRepo, nil)
 
 	ctx := context.Background()
 	list, _ := uc.CreateList(ctx, "user1", "My List")
@@ -223,7 +223,7 @@ func TestCreateTodo_MaxNestingDepth(t *testing.T) {
 func TestUpdateTodo_MaxNestingDepth(t *testing.T) {
 	listRepo := newMockListRepo()
 	todoRepo := newMockTodoRepo()
-	uc := NewTodoUseCase(listRepo, todoRepo)
+	uc := NewTodoUseCase(listRepo, todoRepo, nil)
 
 	ctx := context.Background()
 	list, _ := uc.CreateList(ctx, "user1", "My List")
@@ -253,7 +253,7 @@ func TestUpdateTodo_MaxNestingDepth(t *testing.T) {
 func TestReorderTodos_MaxNestingDepth(t *testing.T) {
 	listRepo := newMockListRepo()
 	todoRepo := newMockTodoRepo()
-	uc := NewTodoUseCase(listRepo, todoRepo)
+	uc := NewTodoUseCase(listRepo, todoRepo, nil)
 
 	ctx := context.Background()
 	list, _ := uc.CreateList(ctx, "user1", "My List")
@@ -283,7 +283,7 @@ func TestReorderTodos_MaxNestingDepth(t *testing.T) {
 func TestUpdateTodo_MaxPinned(t *testing.T) {
 	listRepo := newMockListRepo()
 	todoRepo := newMockTodoRepo()
-	uc := NewTodoUseCase(listRepo, todoRepo)
+	uc := NewTodoUseCase(listRepo, todoRepo, nil)
 
 	ctx := context.Background()
 	list, _ := uc.CreateList(ctx, "user1", "My List")
@@ -317,7 +317,7 @@ func TestUpdateTodo_MaxPinned(t *testing.T) {
 func TestUpdateTodo_MarkDone(t *testing.T) {
 	listRepo := newMockListRepo()
 	todoRepo := newMockTodoRepo()
-	uc := NewTodoUseCase(listRepo, todoRepo)
+	uc := NewTodoUseCase(listRepo, todoRepo, nil)
 
 	ctx := context.Background()
 	list, _ := uc.CreateList(ctx, "user1", "My List")
@@ -357,7 +357,7 @@ func TestUpdateTodo_MarkDone(t *testing.T) {
 func TestCreateList_And_Delete(t *testing.T) {
 	listRepo := newMockListRepo()
 	todoRepo := newMockTodoRepo()
-	uc := NewTodoUseCase(listRepo, todoRepo)
+	uc := NewTodoUseCase(listRepo, todoRepo, nil)
 
 	ctx := context.Background()
 	_, err := uc.CreateList(ctx, "user1", "Default")

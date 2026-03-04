@@ -16,17 +16,20 @@ type calendarUseCase struct {
 	calendars portout.CalendarRepository
 	events    portout.EventRepository
 	reminders portout.ReminderRepository
+	outbox    portout.EventPushOutbox
 }
 
 func NewCalendarUseCase(
 	calendars portout.CalendarRepository,
 	events portout.EventRepository,
 	reminders portout.ReminderRepository,
+	outbox portout.EventPushOutbox,
 ) portin.CalendarUseCase {
 	return &calendarUseCase{
 		calendars: calendars,
 		events:    events,
 		reminders: reminders,
+		outbox:    outbox,
 	}
 }
 
@@ -133,6 +136,9 @@ func (uc *calendarUseCase) CreateEvent(ctx context.Context, userID string, input
 	if err := uc.events.Create(ctx, event); err != nil {
 		return nil, fmt.Errorf("create event: %w", err)
 	}
+	if uc.outbox != nil {
+		_ = uc.outbox.EnqueueCreate(ctx, userID, event.ID, event.UpdatedAt)
+	}
 
 	// Create reminders
 	if len(input.Reminders) > 0 {
@@ -223,6 +229,9 @@ func (uc *calendarUseCase) UpdateEvent(ctx context.Context, userID, eventID stri
 	if err := uc.events.Update(ctx, event); err != nil {
 		return nil, fmt.Errorf("update event: %w", err)
 	}
+	if uc.outbox != nil {
+		_ = uc.outbox.EnqueueUpdate(ctx, userID, event.ID, event.UpdatedAt)
+	}
 
 	// Update reminders if provided
 	if input.Reminders != nil {
@@ -252,5 +261,11 @@ func (uc *calendarUseCase) UpdateEvent(ctx context.Context, userID, eventID stri
 }
 
 func (uc *calendarUseCase) DeleteEvent(ctx context.Context, userID, eventID string) error {
-	return uc.events.SoftDelete(ctx, userID, eventID)
+	if err := uc.events.SoftDelete(ctx, userID, eventID); err != nil {
+		return err
+	}
+	if uc.outbox != nil {
+		_ = uc.outbox.EnqueueDelete(ctx, userID, eventID, time.Now())
+	}
+	return nil
 }

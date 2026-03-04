@@ -2,6 +2,7 @@ package out
 
 import (
 	"context"
+	"time"
 
 	"lifebase/internal/calendar/domain"
 )
@@ -26,4 +27,10 @@ type ReminderRepository interface {
 	CreateBatch(ctx context.Context, reminders []domain.EventReminder) error
 	ListByEvent(ctx context.Context, eventID string) ([]domain.EventReminder, error)
 	DeleteByEvent(ctx context.Context, eventID string) error
+}
+
+type EventPushOutbox interface {
+	EnqueueCreate(ctx context.Context, userID, eventID string, expectedUpdatedAt time.Time) error
+	EnqueueUpdate(ctx context.Context, userID, eventID string, expectedUpdatedAt time.Time) error
+	EnqueueDelete(ctx context.Context, userID, eventID string, expectedUpdatedAt time.Time) error
 }

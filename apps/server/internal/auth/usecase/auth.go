@@ -25,13 +25,15 @@ type JWTOptions struct {
 const defaultStorageQuotaBytes int64 = 1 << 40 // 1TB
 
 type authUseCase struct {
-	jwt           JWTOptions
-	users         portout.UserRepository
-	googleAccts   portout.GoogleAccountRepository
-	refreshTokens portout.RefreshTokenRepository
-	googleAuth    portout.GoogleAuthClient
-	googleSyncer  portout.GoogleAccountSyncer
-	bootstrapper  portout.UserBootstrapper
+	jwt             JWTOptions
+	users           portout.UserRepository
+	googleAccts     portout.GoogleAccountRepository
+	refreshTokens   portout.RefreshTokenRepository
+	googleAuth      portout.GoogleAuthClient
+	googleSyncer    portout.GoogleAccountSyncer
+	syncCoordinator portout.GoogleSyncCoordinator
+	pushProcessor   portout.GooglePushProcessor
+	bootstrapper    portout.UserBootstrapper
 }
 
 func NewAuthUseCase(
@@ -41,16 +43,20 @@ func NewAuthUseCase(
 	refreshTokens portout.RefreshTokenRepository,
 	googleAuth portout.GoogleAuthClient,
 	googleSyncer portout.GoogleAccountSyncer,
+	syncCoordinator portout.GoogleSyncCoordinator,
+	pushProcessor portout.GooglePushProcessor,
 	bootstrapper portout.UserBootstrapper,
 ) portin.AuthUseCase {
 	return &authUseCase{
-		jwt:           jwt,
-		users:         users,
-		googleAccts:   googleAccts,
-		refreshTokens: refreshTokens,
-		googleAuth:    googleAuth,
-		googleSyncer:  googleSyncer,
-		bootstrapper:  bootstrapper,
+		jwt:             jwt,
+		users:           users,
+		googleAccts:     googleAccts,
+		refreshTokens:   refreshTokens,
+		googleAuth:      googleAuth,
+		googleSyncer:    googleSyncer,
+		syncCoordinator: syncCoordinator,
+		pushProcessor:   pushProcessor,
+		bootstrapper:    bootstrapper,
 	}
 }
 
@@ -212,6 +218,42 @@ func (uc *authUseCase) SyncGoogleAccount(
 		SyncCalendar: input.SyncCalendar,
 		SyncTodo:     input.SyncTodo,
 	})
+}
+
+func (uc *authUseCase) TriggerGoogleSync(
+	ctx context.Context,
+	userID string,
+	input portin.TriggerGoogleSyncInput,
+) (int, error) {
+	if uc.syncCoordinator == nil {
+		return 0, nil
+	}
+	area := input.Area
+	if area == "" {
+		area = "both"
+	}
+	reason := input.Reason
+	if reason == "" {
+		reason = "manual"
+	}
+	return uc.syncCoordinator.TriggerUserSync(ctx, userID, area, reason)
+}
+
+func (uc *authUseCase) RunHourlyGoogleSync(ctx context.Context) (int, error) {
+	if uc.syncCoordinator == nil {
+		return 0, nil
+	}
+	return uc.syncCoordinator.RunHourlySync(ctx)
+}
+
+func (uc *authUseCase) ProcessGooglePushOutbox(ctx context.Context, limit int) (int, error) {
+	if uc.pushProcessor == nil {
+		return 0, nil
+	}
+	if limit <= 0 {
+		limit = 50
+	}
+	return uc.pushProcessor.ProcessPending(ctx, limit)
 }
 
 func (uc *authUseCase) RefreshAccessToken(ctx context.Context, refreshTokenStr string) (*portin.LoginResult, error) {

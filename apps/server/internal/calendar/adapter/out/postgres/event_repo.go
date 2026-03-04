@@ -96,9 +96,10 @@ func (r *eventRepo) Update(ctx context.Context, event *domain.Event) error {
 }
 
 func (r *eventRepo) SoftDelete(ctx context.Context, userID, id string) error {
+	now := time.Now()
 	_, err := r.db.Exec(ctx,
-		`UPDATE events SET deleted_at = $3 WHERE id = $1 AND user_id = $2 AND deleted_at IS NULL`,
-		id, userID, time.Now(),
+		`UPDATE events SET deleted_at = $3, updated_at = $3 WHERE id = $1 AND user_id = $2 AND deleted_at IS NULL`,
+		id, userID, now,
 	)
 	return err
 }

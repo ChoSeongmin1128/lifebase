@@ -2,6 +2,7 @@ package out
 
 import (
 	"context"
+	"time"
 
 	"lifebase/internal/todo/domain"
 )
@@ -25,4 +26,10 @@ type TodoRepository interface {
 	SoftDeleteByParentID(ctx context.Context, userID, parentID string) error
 	UpdateBatch(ctx context.Context, todos []*domain.Todo) error
 	NextSortOrder(ctx context.Context, userID, listID string, parentID *string) (int, error)
+}
+
+type TodoPushOutbox interface {
+	EnqueueCreate(ctx context.Context, userID, todoID string, expectedUpdatedAt time.Time) error
+	EnqueueUpdate(ctx context.Context, userID, todoID string, expectedUpdatedAt time.Time) error
+	EnqueueDelete(ctx context.Context, userID, todoID string, expectedUpdatedAt time.Time) error
 }

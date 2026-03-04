@@ -13,8 +13,9 @@ import (
 )
 
 type todoUseCase struct {
-	lists portout.TodoListRepository
-	todos portout.TodoRepository
+	lists  portout.TodoListRepository
+	todos  portout.TodoRepository
+	outbox portout.TodoPushOutbox
 }
 
 func normalizeParentID(parentID *string) *string {
@@ -25,8 +26,8 @@ func normalizeParentID(parentID *string) *string {
 	return &id
 }
 
-func NewTodoUseCase(lists portout.TodoListRepository, todos portout.TodoRepository) portin.TodoUseCase {
-	return &todoUseCase{lists: lists, todos: todos}
+func NewTodoUseCase(lists portout.TodoListRepository, todos portout.TodoRepository, outbox portout.TodoPushOutbox) portin.TodoUseCase {
+	return &todoUseCase{lists: lists, todos: todos, outbox: outbox}
 }
 
 // Lists
@@ -134,6 +135,9 @@ func (uc *todoUseCase) CreateTodo(ctx context.Context, userID string, input port
 	if err := uc.todos.Create(ctx, todo); err != nil {
 		return nil, fmt.Errorf("create todo: %w", err)
 	}
+	if uc.outbox != nil {
+		_ = uc.outbox.EnqueueCreate(ctx, userID, todo.ID, todo.UpdatedAt)
+	}
 	return todo, nil
 }
 
@@ -239,13 +243,22 @@ func (uc *todoUseCase) UpdateTodo(ctx context.Context, userID, todoID string, in
 	if err := uc.todos.Update(ctx, todo); err != nil {
 		return nil, fmt.Errorf("update todo: %w", err)
 	}
+	if uc.outbox != nil {
+		_ = uc.outbox.EnqueueUpdate(ctx, userID, todo.ID, todo.UpdatedAt)
+	}
 	return todo, nil
 }
 
 func (uc *todoUseCase) DeleteTodo(ctx context.Context, userID, todoID string) error {
 	// Cascade: soft-delete children first
 	_ = uc.todos.SoftDeleteByParentID(ctx, userID, todoID)
-	return uc.todos.SoftDelete(ctx, userID, todoID)
+	if err := uc.todos.SoftDelete(ctx, userID, todoID); err != nil {
+		return err
+	}
+	if uc.outbox != nil {
+		_ = uc.outbox.EnqueueDelete(ctx, userID, todoID, time.Now())
+	}
+	return nil
 }
 
 func (uc *todoUseCase) ReorderTodos(ctx context.Context, userID string, items []portin.ReorderItem) error {

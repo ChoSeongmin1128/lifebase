@@ -59,6 +59,74 @@ type OAuthTaskList struct {
 	Name     string
 }
 
+type OAuthCalendarEvent struct {
+	GoogleID       string
+	Status         string
+	Title          string
+	Description    string
+	Location       string
+	StartTime      *time.Time
+	EndTime        *time.Time
+	Timezone       string
+	IsAllDay       bool
+	ColorID        *string
+	RecurrenceRule *string
+	ETag           *string
+}
+
+type OAuthCalendarEventsPage struct {
+	Events        []OAuthCalendarEvent
+	NextPageToken string
+	NextSyncToken string
+}
+
+type OAuthTask struct {
+	GoogleID    string
+	Title       string
+	Notes       string
+	DueDate     *string
+	IsDone      bool
+	IsDeleted   bool
+	CompletedAt *time.Time
+}
+
+type OAuthTasksPage struct {
+	Items         []OAuthTask
+	NextPageToken string
+}
+
+type CalendarEventUpsertInput struct {
+	Title          string
+	Description    string
+	Location       string
+	StartTime      time.Time
+	EndTime        time.Time
+	Timezone       string
+	IsAllDay       bool
+	ColorID        *string
+	RecurrenceRule *string
+	ETag           *string
+}
+
+type TodoUpsertInput struct {
+	Title   string
+	Notes   string
+	DueDate *string
+	IsDone  bool
+}
+
+type GoogleAPIError struct {
+	StatusCode int
+	Message    string
+}
+
+func (e *GoogleAPIError) Error() string {
+	if e == nil {
+		return "google api error"
+	}
+	return e.Message
+}
+
 type GoogleAuthClient interface {
 	AuthURL(state string) string
 	AuthURLForApp(state, app string) string
@@ -67,6 +135,14 @@ type GoogleAuthClient interface {
 	FetchUserInfo(ctx context.Context, token OAuthToken) (*OAuthUserInfo, error)
 	ListCalendars(ctx context.Context, token OAuthToken) ([]OAuthCalendar, error)
 	ListTaskLists(ctx context.Context, token OAuthToken) ([]OAuthTaskList, error)
+	ListCalendarEvents(ctx context.Context, token OAuthToken, calendarID, pageToken, syncToken string, timeMin, timeMax *time.Time) (*OAuthCalendarEventsPage, error)
+	ListTasks(ctx context.Context, token OAuthToken, taskListID, pageToken string) (*OAuthTasksPage, error)
+	CreateCalendarEvent(ctx context.Context, token OAuthToken, calendarID string, input CalendarEventUpsertInput) (googleID string, etag *string, err error)
+	UpdateCalendarEvent(ctx context.Context, token OAuthToken, calendarID, eventID string, input CalendarEventUpsertInput) (etag *string, err error)
+	DeleteCalendarEvent(ctx context.Context, token OAuthToken, calendarID, eventID string) error
+	CreateTask(ctx context.Context, token OAuthToken, taskListID string, input TodoUpsertInput) (googleID string, err error)
+	UpdateTask(ctx context.Context, token OAuthToken, taskListID, taskID string, input TodoUpsertInput) error
+	DeleteTask(ctx context.Context, token OAuthToken, taskListID, taskID string) error
 }
 
 type GoogleSyncOptions struct {
@@ -76,6 +152,15 @@ type GoogleSyncOptions struct {
 
 type GoogleAccountSyncer interface {
 	SyncAccount(ctx context.Context, userID string, account *domain.GoogleAccount, options GoogleSyncOptions) error
+}
+
+type GoogleSyncCoordinator interface {
+	TriggerUserSync(ctx context.Context, userID, area, reason string) (int, error)
+	RunHourlySync(ctx context.Context) (int, error)
+}
+
+type GooglePushProcessor interface {
+	ProcessPending(ctx context.Context, limit int) (int, error)
 }
 
 type UserBootstrapper interface {

@@ -1,10 +1,14 @@
 package google
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/url"
+	"strings"
+	"time"
 
 	"golang.org/x/oauth2"
 	"golang.org/x/oauth2/google"
@@ -208,6 +212,426 @@ func (c *oauthClient) ListTaskLists(ctx context.Context, token portout.OAuthToke
 	return lists, nil
 }
 
+func (c *oauthClient) ListCalendarEvents(
+	ctx context.Context,
+	token portout.OAuthToken,
+	calendarID, pageToken, syncToken string,
+	timeMin, timeMax *time.Time,
+) (*portout.OAuthCalendarEventsPage, error) {
+	client := c.apiClient(ctx, token)
+	params := url.Values{}
+	params.Set("singleEvents", "true")
+	params.Set("showDeleted", "true")
+	params.Set("maxResults", "250")
+	if pageToken != "" {
+		params.Set("pageToken", pageToken)
+	}
+	if syncToken != "" {
+		params.Set("syncToken", syncToken)
+	} else {
+		if timeMin != nil {
+			params.Set("timeMin", timeMin.Format(time.RFC3339))
+		}
+		if timeMax != nil {
+			params.Set("timeMax", timeMax.Format(time.RFC3339))
+		}
+		params.Set("orderBy", "startTime")
+	}
+
+	endpoint := fmt.Sprintf(
+		"https://www.googleapis.com/calendar/v3/calendars/%s/events?%s",
+		url.PathEscape(calendarID),
+		params.Encode(),
+	)
+	resp, err := client.Get(endpoint)
+	if err != nil {
+		return nil, err
+	}
+
+	var payload struct {
+		Items []struct {
+			ID          string   `json:"id"`
+			Status      string   `json:"status"`
+			Summary     string   `json:"summary"`
+			Description string   `json:"description"`
+			Location    string   `json:"location"`
+			ColorID     string   `json:"colorId"`
+			Recurrence  []string `json:"recurrence"`
+			ETag        string   `json:"etag"`
+			Start       struct {
+				Date     string `json:"date"`
+				DateTime string `json:"dateTime"`
+				TimeZone string `json:"timeZone"`
+			} `json:"start"`
+			End struct {
+				Date     string `json:"date"`
+				DateTime string `json:"dateTime"`
+				TimeZone string `json:"timeZone"`
+			} `json:"end"`
+		} `json:"items"`
+		NextPageToken string `json:"nextPageToken"`
+		NextSyncToken string `json:"nextSyncToken"`
+	}
+
+	decodeErr := json.NewDecoder(resp.Body).Decode(&payload)
+	_ = resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("google calendar events returned %d", resp.StatusCode)
+	}
+	if decodeErr != nil {
+		return nil, decodeErr
+	}
+
+	events := make([]portout.OAuthCalendarEvent, 0, len(payload.Items))
+	for _, item := range payload.Items {
+		startTime, endTime, isAllDay, parseErr := parseGoogleEventDateTime(item.Start.Date, item.Start.DateTime, item.End.Date, item.End.DateTime)
+		if parseErr != nil {
+			continue
+		}
+		timezone := item.Start.TimeZone
+		if timezone == "" {
+			timezone = item.End.TimeZone
+		}
+		if timezone == "" {
+			timezone = "Asia/Seoul"
+		}
+
+		var colorID *string
+		if item.ColorID != "" {
+			colorID = &item.ColorID
+		}
+
+		var recurrenceRule *string
+		for _, line := range item.Recurrence {
+			if strings.HasPrefix(line, "RRULE:") {
+				rule := strings.TrimPrefix(line, "RRULE:")
+				recurrenceRule = &rule
+				break
+			}
+		}
+
+		var etag *string
+		if item.ETag != "" {
+			etag = &item.ETag
+		}
+
+		title := item.Summary
+		if title == "" {
+			title = "제목 없음"
+		}
+		events = append(events, portout.OAuthCalendarEvent{
+			GoogleID:       item.ID,
+			Status:         item.Status,
+			Title:          title,
+			Description:    item.Description,
+			Location:       item.Location,
+			StartTime:      &startTime,
+			EndTime:        &endTime,
+			Timezone:       timezone,
+			IsAllDay:       isAllDay,
+			ColorID:        colorID,
+			RecurrenceRule: recurrenceRule,
+			ETag:           etag,
+		})
+	}
+
+	return &portout.OAuthCalendarEventsPage{
+		Events:        events,
+		NextPageToken: payload.NextPageToken,
+		NextSyncToken: payload.NextSyncToken,
+	}, nil
+}
+
+func (c *oauthClient) ListTasks(
+	ctx context.Context,
+	token portout.OAuthToken,
+	taskListID, pageToken string,
+) (*portout.OAuthTasksPage, error) {
+	client := c.apiClient(ctx, token)
+	params := url.Values{}
+	params.Set("maxResults", "100")
+	params.Set("showCompleted", "true")
+	params.Set("showHidden", "true")
+	params.Set("showDeleted", "true")
+	if pageToken != "" {
+		params.Set("pageToken", pageToken)
+	}
+	endpoint := fmt.Sprintf(
+		"https://tasks.googleapis.com/tasks/v1/lists/%s/tasks?%s",
+		url.PathEscape(taskListID),
+		params.Encode(),
+	)
+
+	resp, err := client.Get(endpoint)
+	if err != nil {
+		return nil, err
+	}
+
+	var payload struct {
+		Items []struct {
+			ID        string `json:"id"`
+			Title     string `json:"title"`
+			Notes     string `json:"notes"`
+			Status    string `json:"status"`
+			Deleted   bool   `json:"deleted"`
+			Hidden    bool   `json:"hidden"`
+			Due       string `json:"due"`
+			Completed string `json:"completed"`
+		} `json:"items"`
+		NextPageToken string `json:"nextPageToken"`
+	}
+
+	decodeErr := json.NewDecoder(resp.Body).Decode(&payload)
+	_ = resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("google tasks returned %d", resp.StatusCode)
+	}
+	if decodeErr != nil {
+		return nil, decodeErr
+	}
+
+	items := make([]portout.OAuthTask, 0, len(payload.Items))
+	for _, item := range payload.Items {
+		if item.Hidden {
+			continue
+		}
+		var dueDate *string
+		if item.Due != "" && len(item.Due) >= 10 {
+			day := item.Due[:10]
+			dueDate = &day
+		}
+		items = append(items, portout.OAuthTask{
+			GoogleID:    item.ID,
+			Title:       item.Title,
+			Notes:       item.Notes,
+			DueDate:     dueDate,
+			IsDone:      item.Status == "completed" || item.Completed != "",
+			IsDeleted:   item.Deleted,
+			CompletedAt: parseOptionalRFC3339(item.Completed),
+		})
+	}
+
+	return &portout.OAuthTasksPage{
+		Items:         items,
+		NextPageToken: payload.NextPageToken,
+	}, nil
+}
+
+func (c *oauthClient) CreateCalendarEvent(
+	ctx context.Context,
+	token portout.OAuthToken,
+	calendarID string,
+	input portout.CalendarEventUpsertInput,
+) (googleID string, etag *string, err error) {
+	client := c.apiClient(ctx, token)
+	body := buildGoogleCalendarEventBody(input)
+
+	resp, err := doGoogleJSONRequest(
+		ctx,
+		client,
+		http.MethodPost,
+		fmt.Sprintf("https://www.googleapis.com/calendar/v3/calendars/%s/events", url.PathEscape(calendarID)),
+		body,
+	)
+	if err != nil {
+		return "", nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
+		return "", nil, parseGoogleAPIError(resp, "google create calendar event")
+	}
+
+	var payload struct {
+		ID   string `json:"id"`
+		ETag string `json:"etag"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
+		return "", nil, err
+	}
+	if payload.ID == "" {
+		return "", nil, fmt.Errorf("google create calendar event: missing id")
+	}
+
+	if payload.ETag != "" {
+		etag = &payload.ETag
+	}
+	return payload.ID, etag, nil
+}
+
+func (c *oauthClient) UpdateCalendarEvent(
+	ctx context.Context,
+	token portout.OAuthToken,
+	calendarID, eventID string,
+	input portout.CalendarEventUpsertInput,
+) (etag *string, err error) {
+	client := c.apiClient(ctx, token)
+	body := buildGoogleCalendarEventBody(input)
+
+	resp, err := doGoogleJSONRequest(
+		ctx,
+		client,
+		http.MethodPatch,
+		fmt.Sprintf(
+			"https://www.googleapis.com/calendar/v3/calendars/%s/events/%s",
+			url.PathEscape(calendarID),
+			url.PathEscape(eventID),
+		),
+		body,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, parseGoogleAPIError(resp, "google update calendar event")
+	}
+
+	var payload struct {
+		ETag string `json:"etag"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
+		return nil, err
+	}
+	if payload.ETag != "" {
+		etag = &payload.ETag
+	}
+	return etag, nil
+}
+
+func (c *oauthClient) DeleteCalendarEvent(
+	ctx context.Context,
+	token portout.OAuthToken,
+	calendarID, eventID string,
+) error {
+	client := c.apiClient(ctx, token)
+	req, err := http.NewRequestWithContext(
+		ctx,
+		http.MethodDelete,
+		fmt.Sprintf(
+			"https://www.googleapis.com/calendar/v3/calendars/%s/events/%s",
+			url.PathEscape(calendarID),
+			url.PathEscape(eventID),
+		),
+		nil,
+	)
+	if err != nil {
+		return err
+	}
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusNoContent && resp.StatusCode != http.StatusOK {
+		return parseGoogleAPIError(resp, "google delete calendar event")
+	}
+	return nil
+}
+
+func (c *oauthClient) CreateTask(
+	ctx context.Context,
+	token portout.OAuthToken,
+	taskListID string,
+	input portout.TodoUpsertInput,
+) (googleID string, err error) {
+	client := c.apiClient(ctx, token)
+	body := buildGoogleTaskBody(input)
+
+	resp, err := doGoogleJSONRequest(
+		ctx,
+		client,
+		http.MethodPost,
+		fmt.Sprintf("https://tasks.googleapis.com/tasks/v1/lists/%s/tasks", url.PathEscape(taskListID)),
+		body,
+	)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return "", parseGoogleAPIError(resp, "google create task")
+	}
+
+	var payload struct {
+		ID string `json:"id"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
+		return "", err
+	}
+	if payload.ID == "" {
+		return "", fmt.Errorf("google create task: missing id")
+	}
+	return payload.ID, nil
+}
+
+func (c *oauthClient) UpdateTask(
+	ctx context.Context,
+	token portout.OAuthToken,
+	taskListID, taskID string,
+	input portout.TodoUpsertInput,
+) error {
+	client := c.apiClient(ctx, token)
+	body := buildGoogleTaskBody(input)
+
+	resp, err := doGoogleJSONRequest(
+		ctx,
+		client,
+		http.MethodPatch,
+		fmt.Sprintf(
+			"https://tasks.googleapis.com/tasks/v1/lists/%s/tasks/%s",
+			url.PathEscape(taskListID),
+			url.PathEscape(taskID),
+		),
+		body,
+	)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return parseGoogleAPIError(resp, "google update task")
+	}
+	return nil
+}
+
+func (c *oauthClient) DeleteTask(
+	ctx context.Context,
+	token portout.OAuthToken,
+	taskListID, taskID string,
+) error {
+	client := c.apiClient(ctx, token)
+	req, err := http.NewRequestWithContext(
+		ctx,
+		http.MethodDelete,
+		fmt.Sprintf(
+			"https://tasks.googleapis.com/tasks/v1/lists/%s/tasks/%s",
+			url.PathEscape(taskListID),
+			url.PathEscape(taskID),
+		),
+		nil,
+	)
+	if err != nil {
+		return err
+	}
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusNoContent && resp.StatusCode != http.StatusOK {
+		return parseGoogleAPIError(resp, "google delete task")
+	}
+	return nil
+}
+
 func (c *oauthClient) apiClient(ctx context.Context, token portout.OAuthToken) *http.Client {
 	ot := &oauth2.Token{
 		AccessToken:  token.AccessToken,
@@ -215,6 +639,47 @@ func (c *oauthClient) apiClient(ctx context.Context, token portout.OAuthToken) *
 		Expiry:       token.Expiry,
 	}
 	return c.oauthConfig("web").Client(ctx, ot)
+}
+
+func parseGoogleEventDateTime(
+	startDate, startDateTime, endDate, endDateTime string,
+) (time.Time, time.Time, bool, error) {
+	if startDateTime != "" && endDateTime != "" {
+		start, err := time.Parse(time.RFC3339, startDateTime)
+		if err != nil {
+			return time.Time{}, time.Time{}, false, err
+		}
+		end, err := time.Parse(time.RFC3339, endDateTime)
+		if err != nil {
+			return time.Time{}, time.Time{}, false, err
+		}
+		return start, end, false, nil
+	}
+
+	if startDate != "" && endDate != "" {
+		start, err := time.Parse("2006-01-02", startDate)
+		if err != nil {
+			return time.Time{}, time.Time{}, true, err
+		}
+		end, err := time.Parse("2006-01-02", endDate)
+		if err != nil {
+			return time.Time{}, time.Time{}, true, err
+		}
+		return start, end, true, nil
+	}
+
+	return time.Time{}, time.Time{}, false, fmt.Errorf("invalid event datetime")
+}
+
+func parseOptionalRFC3339(value string) *time.Time {
+	if value == "" {
+		return nil
+	}
+	parsed, err := time.Parse(time.RFC3339, value)
+	if err != nil {
+		return nil
+	}
+	return &parsed
 }
 
 func (c *oauthClient) oauthConfig(app string) *oauth2.Config {
@@ -236,4 +701,119 @@ func (c *oauthClient) oauthConfig(app string) *oauth2.Config {
 		Endpoint:    google.Endpoint,
 		RedirectURL: redirectURL,
 	}
+}
+
+func doGoogleJSONRequest(
+	ctx context.Context,
+	client *http.Client,
+	method, endpoint string,
+	body any,
+) (*http.Response, error) {
+	var reqBody *bytes.Reader
+	if body == nil {
+		reqBody = bytes.NewReader(nil)
+	} else {
+		b, err := json.Marshal(body)
+		if err != nil {
+			return nil, err
+		}
+		reqBody = bytes.NewReader(b)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, method, endpoint, reqBody)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	return client.Do(req)
+}
+
+func parseGoogleAPIError(resp *http.Response, action string) error {
+	var payload struct {
+		Error struct {
+			Code    int    `json:"code"`
+			Message string `json:"message"`
+		} `json:"error"`
+	}
+	_ = json.NewDecoder(resp.Body).Decode(&payload)
+
+	status := resp.StatusCode
+	if payload.Error.Code != 0 {
+		status = payload.Error.Code
+	}
+	message := payload.Error.Message
+	if message == "" {
+		message = fmt.Sprintf("%s returned %d", action, resp.StatusCode)
+	}
+	return &portout.GoogleAPIError{
+		StatusCode: status,
+		Message:    message,
+	}
+}
+
+func buildGoogleCalendarEventBody(input portout.CalendarEventUpsertInput) map[string]any {
+	body := map[string]any{
+		"summary":     input.Title,
+		"description": input.Description,
+		"location":    input.Location,
+	}
+
+	loc := time.UTC
+	if input.Timezone != "" {
+		if loaded, err := time.LoadLocation(input.Timezone); err == nil {
+			loc = loaded
+		}
+	}
+	start := input.StartTime.In(loc)
+	end := input.EndTime.In(loc)
+
+	if input.IsAllDay {
+		startDate := start.Format("2006-01-02")
+		endDate := end.Format("2006-01-02")
+		if !end.After(start) || endDate == startDate {
+			endDate = start.AddDate(0, 0, 1).Format("2006-01-02")
+		}
+		body["start"] = map[string]string{"date": startDate}
+		body["end"] = map[string]string{"date": endDate}
+	} else {
+		tz := input.Timezone
+		if tz == "" {
+			tz = "UTC"
+		}
+		body["start"] = map[string]string{
+			"dateTime": input.StartTime.Format(time.RFC3339),
+			"timeZone": tz,
+		}
+		body["end"] = map[string]string{
+			"dateTime": input.EndTime.Format(time.RFC3339),
+			"timeZone": tz,
+		}
+	}
+
+	if input.ColorID != nil && *input.ColorID != "" {
+		body["colorId"] = *input.ColorID
+	}
+	if input.RecurrenceRule != nil && *input.RecurrenceRule != "" {
+		body["recurrence"] = []string{"RRULE:" + *input.RecurrenceRule}
+	}
+	return body
+}
+
+func buildGoogleTaskBody(input portout.TodoUpsertInput) map[string]any {
+	status := "needsAction"
+	if input.IsDone {
+		status = "completed"
+	}
+
+	body := map[string]any{
+		"title":  input.Title,
+		"notes":  input.Notes,
+		"status": status,
+	}
+	if input.DueDate != nil && *input.DueDate != "" {
+		body["due"] = *input.DueDate + "T00:00:00.000Z"
+	} else {
+		body["due"] = nil
+	}
+	return body
 }
