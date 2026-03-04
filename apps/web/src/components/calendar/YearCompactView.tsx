@@ -2,11 +2,14 @@
 
 import { cn } from "@/lib/utils";
 import { buildFixedMonthGridWithWeekStart } from "@/lib/calendar/month-grid";
+import { getEventStartDateKey } from "@/lib/calendar/event-date";
 
 interface EventData {
   id: string;
   start_time: string;
   end_time: string;
+  timezone: string;
+  is_all_day: boolean;
   title: string;
   color_id: string | null;
   calendar_id: string;
@@ -32,7 +35,7 @@ export function YearCompactView({ year, events, weekStartsOn, holidaysByDate, on
 
   const eventsByDate = new Map<string, number>();
   for (const e of events) {
-    const start = e.start_time.split("T")[0];
+    const start = getEventStartDateKey(e);
     eventsByDate.set(start, (eventsByDate.get(start) || 0) + 1);
   }
 

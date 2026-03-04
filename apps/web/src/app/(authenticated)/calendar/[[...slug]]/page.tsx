@@ -57,6 +57,7 @@ import {
   getGoogleAccountCustomColor,
   getGoogleAccountDisplayName,
 } from "@/lib/google-account-preferences";
+import { getEventEndDateKey, getEventStartDateKey } from "@/lib/calendar/event-date";
 
 interface EventEditorForm {
   title: string;
@@ -1226,7 +1227,7 @@ function MonthView({
     [cells]
   );
   const todayKey = toDateStr(new Date());
-  const spanBarRowHeight = 20;
+  const spanBarRowHeight = 24;
   const spanBarTopOffset = 28;
 
   const weekdayLabels = ["일", "월", "화", "수", "목", "금", "토"];
@@ -1236,14 +1237,14 @@ function MonthView({
   });
 
   const multiDayEvents = events.filter((event) => {
-    const start = event.start_time.split("T")[0];
-    const end = event.end_time.split("T")[0];
+    const start = getEventStartDateKey(event);
+    const end = getEventEndDateKey(event);
     return event.is_all_day || start !== end;
   });
 
   const singleDayEvents = events.filter((event) => {
-    const start = event.start_time.split("T")[0];
-    const end = event.end_time.split("T")[0];
+    const start = getEventStartDateKey(event);
+    const end = getEventEndDateKey(event);
     return !event.is_all_day && start === end;
   });
 
@@ -1252,8 +1253,8 @@ function MonthView({
     const lanes: string[][] = [];
 
     for (const event of multiDayEvents) {
-      const eventStart = event.start_time.split("T")[0];
-      const eventEnd = event.end_time.split("T")[0];
+      const eventStart = getEventStartDateKey(event);
+      const eventEnd = getEventEndDateKey(event);
 
       let startCol = -1;
       let endCol = -1;
@@ -1296,13 +1297,13 @@ function MonthView({
   }
 
   function getSingleDayEvents(dateKey: string) {
-    return singleDayEvents.filter((event) => event.start_time.split("T")[0] === dateKey);
+    return singleDayEvents.filter((event) => getEventStartDateKey(event) === dateKey);
   }
 
   function countAllEventsForDate(dateKey: string) {
     return events.filter((event) => {
-      const start = event.start_time.split("T")[0];
-      const end = event.end_time.split("T")[0];
+      const start = getEventStartDateKey(event);
+      const end = getEventEndDateKey(event);
       return dateKey >= start && dateKey <= end;
     }).length;
   }
@@ -1341,7 +1342,7 @@ function MonthView({
                   <div
                     key={bar.event.id}
                     className={cn(
-                      "absolute z-20 cursor-pointer truncate px-2 py-[2px] text-[12px] font-medium leading-[18px] text-white shadow-sm",
+                      "absolute z-20 cursor-pointer truncate px-2 py-[2px] text-[11px] font-medium leading-[16px] text-white shadow-sm",
                       !startCell.inCurrentMonth && "opacity-60"
                     )}
                     style={{
@@ -1518,8 +1519,8 @@ function WeekView({
   const getEventsForDay = (date: Date) => {
     const dateKey = toDateStr(date);
     return events.filter((event) => {
-      const start = event.start_time.split("T")[0];
-      const end = event.end_time.split("T")[0];
+      const start = getEventStartDateKey(event);
+      const end = getEventEndDateKey(event);
       return dateKey >= start && dateKey <= end;
     });
   };
@@ -1567,7 +1568,7 @@ function WeekView({
           {dayDates.map((date, index) => {
             const allDayEvents = getAllDayEvents(date);
             return (
-              <div key={index} className="flex-1 border-l border-border/50 px-1 py-1.5 space-y-1">
+              <div key={index} className="flex-1 border-l border-border/50 px-1 py-1.5 space-y-1.5">
                 {allDayEvents.map((event) => {
                   return (
                     <div
@@ -1733,7 +1734,7 @@ function AgendaView({
 
   for (const event of events) {
     if (!visibleCalendarIDs.has(event.calendar_id)) continue;
-    const dateKey = event.start_time.split("T")[0];
+    const dateKey = getEventStartDateKey(event);
     if (!grouped.has(dateKey)) grouped.set(dateKey, []);
     grouped.get(dateKey)!.push(event);
   }

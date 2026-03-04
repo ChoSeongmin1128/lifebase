@@ -2,11 +2,14 @@
 
 import { useEffect, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
+import { getEventStartDateKey } from "@/lib/calendar/event-date";
 
 interface EventData {
   id: string;
   start_time: string;
   end_time: string;
+  timezone: string;
+  is_all_day: boolean;
   title: string;
   color_id: string | null;
   calendar_id: string;
@@ -54,7 +57,7 @@ export function YearTimelineView({ year, events, holidaysByDate, getEventColor, 
 
   const eventsByDate = new Map<string, EventData[]>();
   for (const e of events) {
-    const dateStr = e.start_time.split("T")[0];
+    const dateStr = getEventStartDateKey(e);
     if (!eventsByDate.has(dateStr)) eventsByDate.set(dateStr, []);
     eventsByDate.get(dateStr)!.push(e);
   }
