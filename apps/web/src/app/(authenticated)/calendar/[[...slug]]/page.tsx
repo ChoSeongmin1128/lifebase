@@ -11,6 +11,7 @@ import type {
   CreateEventInput,
   EventData,
   EventPayload,
+  HolidayData,
 } from "@/features/calendar/domain/CalendarEntities";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -51,6 +52,11 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { ChevronLeft, ChevronRight, Filter, RefreshCw } from "lucide-react";
 import { cn } from "@/lib/utils";
+import {
+  MULTI_ACCOUNT_FALLBACK_COLORS,
+  getGoogleAccountCustomColor,
+  getGoogleAccountDisplayName,
+} from "@/lib/google-account-preferences";
 
 interface EventEditorForm {
   title: string;
@@ -74,13 +80,10 @@ const COLORS = [
   "#0b8043", "#d50000",
 ];
 
-const ACCOUNT_COLORS = ["#2563eb", "#16a34a", "#dc2626", "#9333ea", "#ea580c", "#0891b2", "#ca8a04", "#0f766e"];
 const UNASSIGNED_ACCOUNT_COLOR = "#9ca3af";
 const ACCOUNT_FILTER_SETTING_KEY = "calendar_selected_google_account_ids";
-const SHOW_SPECIAL_CALENDARS_SETTING_KEY = "calendar_show_special_calendars";
-const SPECIAL_ACCOUNT_SELECTION_SETTING_KEY = "calendar_selected_special_account_ids";
-const SPECIAL_CALENDAR_SELECTION_SETTING_KEY = "calendar_selected_special_calendar_ids";
 const CALENDAR_LAST_SYNC_AT_SETTING_KEY = "calendar_last_sync_at";
+const CALENDAR_SHOW_PUBLIC_HOLIDAYS_SETTING_KEY = "calendar_show_public_holidays";
 const PAGE_ACTION_SYNC_COOLDOWN_MS = 15_000;
 
 function getGoogleEventColor(colorId: string | null, calColorId: string | null): string {
@@ -96,10 +99,6 @@ function parseStoredAccountIDs(value: string): string[] {
     .split(",")
     .map((item) => item.trim())
     .filter(Boolean);
-}
-
-function normalizeHolidayTitle(title: string): string {
-  return title.trim().replace(/\s+/g, " ").toLowerCase();
 }
 
 function getGoogleAccountStatusLabel(status: string): string {
@@ -182,6 +181,11 @@ function buildCalendarUrl(view: CalendarViewMode, date: Date): string {
 
 function toDateStr(date: Date): string {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+}
+
+function toDateOnlyFromISO(value: string): string {
+  if (!value) return "";
+  return toDateStr(new Date(value));
 }
 
 function toLocalDateTimeInput(date: Date): string {
@@ -290,9 +294,8 @@ export default function CalendarPage() {
   const [weekHours, setWeekHours] = useState({ start: 8, end: 22 });
   const [weekStartsOn, setWeekStartsOn] = useState(0);
   const [settings, setSettings] = useState<Record<string, string>>({});
-  const [selectedSpecialAccountIDs, setSelectedSpecialAccountIDs] = useState<string[]>([]);
-  const [selectedSpecialCalendarIDs, setSelectedSpecialCalendarIDs] = useState<string[]>([]);
   const [lastSyncedAt, setLastSyncedAt] = useState<string>("");
+  const [holidaysByDate, setHolidaysByDate] = useState<Map<string, string[]>>(new Map());
   const [syncingNow, setSyncingNow] = useState(false);
   const [googleAccounts, setGoogleAccounts] = useState<GoogleAccountSummary[]>([]);
   const [selectedGoogleAccountIDs, setSelectedGoogleAccountIDs] = useState<string[]>([]);
@@ -305,7 +308,6 @@ export default function CalendarPage() {
   const quickActionHandledRef = useRef(false);
   const accountSelectionInitializedRef = useRef(false);
   const accountSelectionPersistedRef = useRef("");
-  const pendingSelectAllSpecialRef = useRef(false);
   const syncThrottleRef = useRef<Record<string, number>>({});
 
   const [editorOpen, setEditorOpen] = useState(false);
@@ -315,7 +317,7 @@ export default function CalendarPage() {
     makeDefaultEditorForm(new Date(), new Date(Date.now() + 60 * 60 * 1000), "")
   );
 
-  const { listCalendars, getSettings, listEvents, backfillEvents, createEvent, updateEvent, deleteEvent } = useCalendarActions();
+  const { listCalendars, getSettings, listEvents, listHolidays, backfillEvents, createEvent, updateEvent, deleteEvent } = useCalendarActions();
   const { updateSetting } = useSettingsActions();
   const { listGoogleAccounts, triggerGoogleSync } = useAuthFlow();
 
@@ -365,10 +367,11 @@ export default function CalendarPage() {
   const accountColorMap = useMemo(() => {
     const map = new Map<string, string>();
     selectedSyncEnabledGoogleAccountIDs.forEach((accountID, index) => {
-      map.set(accountID, ACCOUNT_COLORS[index % ACCOUNT_COLORS.length]);
+      const fallbackColor = MULTI_ACCOUNT_FALLBACK_COLORS[index % MULTI_ACCOUNT_FALLBACK_COLORS.length];
+      map.set(accountID, getGoogleAccountCustomColor(settings, accountID) || fallbackColor);
     });
     return map;
-  }, [selectedSyncEnabledGoogleAccountIDs]);
+  }, [selectedSyncEnabledGoogleAccountIDs, settings]);
 
   const allSyncEnabledAccountsSelected =
     syncEnabledGoogleAccountIDs.length > 0 &&
@@ -377,47 +380,17 @@ export default function CalendarPage() {
   const accountFilterLabel = allSyncEnabledAccountsSelected
     ? "계정: 전체"
     : `계정: ${selectedSyncEnabledGoogleAccountIDs.length}/${syncEnabledGoogleAccountIDs.length}`;
-  const specialCalendars = useMemo(
-    () => calendars.filter((calendar) => calendar.is_special),
-    [calendars]
-  );
-  const specialAccountIDs = useMemo(() => {
-    const ids = new Set<string>();
-    specialCalendars.forEach((calendar) => {
-      if (calendar.google_account_id) ids.add(calendar.google_account_id);
-    });
-    return Array.from(ids);
-  }, [specialCalendars]);
-  const selectedSpecialAccountSet = useMemo(
-    () => new Set(selectedSpecialAccountIDs),
-    [selectedSpecialAccountIDs]
-  );
-  const selectedSpecialCalendarSet = useMemo(
-    () => new Set(selectedSpecialCalendarIDs),
-    [selectedSpecialCalendarIDs]
-  );
-  const allSpecialAccountsSelected =
-    specialAccountIDs.length > 0 &&
-    specialAccountIDs.every((accountID) => selectedSpecialAccountSet.has(accountID));
-  const allSpecialCalendarsSelected =
-    specialCalendars.length > 0 &&
-    specialCalendars.every((calendar) => selectedSpecialCalendarSet.has(calendar.id));
-  const specialFilterLabel =
-    specialCalendars.length === 0
-      ? "특수: 없음"
-      : selectedSpecialAccountIDs.length === 0 || selectedSpecialCalendarIDs.length === 0
-        ? "특수: 숨김"
-        : allSpecialAccountsSelected && allSpecialCalendarsSelected
-          ? "특수: 전체"
-          : `특수: 계정 ${selectedSpecialAccountIDs.length}/${specialAccountIDs.length}, 캘린더 ${selectedSpecialCalendarIDs.length}/${specialCalendars.length}`;
+  const showPublicHolidays = settings[CALENDAR_SHOW_PUBLIC_HOLIDAYS_SETTING_KEY] !== "false";
 
-  const specialAccountEmailByID = useMemo(
-    () => new Map(googleAccounts.map((account) => [account.id, account.google_email])),
-    [googleAccounts]
-  );
-  const specialAccountLabel = useCallback(
-    (accountID: string) => specialAccountEmailByID.get(accountID) || accountID,
-    [specialAccountEmailByID]
+  const accountDisplayNameByID = useMemo(
+    () =>
+      new Map(
+        googleAccounts.map((account) => [
+          account.id,
+          getGoogleAccountDisplayName(settings, account.id, account.google_email),
+        ]),
+      ),
+    [googleAccounts, settings]
   );
 
   const isCalendarIncludedByAccountFilter = useCallback(
@@ -433,13 +406,10 @@ export default function CalendarPage() {
     () =>
       calendars.filter((calendar) => {
         if (!isCalendarIncludedByAccountFilter(calendar)) return false;
-        if (calendar.is_special) {
-          if (!selectedSpecialCalendarSet.has(calendar.id)) return false;
-          if (calendar.google_account_id && !selectedSpecialAccountSet.has(calendar.google_account_id)) return false;
-        }
+        if (calendar.is_special || calendar.kind === "holiday" || calendar.kind === "birthday") return false;
         return true;
       }),
-    [calendars, isCalendarIncludedByAccountFilter, selectedSpecialAccountSet, selectedSpecialCalendarSet]
+    [calendars, isCalendarIncludedByAccountFilter]
   );
   const writableFilteredCalendars = useMemo(
     () => filteredCalendars.filter((calendar) => !calendar.is_readonly),
@@ -476,13 +446,6 @@ export default function CalendarPage() {
       setSettings(settings);
       setWeekHours(parseWeekHourRange(settings));
       setWeekStartsOn(parseWeekStartsOn(settings));
-      const selectedSpecialAccounts = parseStoredAccountIDs(settings[SPECIAL_ACCOUNT_SELECTION_SETTING_KEY] || "");
-      const selectedSpecial = parseStoredAccountIDs(settings[SPECIAL_CALENDAR_SELECTION_SETTING_KEY] || "");
-      setSelectedSpecialAccountIDs(selectedSpecialAccounts);
-      setSelectedSpecialCalendarIDs(selectedSpecial);
-      pendingSelectAllSpecialRef.current =
-        selectedSpecialAccounts.length === 0 &&
-        selectedSpecial.length === 0 && settings[SHOW_SPECIAL_CALENDARS_SETTING_KEY] === "true";
       setLastSyncedAt(settings[CALENDAR_LAST_SYNC_AT_SETTING_KEY] || "");
       const storedAccountIDs = parseStoredAccountIDs(settings[ACCOUNT_FILTER_SETTING_KEY] || "");
       setSelectedGoogleAccountIDs(storedAccountIDs);
@@ -491,9 +454,6 @@ export default function CalendarPage() {
       setSettings({});
       setWeekHours({ start: 8, end: 22 });
       setWeekStartsOn(0);
-      setSelectedSpecialAccountIDs([]);
-      setSelectedSpecialCalendarIDs([]);
-      pendingSelectAllSpecialRef.current = false;
       setLastSyncedAt("");
       setSelectedGoogleAccountIDs([]);
       accountSelectionPersistedRef.current = "";
@@ -562,6 +522,34 @@ export default function CalendarPage() {
     }
   }, [backfillEvents, calendars.length, currentDate, filteredCalendarIDs, filteredCalendars, listEvents, view, weekStartsOn]);
 
+  const loadHolidays = useCallback(async () => {
+    if (!showPublicHolidays) {
+      setHolidaysByDate(new Map());
+      return;
+    }
+    const { start, end } = getDateRange(currentDate, view, weekStartsOn);
+    const startDate = toDateOnlyFromISO(start);
+    const endDate = toDateOnlyFromISO(end);
+    if (!startDate || !endDate) {
+      setHolidaysByDate(new Map());
+      return;
+    }
+    try {
+      const holidays = await listHolidays(startDate, endDate);
+      const grouped = new Map<string, string[]>();
+      (holidays || []).forEach((holiday: HolidayData) => {
+        if (!holiday.date || !holiday.name) return;
+        const prev = grouped.get(holiday.date) || [];
+        if (!prev.includes(holiday.name)) {
+          grouped.set(holiday.date, [...prev, holiday.name]);
+        }
+      });
+      setHolidaysByDate(grouped);
+    } catch {
+      setHolidaysByDate(new Map());
+    }
+  }, [currentDate, listHolidays, showPublicHolidays, view, weekStartsOn]);
+
   const triggerCalendarSync = useCallback(
     async (reason: "page_enter" | "page_action" | "tab_heartbeat" | "manual", throttleMs = 0) => {
       const key = `calendar:${reason}`;
@@ -586,6 +574,7 @@ export default function CalendarPage() {
   useEffect(() => { loadSettings(); }, [loadSettings]);
   useEffect(() => { loadGoogleAccounts(); }, [loadGoogleAccounts]);
   useEffect(() => { loadEvents(); }, [loadEvents]);
+  useEffect(() => { loadHolidays(); }, [loadHolidays]);
   useEffect(() => {
     void triggerCalendarSync("page_enter", 60_000);
   }, [triggerCalendarSync]);
@@ -612,20 +601,6 @@ export default function CalendarPage() {
       updateSetting(ACCOUNT_FILTER_SETTING_KEY, serialized).catch(() => undefined);
     }
   }, [selectedGoogleAccountIDs, settingsLoaded, syncEnabledGoogleAccountIDs, updateSetting]);
-
-  useEffect(() => {
-    if (!pendingSelectAllSpecialRef.current) return;
-    if (specialCalendars.length === 0) return;
-    pendingSelectAllSpecialRef.current = false;
-
-    const allAccountIDs = specialAccountIDs;
-    const allCalendarIDs = specialCalendars.map((calendar) => calendar.id);
-    setSelectedSpecialAccountIDs(allAccountIDs);
-    setSelectedSpecialCalendarIDs(allCalendarIDs);
-    updateSetting(SPECIAL_ACCOUNT_SELECTION_SETTING_KEY, allAccountIDs.join(",")).catch(() => undefined);
-    updateSetting(SPECIAL_CALENDAR_SELECTION_SETTING_KEY, allCalendarIDs.join(",")).catch(() => undefined);
-    updateSetting(SHOW_SPECIAL_CALENDARS_SETTING_KEY, "true").catch(() => undefined);
-  }, [specialAccountIDs, specialCalendars, updateSetting]);
 
   useEffect(() => {
     if (!accountSelectionInitializedRef.current) return;
@@ -682,43 +657,6 @@ export default function CalendarPage() {
       return [...prev, accountID];
     });
   };
-
-  const persistSpecialSelection = useCallback((accountIDs: string[], calendarIDs: string[]) => {
-    setSelectedSpecialAccountIDs(accountIDs);
-    setSelectedSpecialCalendarIDs(calendarIDs);
-    updateSetting(SPECIAL_ACCOUNT_SELECTION_SETTING_KEY, accountIDs.join(",")).catch(() => undefined);
-    updateSetting(SPECIAL_CALENDAR_SELECTION_SETTING_KEY, calendarIDs.join(",")).catch(() => undefined);
-    updateSetting(
-      SHOW_SPECIAL_CALENDARS_SETTING_KEY,
-      accountIDs.length > 0 && calendarIDs.length > 0 ? "true" : "false"
-    ).catch(() => undefined);
-  }, [updateSetting]);
-
-  const handleSelectAllSpecialCalendars = useCallback(() => {
-    const allAccountIDs = specialAccountIDs;
-    const allCalendarIDs = specialCalendars.map((calendar) => calendar.id);
-    persistSpecialSelection(allAccountIDs, allCalendarIDs);
-  }, [persistSpecialSelection, specialAccountIDs, specialCalendars]);
-
-  const handleClearSpecialCalendars = useCallback(() => {
-    persistSpecialSelection([], []);
-  }, [persistSpecialSelection]);
-
-  const handleToggleSpecialAccount = useCallback((accountID: string) => {
-    const exists = selectedSpecialAccountIDs.includes(accountID);
-    const nextAccounts = exists
-      ? selectedSpecialAccountIDs.filter((id) => id !== accountID)
-      : [...selectedSpecialAccountIDs, accountID];
-    persistSpecialSelection(nextAccounts, selectedSpecialCalendarIDs);
-  }, [persistSpecialSelection, selectedSpecialAccountIDs, selectedSpecialCalendarIDs]);
-
-  const handleToggleSpecialCalendar = useCallback((calendarID: string) => {
-    const exists = selectedSpecialCalendarIDs.includes(calendarID);
-    const nextCalendars = exists
-      ? selectedSpecialCalendarIDs.filter((id) => id !== calendarID)
-      : [...selectedSpecialCalendarIDs, calendarID];
-    persistSpecialSelection(selectedSpecialAccountIDs, nextCalendars);
-  }, [persistSpecialSelection, selectedSpecialAccountIDs, selectedSpecialCalendarIDs]);
 
   const handleManualSync = async () => {
     if (syncingNow) return;
@@ -907,14 +845,10 @@ export default function CalendarPage() {
   const headerLabel = getHeaderLabel(currentDate, view);
   const calMap = useMemo(() => new Map(calendars.map((cal) => [cal.id, cal])), [calendars]);
   const displayEvents = useMemo(() => {
-    const seenHolidayKeys = new Set<string>();
     return events.filter((event) => {
       const calendar = calMap.get(event.calendar_id);
-      if (calendar?.kind === "holiday" && event.is_all_day) {
-        const key = `${event.start_time.slice(0, 10)}|${normalizeHolidayTitle(event.title || "")}`;
-        if (seenHolidayKeys.has(key)) return false;
-        seenHolidayKeys.add(key);
-      }
+      if (calendar?.is_special) return false;
+      if (calendar?.kind === "holiday" || calendar?.kind === "birthday") return false;
       return true;
     });
   }, [calMap, events]);
@@ -922,8 +856,6 @@ export default function CalendarPage() {
   const isSelectedEventReadOnly = !!selectedEventCalendar?.is_readonly;
   const formatCalendarLabel = useCallback((calendar: CalendarData) => {
     const badges: string[] = [];
-    if (calendar.kind === "holiday") badges.push("휴일");
-    if (calendar.kind === "birthday") badges.push("생일");
     if (calendar.is_readonly) badges.push("읽기 전용");
     if (badges.length === 0) return calendar.name;
     return `${calendar.name} · ${badges.join(" · ")}`;
@@ -957,89 +889,6 @@ export default function CalendarPage() {
           <h2 className="text-lg font-semibold text-text-strong">{headerLabel}</h2>
         </PageToolbarGroup>
         <PageToolbarGroup className="gap-2">
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="secondary" size="sm" className="gap-1.5">
-                <Filter size={14} />
-                {specialFilterLabel}
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-[280px]">
-              <DropdownMenuLabel>특수 캘린더 선택</DropdownMenuLabel>
-              <DropdownMenuItem
-                onSelect={(event) => {
-                  event.preventDefault();
-                  handleSelectAllSpecialCalendars();
-                }}
-              >
-                <Checkbox checked={allSpecialAccountsSelected && allSpecialCalendarsSelected} />
-                <span>전체 선택</span>
-              </DropdownMenuItem>
-              <DropdownMenuItem
-                onSelect={(event) => {
-                  event.preventDefault();
-                  handleClearSpecialCalendars();
-                }}
-              >
-                <Checkbox checked={selectedSpecialAccountIDs.length === 0 || selectedSpecialCalendarIDs.length === 0} />
-                <span>모두 숨김</span>
-              </DropdownMenuItem>
-              {specialAccountIDs.length > 0 && <DropdownMenuSeparator />}
-              <DropdownMenuLabel>특수 계정</DropdownMenuLabel>
-              {specialAccountIDs.length === 0 ? (
-                <DropdownMenuItem disabled>
-                  <span>선택 가능한 특수 계정 없음</span>
-                </DropdownMenuItem>
-              ) : (
-                specialAccountIDs.map((accountID) => {
-                  const checked = selectedSpecialAccountSet.has(accountID);
-                  return (
-                    <DropdownMenuItem
-                      key={accountID}
-                      onSelect={(event) => {
-                        event.preventDefault();
-                        handleToggleSpecialAccount(accountID);
-                      }}
-                    >
-                      <Checkbox checked={checked} />
-                      <div className="min-w-0 flex-1">
-                        <p className="truncate text-sm">{specialAccountLabel(accountID)}</p>
-                        <p className="text-xs text-text-muted">Google 계정</p>
-                      </div>
-                    </DropdownMenuItem>
-                  );
-                })
-              )}
-              {specialCalendars.length > 0 && <DropdownMenuSeparator />}
-              <DropdownMenuLabel>특수 캘린더</DropdownMenuLabel>
-              {specialCalendars.length === 0 ? (
-                <DropdownMenuItem disabled>
-                  <span>선택 가능한 특수 캘린더 없음</span>
-                </DropdownMenuItem>
-              ) : (
-                specialCalendars.map((calendar) => {
-                  const checked = selectedSpecialCalendarSet.has(calendar.id);
-                  return (
-                    <DropdownMenuItem
-                      key={calendar.id}
-                      onSelect={(event) => {
-                        event.preventDefault();
-                        handleToggleSpecialCalendar(calendar.id);
-                      }}
-                    >
-                      <Checkbox checked={checked} />
-                      <div className="min-w-0 flex-1">
-                        <p className="truncate text-sm">{calendar.name}</p>
-                        <p className="text-xs text-text-muted">
-                          {calendar.kind === "holiday" ? "휴일" : calendar.kind === "birthday" ? "생일" : "특수"}
-                        </p>
-                      </div>
-                    </DropdownMenuItem>
-                  );
-                })
-              )}
-            </DropdownMenuContent>
-          </DropdownMenu>
           {syncEnabledGoogleAccountIDs.length > 0 && (
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
@@ -1065,6 +914,9 @@ export default function CalendarPage() {
                   .map((account) => {
                   const checked = selectedGoogleAccountSet.has(account.id);
                   const isActive = account.status === "active";
+                  const displayName = getGoogleAccountDisplayName(settings, account.id, account.google_email);
+                  const statusLabel = getGoogleAccountStatusLabel(account.status);
+                  const accountColor = accountColorMap.get(account.id) || UNASSIGNED_ACCOUNT_COLOR;
 
                   return (
                     <DropdownMenuItem
@@ -1078,8 +930,14 @@ export default function CalendarPage() {
                     >
                       <Checkbox checked={checked} disabled={!isActive} />
                       <div className="min-w-0 flex-1">
-                        <p className="truncate text-sm">{account.google_email}</p>
-                        <p className="text-xs text-text-muted">{getGoogleAccountStatusLabel(account.status)}</p>
+                        <p className="truncate text-sm">
+                          <span
+                            className="mr-1 inline-block h-2 w-2 rounded-full align-middle"
+                            style={{ backgroundColor: accountColor }}
+                          />
+                          {displayName}
+                        </p>
+                        <p className="text-xs text-text-muted">{statusLabel}</p>
                       </div>
                       {account.is_primary ? <Badge variant="primary">기본</Badge> : null}
                     </DropdownMenuItem>
@@ -1117,6 +975,22 @@ export default function CalendarPage() {
           />
         </PageToolbarGroup>
       </PageToolbar>
+      {useAccountUnifiedColors && selectedSyncEnabledGoogleAccountIDs.length > 0 && (
+        <div className="flex flex-wrap items-center gap-2 border-b border-border/70 px-4 py-2 text-xs text-text-muted">
+          <span className="font-medium text-text-secondary">계정 색상</span>
+          {selectedSyncEnabledGoogleAccountIDs.map((accountID) => (
+            <span key={accountID} className="inline-flex items-center gap-1.5 rounded-full border border-border/70 px-2 py-1">
+              <span
+                className="h-2.5 w-2.5 rounded-full"
+                style={{ backgroundColor: accountColorMap.get(accountID) || UNASSIGNED_ACCOUNT_COLOR }}
+              />
+              <span className="max-w-[12rem] truncate">
+                {accountDisplayNameByID.get(accountID) || "계정 미확인"}
+              </span>
+            </span>
+          ))}
+        </div>
+      )}
 
       <div className="flex-1 min-h-0 overflow-auto">
         {loading && events.length === 0 ? (
@@ -1126,6 +1000,7 @@ export default function CalendarPage() {
             year={currentDate.getFullYear()}
             events={displayEvents}
             weekStartsOn={weekStartsOn}
+            holidaysByDate={holidaysByDate}
             onMonthClick={(month) => {
               const date = new Date(currentDate.getFullYear(), month, 1);
               setView("month");
@@ -1137,6 +1012,7 @@ export default function CalendarPage() {
           <YearTimelineView
             year={currentDate.getFullYear()}
             events={displayEvents}
+            holidaysByDate={holidaysByDate}
             getEventColor={(colorID, calendar) => {
               if (useAccountUnifiedColors) {
                 const accountID = calendar?.google_account_id || "";
@@ -1153,6 +1029,7 @@ export default function CalendarPage() {
           <MonthView
             currentDate={currentDate}
             events={displayEvents}
+            holidaysByDate={holidaysByDate}
             weekStartsOn={weekStartsOn}
             selectedDateKey={selectedDateKey}
             getEventColorByCalendar={getDisplayEventColor}
@@ -1163,6 +1040,7 @@ export default function CalendarPage() {
           <WeekView
             currentDate={currentDate}
             events={displayEvents}
+            holidaysByDate={holidaysByDate}
             days={view === "week" ? 7 : 3}
             startHour={weekHours.start}
             endHour={weekHours.end}
@@ -1174,6 +1052,7 @@ export default function CalendarPage() {
         ) : (
           <AgendaView
             events={displayEvents}
+            holidaysByDate={holidaysByDate}
             calendars={filteredCalendars}
             getEventColorByCalendar={getDisplayEventColor}
             onEventClick={setSelectedEvent}
@@ -1322,6 +1201,7 @@ export default function CalendarPage() {
 function MonthView({
   currentDate,
   events,
+  holidaysByDate,
   weekStartsOn,
   selectedDateKey,
   getEventColorByCalendar,
@@ -1330,6 +1210,7 @@ function MonthView({
 }: {
   currentDate: Date;
   events: EventData[];
+  holidaysByDate: Map<string, string[]>;
   weekStartsOn: number;
   selectedDateKey: string | null;
   getEventColorByCalendar: (eventColorID: string | null, calendarID: string) => string;
@@ -1345,6 +1226,8 @@ function MonthView({
     [cells]
   );
   const todayKey = toDateStr(new Date());
+  const spanBarRowHeight = 20;
+  const spanBarTopOffset = 28;
 
   const weekdayLabels = ["일", "월", "화", "수", "목", "금", "토"];
   const weekdays = Array.from({ length: 7 }, (_, index) => {
@@ -1444,7 +1327,7 @@ function MonthView({
         {weeks.map((weekCells, weekIndex) => {
           const spanBars = getWeekSpanBars(weekCells);
           const spanBarHeight = Math.max(
-            spanBars.length > 0 ? (Math.max(...spanBars.map((bar) => bar.lane)) + 1) * 18 : 0,
+            spanBars.length > 0 ? (Math.max(...spanBars.map((bar) => bar.lane)) + 1) * spanBarRowHeight : 0,
             0
           );
 
@@ -1453,6 +1336,8 @@ function MonthView({
             const isSelected = selectedDateKey === cell.dateKey;
             const singleEvents = getSingleDayEvents(cell.dateKey);
             const totalCount = countAllEventsForDate(cell.dateKey);
+            const holidayLabels = holidaysByDate.get(cell.dateKey) || [];
+            const hasHoliday = holidayLabels.length > 0;
             const index = weekIndex * 7 + dayIndex;
             const barsStartingHere = spanBars.filter((bar) => bar.startCol === dayIndex);
 
@@ -1460,7 +1345,7 @@ function MonthView({
               <div
                 key={index}
                 className={cn(
-                  "relative min-h-[60px] md:min-h-[80px] border-b border-r border-border/50 p-1 overflow-hidden cursor-pointer",
+                  "relative min-h-[64px] md:min-h-[92px] border-b border-r border-border/50 p-1.5 overflow-hidden cursor-pointer",
                   !cell.inCurrentMonth && "bg-surface-accent/20",
                   isSelected && "ring-1 ring-inset ring-primary/50"
                 )}
@@ -1471,6 +1356,8 @@ function MonthView({
                     "mb-0.5 inline-flex h-6 w-6 items-center justify-center rounded-full text-xs",
                     isToday
                       ? "bg-primary text-white font-medium"
+                      : hasHoliday
+                        ? "text-error font-semibold"
                       : !cell.inCurrentMonth
                           ? "text-text-muted"
                         : cell.date.getDay() === 0
@@ -1482,6 +1369,17 @@ function MonthView({
                 >
                   {cell.day}
                 </div>
+                {hasHoliday ? (
+                  <div
+                    className={cn(
+                      "mb-0.5 truncate px-0.5 text-[10px] font-semibold leading-tight text-error",
+                      !cell.inCurrentMonth && "opacity-70"
+                    )}
+                    title={holidayLabels.join(", ")}
+                  >
+                    {holidayLabels[0]}
+                  </div>
+                ) : null}
 
                 {barsStartingHere.map((bar) => {
                   const spanCols = bar.endCol - bar.startCol + 1;
@@ -1489,12 +1387,12 @@ function MonthView({
                     <div
                       key={bar.event.id}
                       className={cn(
-                        "absolute left-0.5 cursor-pointer truncate rounded px-1 text-[10px] leading-[16px] text-white z-10",
+                        "absolute left-1 cursor-pointer truncate rounded-md px-1.5 py-[1px] text-[11px] leading-[17px] text-white z-10",
                         !cell.inCurrentMonth && "opacity-60"
                       )}
                       style={{
-                        top: `${26 + bar.lane * 18}px`,
-                        width: `calc(${spanCols * 100}% - 4px)`,
+                        top: `${spanBarTopOffset + (hasHoliday ? 12 : 0) + bar.lane * spanBarRowHeight}px`,
+                        width: `calc(${spanCols * 100}% - 6px)`,
                         backgroundColor: getEventColorByCalendar(bar.event.color_id, bar.event.calendar_id),
                       }}
                       onClick={(event) => {
@@ -1507,7 +1405,7 @@ function MonthView({
                   );
                 })}
 
-                <div className="space-y-0.5" style={{ marginTop: `${spanBarHeight}px` }}>
+                <div className="space-y-0.5" style={{ marginTop: `${spanBarHeight + (hasHoliday ? 12 : 0)}px` }}>
                   {singleEvents.slice(0, 2).map((event) => {
                     return (
                       <div
@@ -1517,15 +1415,15 @@ function MonthView({
                           onEventClick(event);
                         }}
                         className={cn(
-                          "flex items-center gap-1 cursor-pointer truncate px-0.5 text-[10px] leading-tight text-text-primary",
+                          "flex items-center gap-0.5 cursor-pointer truncate px-0.5 text-[11px] leading-tight text-text-primary",
                           !cell.inCurrentMonth && "opacity-60"
                         )}
                       >
                         <div
-                          className="h-1.5 w-1.5 shrink-0 rounded-full"
+                          className="h-2 w-2 shrink-0 rounded-full"
                           style={{ backgroundColor: getEventColorByCalendar(event.color_id, event.calendar_id) }}
                         />
-                        <span className="inline-block w-[64px] shrink-0 tabular-nums text-text-muted">
+                        <span className="inline-block w-[56px] shrink-0 tabular-nums text-text-muted">
                           {formatTimeLabel(event.start_time)}
                         </span>
                         <span className="truncate">{event.title || "(제목 없음)"}</span>
@@ -1533,7 +1431,7 @@ function MonthView({
                     );
                   })}
                   {totalCount > 3 && (
-                    <div className="text-[10px] text-text-muted px-0.5">+{totalCount - 3}</div>
+                    <div className="text-[11px] text-text-muted px-0.5">+{totalCount - 3}</div>
                   )}
                 </div>
               </div>
@@ -1549,6 +1447,7 @@ function MonthView({
 function WeekView({
   currentDate,
   events,
+  holidaysByDate,
   days,
   startHour,
   endHour,
@@ -1559,6 +1458,7 @@ function WeekView({
 }: {
   currentDate: Date;
   events: EventData[];
+  holidaysByDate: Map<string, string[]>;
   days: number;
   startHour: number;
   endHour: number;
@@ -1628,17 +1528,24 @@ function WeekView({
         <div className="w-10 md:w-14 shrink-0" />
         {dayDates.map((date, index) => {
           const isToday = date.toDateString() === today.toDateString();
+          const holidayLabels = holidaysByDate.get(toDateStr(date)) || [];
+          const hasHoliday = holidayLabels.length > 0;
           return (
             <div
               key={index}
               className={cn(
-                "flex-1 border-l border-border/50 py-2 text-center text-xs",
-                isToday ? "font-medium text-text-strong" : "text-text-secondary"
+                "flex-1 border-l border-border/50 px-1 py-1 text-center text-xs",
+                isToday ? "font-medium text-text-strong" : hasHoliday ? "font-medium text-error" : "text-text-secondary"
               )}
             >
               <span className={isToday ? "inline-flex h-6 min-w-6 items-center justify-center rounded-full bg-primary px-1 text-white" : ""}>
                 {weekdays[date.getDay()]} {date.getDate()}
               </span>
+              {hasHoliday ? (
+                <p className="mt-0.5 truncate text-[10px] font-semibold text-error" title={holidayLabels.join(", ")}>
+                  {holidayLabels[0]}
+                </p>
+              ) : null}
             </div>
           );
         })}
@@ -1647,17 +1554,17 @@ function WeekView({
       {hasAnyAllDay && (
         <div className="flex border-b border-border">
           <div className="w-10 md:w-14 shrink-0 flex items-center justify-end pr-2">
-            <span className="text-[10px] text-text-muted">종일</span>
+            <span className="text-[11px] text-text-muted">종일</span>
           </div>
           {dayDates.map((date, index) => {
             const allDayEvents = getAllDayEvents(date);
             return (
-              <div key={index} className="flex-1 border-l border-border/50 px-0.5 py-1 space-y-0.5">
+              <div key={index} className="flex-1 border-l border-border/50 px-1 py-1.5 space-y-1">
                 {allDayEvents.map((event) => {
                   return (
                     <div
                       key={event.id}
-                      className="cursor-pointer truncate rounded px-1 py-0.5 text-[10px] leading-tight text-white"
+                      className="cursor-pointer truncate rounded-md px-2 py-1 text-[11px] leading-[1.35] text-white"
                       style={{ backgroundColor: getEventColorByCalendar(event.color_id, event.calendar_id) }}
                       onClick={() => onEventClick(event)}
                     >
@@ -1799,11 +1706,13 @@ function positionEvents(events: EventData[]): { event: EventData; column: number
 /* ===== Agenda View ===== */
 function AgendaView({
   events,
+  holidaysByDate,
   calendars,
   getEventColorByCalendar,
   onEventClick,
 }: {
   events: EventData[];
+  holidaysByDate: Map<string, string[]>;
   calendars: CalendarData[];
   getEventColorByCalendar: (eventColorID: string | null, calendarID: string) => string;
   onEventClick: (event: EventData) => void;
@@ -1820,6 +1729,9 @@ function AgendaView({
     if (!grouped.has(dateKey)) grouped.set(dateKey, []);
     grouped.get(dateKey)!.push(event);
   }
+  for (const [dateKey] of holidaysByDate) {
+    if (!grouped.has(dateKey)) grouped.set(dateKey, []);
+  }
 
   const sortedDates = Array.from(grouped.keys()).sort();
 
@@ -1831,11 +1743,16 @@ function AgendaView({
     <div className="divide-y divide-border/50 p-4">
       {sortedDates.map((dateKey) => (
         <div key={dateKey} className="py-3">
-          <h3 className="mb-2 text-sm font-medium text-text-secondary">
+          <h3 className={cn("mb-2 text-sm font-medium text-text-secondary", (holidaysByDate.get(dateKey) || []).length > 0 && "text-error")}>
             {new Date(dateKey + "T00:00:00").toLocaleDateString("ko-KR", {
               year: "numeric", month: "long", day: "numeric", weekday: "short",
             })}
           </h3>
+          {(holidaysByDate.get(dateKey) || []).length > 0 ? (
+            <p className="mb-2 truncate text-xs font-semibold text-error" title={(holidaysByDate.get(dateKey) || []).join(", ")}>
+              {(holidaysByDate.get(dateKey) || [])[0]}
+            </p>
+          ) : null}
           <div className="space-y-1">
             {grouped.get(dateKey)!.map((event) => {
               return (

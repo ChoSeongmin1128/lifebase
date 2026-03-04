@@ -10,14 +10,26 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
+import { Input } from "@/components/ui/input";
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@/components/ui/select";
 import { Sun, Moon, Monitor } from "lucide-react";
+import {
+  MULTI_ACCOUNT_FALLBACK_COLORS,
+  buildGoogleAccountAliasSettingKey,
+  buildGoogleAccountColorSettingKey,
+  getGoogleAccountAlias,
+  getGoogleAccountCustomColor,
+  getGoogleAccountDisplayName,
+  normalizeHexColor,
+} from "@/lib/google-account-preferences";
 
 export default function SettingsPage() {
   const [settings, setSettings] = useState<Record<string, string>>({});
   const [googleAccounts, setGoogleAccounts] = useState<GoogleAccountSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [googleAccountsLoading, setGoogleAccountsLoading] = useState(true);
+  const [aliasDrafts, setAliasDrafts] = useState<Record<string, string>>({});
+  const [colorDrafts, setColorDrafts] = useState<Record<string, string>>({});
   const { theme, setTheme } = useThemeContext();
   const toast = useToast();
   const { getSettings, updateSetting } = useSettingsActions();
@@ -55,6 +67,26 @@ export default function SettingsPage() {
     loadGoogleAccounts();
   }, [loadGoogleAccounts]);
 
+  useEffect(() => {
+    setAliasDrafts((prev) => {
+      const next = { ...prev };
+      for (const account of googleAccounts) {
+        if (next[account.id] !== undefined) continue;
+        next[account.id] = getGoogleAccountAlias(settings, account.id);
+      }
+      return next;
+    });
+    setColorDrafts((prev) => {
+      const next = { ...prev };
+      for (const [index, account] of googleAccounts.entries()) {
+        if (next[account.id] !== undefined) continue;
+        const fallbackColor = MULTI_ACCOUNT_FALLBACK_COLORS[index % MULTI_ACCOUNT_FALLBACK_COLORS.length];
+        next[account.id] = getGoogleAccountCustomColor(settings, account.id) || fallbackColor;
+      }
+      return next;
+    });
+  }, [googleAccounts, settings]);
+
   const handleUpdateSetting = async (key: string, value: string) => {
     setSettings((prev) => ({ ...prev, [key]: value }));
     try {
@@ -66,6 +98,17 @@ export default function SettingsPage() {
 
   const get = (key: string, fallback: string = "") => settings[key] ?? fallback;
   const dndEnabled = get("dnd_enabled", "true") === "true";
+
+  const accountDefaultColorByID = useMemo(
+    () =>
+      new Map(
+        googleAccounts.map((account, index) => [
+          account.id,
+          MULTI_ACCOUNT_FALLBACK_COLORS[index % MULTI_ACCOUNT_FALLBACK_COLORS.length],
+        ]),
+      ),
+    [googleAccounts]
+  );
 
   const handleThemeChange = (value: "light" | "dark" | "system") => {
     setTheme(value);
@@ -122,6 +165,44 @@ export default function SettingsPage() {
       }
       setSettings((prev) => ({ ...prev, [settingKey]: previous }));
       toast.error("동기화 설정 변경 실패", "잠시 후 다시 시도해 주세요.");
+    }
+  };
+
+  const handleSaveAccountAlias = async (account: GoogleAccountSummary) => {
+    const settingKey = buildGoogleAccountAliasSettingKey(account.id);
+    const previous = settings[settingKey] ?? "";
+    const nextAlias = (aliasDrafts[account.id] ?? "").trim();
+
+    setSettings((prev) => ({ ...prev, [settingKey]: nextAlias }));
+    try {
+      await updateSetting(settingKey, nextAlias);
+      toast.success("계정 별명 저장 완료");
+    } catch (err) {
+      console.error("Save account alias failed:", err);
+      setSettings((prev) => ({ ...prev, [settingKey]: previous }));
+      toast.error("계정 별명 저장 실패", "잠시 후 다시 시도해 주세요.");
+    }
+  };
+
+  const handleSaveAccountColor = async (account: GoogleAccountSummary) => {
+    const settingKey = buildGoogleAccountColorSettingKey(account.id);
+    const previous = settings[settingKey] ?? "";
+    const fallbackColor = accountDefaultColorByID.get(account.id) || MULTI_ACCOUNT_FALLBACK_COLORS[0];
+    const normalized = normalizeHexColor(colorDrafts[account.id]) || fallbackColor;
+
+    setColorDrafts((prev) => ({ ...prev, [account.id]: normalized }));
+    setSettings((prev) => ({ ...prev, [settingKey]: normalized }));
+    try {
+      await updateSetting(settingKey, normalized);
+      toast.success("계정 색상 저장 완료");
+    } catch (err) {
+      console.error("Save account color failed:", err);
+      setSettings((prev) => ({ ...prev, [settingKey]: previous }));
+      setColorDrafts((prev) => ({
+        ...prev,
+        [account.id]: normalizeHexColor(previous) || fallbackColor,
+      }));
+      toast.error("계정 색상 저장 실패", "잠시 후 다시 시도해 주세요.");
     }
   };
 
@@ -190,9 +271,24 @@ export default function SettingsPage() {
                         key={account.id}
                         className="rounded-md border border-border/70 px-3 py-2"
                       >
+                        {(() => {
+                          const alias = getGoogleAccountAlias(settings, account.id);
+                          const displayName = getGoogleAccountDisplayName(settings, account.id, account.google_email);
+                          const aliasKey = buildGoogleAccountAliasSettingKey(account.id);
+                          const colorKey = buildGoogleAccountColorSettingKey(account.id);
+                          const fallbackColor = accountDefaultColorByID.get(account.id) || MULTI_ACCOUNT_FALLBACK_COLORS[0];
+                          const effectiveColor =
+                            normalizeHexColor(colorDrafts[account.id]) ||
+                            normalizeHexColor(settings[colorKey]) ||
+                            fallbackColor;
+                          return (
+                            <>
                         <div className="flex items-center justify-between gap-3">
                           <div className="min-w-0">
-                            <p className="truncate text-sm font-medium text-text-strong">{account.google_email}</p>
+                            <p className="truncate text-sm font-medium text-text-strong">{displayName}</p>
+                            {alias ? (
+                              <p className="truncate text-xs text-text-muted">{account.google_email}</p>
+                            ) : null}
                             <p className="text-xs text-text-muted">
                               연결일: {new Date(account.connected_at).toLocaleDateString("ko-KR")}
                             </p>
@@ -203,6 +299,50 @@ export default function SettingsPage() {
                               {getGoogleAccountStatusLabel(account.status)}
                             </Badge>
                           </div>
+                        </div>
+                        <div className="mt-3 flex flex-wrap items-end gap-2">
+                          <div className="min-w-[12rem] flex-1">
+                            <p className="mb-1 text-[11px] text-text-muted">표시 별명</p>
+                            <Input
+                              value={aliasDrafts[account.id] ?? settings[aliasKey] ?? ""}
+                              placeholder={account.google_email}
+                              className="h-8"
+                              onChange={(e) =>
+                                setAliasDrafts((prev) => ({ ...prev, [account.id]: e.target.value }))
+                              }
+                            />
+                          </div>
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="secondary"
+                            className="h-8"
+                            onClick={() => handleSaveAccountAlias(account)}
+                          >
+                            별명 저장
+                          </Button>
+                        </div>
+                        <div className="mt-2 flex flex-wrap items-end gap-2">
+                          <div className="min-w-[10rem]">
+                            <p className="mb-1 text-[11px] text-text-muted">다중 계정 색상</p>
+                            <input
+                              type="color"
+                              value={effectiveColor}
+                              className="h-8 w-14 rounded border border-border bg-background p-1"
+                              onChange={(e) =>
+                                setColorDrafts((prev) => ({ ...prev, [account.id]: e.target.value }))
+                              }
+                            />
+                          </div>
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="secondary"
+                            className="h-8"
+                            onClick={() => handleSaveAccountColor(account)}
+                          >
+                            색상 저장
+                          </Button>
                         </div>
                         <div className="mt-3 flex flex-wrap items-center gap-2">
                           <SyncToggle
@@ -221,6 +361,9 @@ export default function SettingsPage() {
                             <span className="text-xs text-text-muted">비활성 계정은 동기화 설정을 변경할 수 없습니다.</span>
                           ) : null}
                         </div>
+                            </>
+                          );
+                        })()}
                       </div>
                     ))
                   )}
@@ -304,6 +447,24 @@ export default function SettingsPage() {
                       ))}
                     </SelectContent>
                   </Select>
+                </SettingRow>
+                <Separator />
+                <SettingRow label="공휴일 표시">
+                  <div className="flex gap-1">
+                    {[
+                      { value: "true", label: "표시" },
+                      { value: "false", label: "숨김" },
+                    ].map((opt) => (
+                      <Button
+                        key={opt.value}
+                        variant={get("calendar_show_public_holidays", "true") === opt.value ? "primary" : "ghost"}
+                        size="sm"
+                        onClick={() => handleUpdateSetting("calendar_show_public_holidays", opt.value)}
+                      >
+                        {opt.label}
+                      </Button>
+                    ))}
+                  </div>
                 </SettingRow>
               </SettingsCard>
             </TabsContent>

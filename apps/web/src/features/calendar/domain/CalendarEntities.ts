@@ -58,3 +58,8 @@ export interface BackfillEventsResult {
   covered_start: string;
   covered_end: string;
 }
+
+export interface HolidayData {
+  date: string;
+  name: string;
+}

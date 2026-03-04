@@ -2,6 +2,7 @@ import type {
   AdminAuthTokenPair,
   AdminAuthUrlResponse,
   AdminUser,
+  HolidayRefreshResult,
   GoogleAccount,
   GoogleAccountStatus,
   UserDetail,
@@ -22,6 +23,7 @@ export interface AdminRepository {
   recalculateStorage(userId: string): Promise<void>;
   resetStorage(userId: string, confirm: string): Promise<void>;
   updateGoogleAccountStatus(userId: string, accountId: string, status: GoogleAccountStatus): Promise<void>;
+  refreshHolidays(fromYear?: number, toYear?: number): Promise<HolidayRefreshResult>;
   listAdmins(): Promise<AdminUser[]>;
   addAdmin(email: string, role: AdminUser["Role"]): Promise<void>;
   updateAdminRole(adminId: string, role: AdminUser["Role"]): Promise<void>;

@@ -21,6 +21,7 @@ export function useAdminActions() {
       resetStorage: (userId: string, confirm: string) => useCase.resetStorage(userId, confirm),
       updateGoogleAccountStatus: (userId: string, accountId: string, status: GoogleAccountStatus) =>
         useCase.updateGoogleAccountStatus(userId, accountId, status),
+      refreshHolidays: (fromYear?: number, toYear?: number) => useCase.refreshHolidays(fromYear, toYear),
       listAdmins: () => useCase.listAdmins(),
       addAdmin: (email: string, role: AdminUser["Role"]) => useCase.addAdmin(email, role),
       updateAdminRole: (adminId: string, role: AdminUser["Role"]) => useCase.updateAdminRole(adminId, role),

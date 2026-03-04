@@ -16,12 +16,13 @@ interface YearCompactViewProps {
   year: number;
   events: EventData[];
   weekStartsOn: number;
+  holidaysByDate: Map<string, string[]>;
   onMonthClick: (month: number) => void;
 }
 
 const WEEKDAY_LABELS = ["일", "월", "화", "수", "목", "금", "토"];
 
-export function YearCompactView({ year, events, weekStartsOn, onMonthClick }: YearCompactViewProps) {
+export function YearCompactView({ year, events, weekStartsOn, holidaysByDate, onMonthClick }: YearCompactViewProps) {
   const today = new Date();
   const todayKey = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
   const weekdays = Array.from({ length: 7 }, (_, index) => {
@@ -60,6 +61,7 @@ export function YearCompactView({ year, events, weekStartsOn, onMonthClick }: Ye
                 const dateStr = cell.dateKey;
                 const count = eventsByDate.get(dateStr) || 0;
                 const isToday = dateStr === todayKey;
+                const holidayLabel = holidaysByDate.get(dateStr)?.[0] || "";
 
                 return (
                   <div
@@ -73,11 +75,22 @@ export function YearCompactView({ year, events, weekStartsOn, onMonthClick }: Ye
                       className={cn(
                         "inline-flex h-5 w-5 items-center justify-center rounded-full text-[10px] md:h-6 md:w-6 md:text-[11px]",
                         !cell.inCurrentMonth && !isToday && "text-text-muted",
+                        !!holidayLabel && !isToday && "text-error font-semibold",
                         isToday && "bg-primary text-white font-medium"
                       )}
                     >
                       {day}
                     </span>
+                    {holidayLabel ? (
+                      <span
+                        className={cn(
+                          "pointer-events-none absolute left-0.5 right-0.5 top-0.5 truncate text-[8px] font-semibold leading-none text-error",
+                          !cell.inCurrentMonth && "opacity-70"
+                        )}
+                      >
+                        {holidayLabel}
+                      </span>
+                    ) : null}
                     {count > 0 && (
                       <div
                         className={cn(

@@ -34,6 +34,13 @@ export type AdminUser = {
   IsActive: boolean;
 };
 
+export type HolidayRefreshResult = {
+  months_total: number;
+  months_refreshed: number;
+  items_upserted: number;
+  refreshed_at: string;
+};
+
 export interface AdminAuthUrlResponse {
   url: string;
   state: string;

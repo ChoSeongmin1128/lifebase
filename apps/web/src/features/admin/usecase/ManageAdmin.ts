@@ -43,6 +43,10 @@ export class ManageAdminUseCase {
     return this.repo.updateGoogleAccountStatus(userId, accountId, status);
   }
 
+  refreshHolidays(fromYear?: number, toYear?: number) {
+    return this.repo.refreshHolidays(fromYear, toYear);
+  }
+
   listAdmins() {
     return this.repo.listAdmins();
   }

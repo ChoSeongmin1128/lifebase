@@ -18,6 +18,7 @@ export function useCalendarActions() {
       listCalendars: () => useCase.listCalendars(),
       getSettings: () => useCase.getSettings(),
       listEvents: (start: string, end: string, calendarIDs?: string[]) => useCase.listEvents(start, end, calendarIDs),
+      listHolidays: (startDate: string, endDate: string) => useCase.listHolidays(startDate, endDate),
       backfillEvents: (start: string, end: string, calendarIDs?: string[]) =>
         useCase.backfillEvents({ start, end, calendar_ids: calendarIDs, reason: "range_backfill" }),
       createEvent: (input: CreateEventInput) => useCase.createEvent(input),

@@ -35,6 +35,11 @@ import (
 	galleryhttp "lifebase/internal/gallery/adapter/in/http"
 	gallerypg "lifebase/internal/gallery/adapter/out/postgres"
 	galleryusecase "lifebase/internal/gallery/usecase"
+	holidayhttp "lifebase/internal/holiday/adapter/in/http"
+	holidaypg "lifebase/internal/holiday/adapter/out/postgres"
+	holidaypublic "lifebase/internal/holiday/adapter/out/publicdata"
+	holidayportin "lifebase/internal/holiday/port/in"
+	holidayusecase "lifebase/internal/holiday/usecase"
 	homehttp "lifebase/internal/home/adapter/in/http"
 	homepg "lifebase/internal/home/adapter/out/postgres"
 	homeusecase "lifebase/internal/home/usecase"
@@ -114,6 +119,7 @@ func main() {
 	shareRepo := sharingpg.NewShareRepo(dbpool)
 	inviteRepo := sharingpg.NewInviteRepo(dbpool)
 	homeRepo := homepg.NewHomeRepo(dbpool)
+	holidayRepo := holidaypg.NewHolidayRepo(dbpool)
 
 	// Use Cases
 	redirects := map[string]string{
@@ -124,6 +130,10 @@ func main() {
 	googleAccountSyncer := authpg.NewGoogleAccountSyncer(dbpool, authOAuthClient)
 	googleSyncCoordinator := authpg.NewGoogleSyncCoordinator(dbpool, googleAccountSyncer)
 	googlePushProcessor := authpg.NewGooglePushProcessor(dbpool, authOAuthClient)
+	holidayProvider := holidaypublic.NewHolidayProvider(
+		cfg.PublicData.HolidayServiceKey,
+		cfg.PublicData.HolidayEndpoint,
+	)
 	authBootstrapper := authbootstrap.NewTodoBootstrapper(todoListRepo)
 	authUC := authusecase.NewAuthUseCase(
 		authusecase.JWTOptions{
@@ -153,6 +163,7 @@ func main() {
 	sharingUC := sharingusecase.NewSharingUseCase(shareRepo, inviteRepo)
 	settingsUC := settingsusecase.NewSettingsUseCase(settingspg.NewSettingsRepo(dbpool))
 	homeUC := homeusecase.NewHomeUseCase(homeRepo)
+	holidayUC := holidayusecase.NewHolidayUseCase(holidayRepo, holidayProvider)
 	adminUC := adminusecase.NewAdminUseCase(
 		adminRepo,
 		userRepo,
@@ -171,6 +182,7 @@ func main() {
 	todoHandler := todohttp.NewTodoHandler(todoUC)
 	sharingHandler := sharinghttp.NewSharingHandler(sharingUC)
 	homeHandler := homehttp.NewHomeHandler(homeUC)
+	holidayHandler := holidayhttp.NewHolidayHandler(holidayUC)
 	adminHandler := adminhttp.NewAdminHandler(adminUC)
 
 	// Router
@@ -230,6 +242,7 @@ func main() {
 
 			// Home
 			r.Get("/home/summary", homeHandler.GetSummary)
+			r.Get("/holidays", holidayHandler.ListHolidays)
 
 			// Cloud
 			r.Route("/cloud", func(r chi.Router) {
@@ -335,6 +348,7 @@ func main() {
 				r.Post("/users/{userID}/recalculate-storage", adminHandler.RecalculateStorage)
 				r.Post("/users/{userID}/reset-storage", adminHandler.ResetStorage)
 				r.Patch("/users/{userID}/google-accounts/{accountID}/status", adminHandler.UpdateGoogleAccountStatus)
+				r.Post("/holidays/refresh", holidayHandler.RefreshHolidays)
 
 				r.Get("/admins", adminHandler.ListAdmins)
 				r.Post("/admins", adminHandler.CreateAdmin)
@@ -367,6 +381,7 @@ func main() {
 	defer bgCancel()
 	go runGoogleBackgroundPullSync(bgCtx, authUC)
 	go runGooglePushOutboxWorker(bgCtx, authUC)
+	go runHolidayBackgroundRefresh(bgCtx, holidayUC)
 
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
@@ -438,6 +453,37 @@ func runGooglePushOutboxWorker(ctx context.Context, authUC authportin.AuthUseCas
 			if processed > 0 {
 				slog.Info("google push outbox worker processed", "items", processed)
 			}
+		}
+	}
+}
+
+func runHolidayBackgroundRefresh(ctx context.Context, holidayUC holidayportin.HolidayUseCase) {
+	ticker := time.NewTicker(3 * time.Hour)
+	defer ticker.Stop()
+
+	refresh := func() {
+		runCtx, cancel := context.WithTimeout(ctx, 3*time.Minute)
+		defer cancel()
+
+		_, err := holidayUC.RefreshRange(runCtx, holidayportin.RefreshRangeInput{})
+		if err != nil {
+			slog.Warn("holiday background refresh failed", "error", err)
+			return
+		}
+		slog.Info("holiday background refresh completed")
+	}
+
+	startupDelay := time.NewTimer(15 * time.Second)
+	defer startupDelay.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-startupDelay.C:
+			refresh()
+		case <-ticker.C:
+			refresh()
 		}
 	}
 }

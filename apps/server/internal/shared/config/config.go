@@ -15,6 +15,7 @@ type Config struct {
 	Database     DatabaseConfig
 	Redis        RedisConfig
 	Google       GoogleConfig
+	PublicData   PublicDataConfig
 	JWT          JWTConfig
 	Storage      StorageConfig
 	StateHMACKey string
@@ -44,6 +45,11 @@ type RedisConfig struct {
 type GoogleConfig struct {
 	ClientID     string
 	ClientSecret string
+}
+
+type PublicDataConfig struct {
+	HolidayServiceKey string
+	HolidayEndpoint   string
 }
 
 type JWTConfig struct {
@@ -85,6 +91,10 @@ func Load() (*Config, error) {
 		Google: GoogleConfig{
 			ClientID:     getEnv("GOOGLE_CLIENT_ID", ""),
 			ClientSecret: getEnv("GOOGLE_CLIENT_SECRET", ""),
+		},
+		PublicData: PublicDataConfig{
+			HolidayServiceKey: getEnv("KASI_HOLIDAY_SERVICE_KEY", ""),
+			HolidayEndpoint:   getEnv("KASI_HOLIDAY_ENDPOINT", "https://apis.data.go.kr/B090041/openapi/service/SpcdeInfoService/getRestDeInfo"),
 		},
 		JWT: JWTConfig{
 			Secret:        getEnv("JWT_SECRET", ""),

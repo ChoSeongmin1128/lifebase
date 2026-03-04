@@ -4,6 +4,7 @@ import type {
   AdminAuthTokenPair,
   AdminAuthUrlResponse,
   AdminUser,
+  HolidayRefreshResult,
   GoogleAccount,
   GoogleAccountStatus,
   UserDetail,
@@ -104,6 +105,18 @@ export class HttpAdminRepository implements AdminRepository {
       method: "PATCH",
       token,
       body: { status },
+    });
+  }
+
+  refreshHolidays(fromYear?: number, toYear?: number): Promise<HolidayRefreshResult> {
+    const token = this.getToken();
+    const body: { from_year?: number; to_year?: number } = {};
+    if (typeof fromYear === "number") body.from_year = fromYear;
+    if (typeof toYear === "number") body.to_year = toYear;
+    return adminApi<HolidayRefreshResult>("/admin/holidays/refresh", {
+      method: "POST",
+      token,
+      body,
     });
   }
 

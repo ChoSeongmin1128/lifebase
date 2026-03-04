@@ -68,6 +68,28 @@ func (s *googleAccountSyncer) syncCalendarsAndEvents(
 	token portout.OAuthToken,
 	now time.Time,
 ) error {
+	_, _ = s.db.Exec(ctx,
+		`DELETE FROM events
+		  WHERE user_id = $1
+		    AND calendar_id IN (
+		      SELECT id
+		        FROM calendars
+		       WHERE user_id = $1
+		         AND google_account_id = $2
+		         AND (is_special = TRUE OR kind IN ('holiday', 'birthday'))
+		    )`,
+		userID,
+		accountID,
+	)
+	_, _ = s.db.Exec(ctx,
+		`DELETE FROM calendars
+		  WHERE user_id = $1
+		    AND google_account_id = $2
+		    AND (is_special = TRUE OR kind IN ('holiday', 'birthday'))`,
+		userID,
+		accountID,
+	)
+
 	calendars, err := s.googleAuth.ListCalendars(ctx, token)
 	if err != nil {
 		return fmt.Errorf("list google calendars: %w", err)
@@ -75,9 +97,13 @@ func (s *googleAccountSyncer) syncCalendarsAndEvents(
 
 	localCalendarIDByGoogleID := make(map[string]string, len(calendars))
 	for _, cal := range calendars {
+		if cal.IsSpecial || cal.Kind == "holiday" || cal.Kind == "birthday" {
+			continue
+		}
+
 		_, err := s.db.Exec(ctx,
 			`UPDATE calendars
-			 SET google_account_id = $4, name = $3, kind = $5, color_id = $6, is_primary = $7, is_visible = $8,
+				 SET google_account_id = $4, name = $3, kind = $5, color_id = $6, is_primary = $7, is_visible = $8,
 			     is_readonly = $9, is_special = $10, updated_at = $11
 			 WHERE user_id = $1 AND google_id = $2`,
 			userID, cal.GoogleID, cal.Name, accountID, cal.Kind, cal.ColorID, cal.IsPrimary, cal.IsVisible, cal.IsReadOnly, cal.IsSpecial, now,
@@ -203,9 +229,11 @@ func (s *googleAccountSyncer) BackfillEvents(
 	          FROM calendars c
 	          JOIN user_google_accounts a ON a.id::text = c.google_account_id AND a.user_id::text = c.user_id
 	         WHERE c.user_id = $1
-	           AND c.google_id IS NOT NULL
-	           AND c.google_account_id IS NOT NULL
-	           AND a.status = 'active'`
+		           AND c.google_id IS NOT NULL
+		           AND c.google_account_id IS NOT NULL
+		           AND c.is_special = FALSE
+		           AND c.kind NOT IN ('holiday', 'birthday')
+		           AND a.status = 'active'`
 	if len(calendarIDs) > 0 {
 		placeholders := make([]string, 0, len(calendarIDs))
 		for _, calendarID := range calendarIDs {

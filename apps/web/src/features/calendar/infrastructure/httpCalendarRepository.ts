@@ -8,6 +8,7 @@ import type {
   CreateEventInput,
   EventData,
   EventPayload,
+  HolidayData,
 } from "@/features/calendar/domain/CalendarEntities";
 import type { CalendarRepository } from "@/features/calendar/repository/CalendarRepository";
 
@@ -17,6 +18,10 @@ interface CalendarsResponse {
 
 interface EventsResponse {
   events?: EventData[];
+}
+
+interface HolidaysResponse {
+  holidays?: HolidayData[];
 }
 
 export class HttpCalendarRepository implements CalendarRepository {
@@ -50,6 +55,16 @@ export class HttpCalendarRepository implements CalendarRepository {
     }
     const data = await api<EventsResponse>(`/events?${params.toString()}`, { token });
     return data.events || [];
+  }
+
+  async listHolidays(startDate: string, endDate: string): Promise<HolidayData[]> {
+    const token = this.getToken();
+    const params = new URLSearchParams({
+      start: startDate,
+      end: endDate,
+    });
+    const data = await api<HolidaysResponse>(`/holidays?${params.toString()}`, { token });
+    return data.holidays || [];
   }
 
   backfillEvents(input: BackfillEventsInput): Promise<BackfillEventsResult> {

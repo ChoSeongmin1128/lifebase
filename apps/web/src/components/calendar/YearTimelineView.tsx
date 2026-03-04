@@ -15,6 +15,7 @@ interface EventData {
 interface YearTimelineViewProps {
   year: number;
   events: EventData[];
+  holidaysByDate: Map<string, string[]>;
   getEventColor: (
     colorId: string | null,
     calendar?: { id: string; color_id: string | null; google_account_id?: string | null }
@@ -26,7 +27,7 @@ const MONTHS = ["1월", "2월", "3월", "4월", "5월", "6월", "7월", "8월", 
 const HEADER_HEIGHT = 28;
 const MIN_ROW_HEIGHT = 26;
 
-export function YearTimelineView({ year, events, getEventColor, calendars }: YearTimelineViewProps) {
+export function YearTimelineView({ year, events, holidaysByDate, getEventColor, calendars }: YearTimelineViewProps) {
   const today = new Date();
   const calMap = new Map(calendars.map((c) => [c.id, c]));
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -83,6 +84,7 @@ export function YearTimelineView({ year, events, getEventColor, calendars }: Yea
                   if (d >= daysInMonth) return <td key={d} className="bg-surface-accent/30" />;
                   const dateStr = `${year}-${String(m + 1).padStart(2, "0")}-${String(d + 1).padStart(2, "0")}`;
                   const dayEvents = eventsByDate.get(dateStr) || [];
+                  const holidayLabel = holidaysByDate.get(dateStr)?.[0] || "";
                   const isToday =
                     year === today.getFullYear() && m === today.getMonth() && d + 1 === today.getDate();
                   const isWeekend = new Date(year, m, d + 1).getDay() % 6 === 0;
@@ -96,24 +98,34 @@ export function YearTimelineView({ year, events, getEventColor, calendars }: Yea
                         isWeekend && !isToday && "bg-surface-accent/30"
                       )}
                     >
-                      {dayEvents.length > 0 && (
-                        <div className="flex flex-col gap-px">
-                          {dayEvents.slice(0, 2).map((e) => {
-                            const cal = calMap.get(e.calendar_id);
-                            return (
-                              <div
-                                key={e.id}
-                                className="h-1.5 w-full rounded-sm"
-                                style={{ backgroundColor: getEventColor(e.color_id, cal) }}
-                                title={e.title}
-                              />
-                            );
-                          })}
-                          {dayEvents.length > 2 && (
-                            <div className="text-[7px] text-text-muted text-center">+{dayEvents.length - 2}</div>
-                          )}
-                        </div>
-                      )}
+                      <div className="relative flex h-full flex-col gap-px px-0.5 py-0.5">
+                        <span className={cn("text-[8px] leading-none", holidayLabel ? "font-semibold text-error" : "text-text-muted")}>
+                          {d + 1}
+                        </span>
+                        {holidayLabel ? (
+                          <span className="truncate text-[8px] font-semibold leading-none text-error" title={holidayLabel}>
+                            {holidayLabel}
+                          </span>
+                        ) : null}
+                        {dayEvents.length > 0 && (
+                          <div className="mt-0.5 flex flex-col gap-px">
+                            {dayEvents.slice(0, 2).map((e) => {
+                              const cal = calMap.get(e.calendar_id);
+                              return (
+                                <div
+                                  key={e.id}
+                                  className="h-1.5 w-full rounded-sm"
+                                  style={{ backgroundColor: getEventColor(e.color_id, cal) }}
+                                  title={e.title}
+                                />
+                              );
+                            })}
+                            {dayEvents.length > 2 && (
+                              <div className="text-[7px] text-text-muted text-center">+{dayEvents.length - 2}</div>
+                            )}
+                          </div>
+                        )}
+                      </div>
                     </td>
                   );
                 })}
