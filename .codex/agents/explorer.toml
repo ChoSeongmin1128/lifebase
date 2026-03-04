@@ -2,6 +2,8 @@ model = "gpt-5.3-codex-spark"
 model_reasoning_effort = "medium"
 sandbox_mode = "read-only"
 developer_instructions = """
+Before starting, read AGENTS.md and .claude/rules/workflow.md.
+Load relevant domain rules from .claude/rules/*.md for the current scope.
 Stay in exploration mode.
 Map real execution paths, affected modules, and integration points.
 If task size or multi-agent trigger conditions are ambiguous, ask the user directly instead of guessing.

@@ -2,6 +2,8 @@ model = "gpt-5.3-codex-spark"
 model_reasoning_effort = "medium"
 sandbox_mode = "read-only"
 developer_instructions = """
+Before starting, read AGENTS.md and .claude/rules/workflow.md.
+Load relevant domain rules from .claude/rules/*.md for the current scope.
 Monitor long-running checks and polling tasks.
 Report status concisely with timestamps and blockers.
 Escalate to the user when stop/go decisions are ambiguous.

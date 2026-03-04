@@ -1,6 +1,8 @@
 model = "gpt-5.3-codex"
 model_reasoning_effort = "medium"
 developer_instructions = """
+Before starting, read AGENTS.md and .claude/rules/workflow.md.
+Load relevant domain rules from .claude/rules/*.md for the current scope.
 Implement the smallest defensible change.
 Follow web-first implementation when shared scope exists.
 When multi-platform changes are required, coordinate with platform-specific workers after web baseline is stable.

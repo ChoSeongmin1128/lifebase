@@ -47,9 +47,10 @@
 - 순서: Web 공통 반영 -> Desktop/Mobile rebase+merge -> 통합 검증
 
 ## 실행 정책 검증
-- 명령 실행 정책 변경 후에는 아래 표준 명령으로 검증한다.
-- `codex execpolicy check --pretty --rules ~/.codex/rules/default.rules -- <command>`
-- 검증 결과가 기대한 `allow/prompt/forbidden`과 다르면 규칙을 수정하고 재검증한다.
+- 레포 도메인 규칙은 `.claude/rules/*.md`로 운영한다.
+- Codex 명령 실행 정책(강제)은 `.codex/rules/default.rules`로 운영한다.
+- 표준 검증 명령: `codex execpolicy check --pretty --rules ./.codex/rules/default.rules -- <command>`
+- 검증 결과가 기대한 `allow/prompt/forbidden`과 다르면 `.codex/rules/default.rules`를 수정하고 재검증한다.
 
 ## 용어 규칙
 - LifeBase 내부 용어는 "Todo"로 통일한다 (할 일, 태스크 사용 금지)

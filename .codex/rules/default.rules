@@ -1,0 +1,32 @@
+# LifeBase 사용자 실행 정책
+# 원칙: 파괴적 명령만 차단하고, 그 외 명령은 기본 정책을 따른다.
+
+# Forbidden: 파괴적 명령만 차단
+prefix_rule(
+  pattern=["git", "reset", "--hard"],
+  decision="forbidden",
+  justification="파괴적 이력/워킹트리 초기화 금지. 대안: git status, git restore --staged <file> 사용",
+  match=[
+    "git reset --hard",
+    "git reset --hard HEAD~1",
+  ],
+)
+
+prefix_rule(
+  pattern=["git", "clean", "-fdx"],
+  decision="forbidden",
+  justification="추적되지 않은 파일 대량 삭제 금지. 대안: git clean -n으로 미리 확인",
+  match=[
+    "git clean -fdx",
+  ],
+)
+
+prefix_rule(
+  pattern=["rm", ["-rf", "-fr"], "/"],
+  decision="forbidden",
+  justification="루트 삭제 시도는 항상 차단",
+  match=[
+    "rm -rf /",
+    "rm -fr /",
+  ],
+)
