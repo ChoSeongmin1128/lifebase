@@ -61,6 +61,7 @@ interface TodoList {
 
 const PAGE_ACTION_SYNC_COOLDOWN_MS = 15_000;
 const ALL_LIST_ID = "__all__";
+const TODO_LAST_SYNC_AT_SETTING_KEY = "todo_last_sync_at";
 
 function TodoPageInner() {
   const router = useRouter();
@@ -108,6 +109,8 @@ function TodoPageInner() {
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const [showCreateDialog, setShowCreateDialog] = useState(false);
   const [createParentId, setCreateParentId] = useState<string | undefined>();
+  const [lastSyncedAt, setLastSyncedAt] = useState("");
+  const [syncingNow, setSyncingNow] = useState(false);
   const quickActionHandledRef = useRef(false);
   const syncThrottleRef = useRef<Record<string, number>>({});
 
@@ -119,7 +122,7 @@ function TodoPageInner() {
 
   const { createTodo, creating } = useCreateTodo();
   const { listLists, createList, deleteList, listTodos, updateTodo, deleteTodo, reorder } = useTodoActions();
-  const { getSettings } = useSettingsActions();
+  const { getSettings, updateSetting } = useSettingsActions();
   const { listGoogleAccounts, triggerGoogleSync } = useAuthFlow();
   const isAllView = activeListId === ALL_LIST_ID;
   const realLists = useMemo(() => lists.filter((list) => !list.is_virtual), [lists]);
@@ -172,8 +175,10 @@ function TodoPageInner() {
     try {
       const next = await getSettings();
       setSettings(next || {});
+      setLastSyncedAt(next?.[TODO_LAST_SYNC_AT_SETTING_KEY] || "");
     } catch {
       setSettings({});
+      setLastSyncedAt("");
     }
   }, [getSettings]);
 
@@ -279,31 +284,29 @@ function TodoPageInner() {
   }, []);
 
   const triggerTodoSync = useCallback(
-    (reason: "page_enter" | "page_action" | "tab_heartbeat", throttleMs = 0) => {
+    async (reason: "page_enter" | "page_action" | "tab_heartbeat" | "manual", throttleMs = 0) => {
       const key = `todo:${reason}`;
       const now = Date.now();
       const last = syncThrottleRef.current[key] || 0;
-      if (throttleMs > 0 && now-last < throttleMs) {
-        return;
+      if (throttleMs > 0 && now - last < throttleMs) {
+        return 0;
       }
       syncThrottleRef.current[key] = now;
-      triggerGoogleSync({ area: "todo", reason }).catch(() => undefined);
+      const scheduled = await triggerGoogleSync({ area: "todo", reason });
+      if (scheduled > 0) {
+        const stamp = new Date().toISOString();
+        setLastSyncedAt(stamp);
+        updateSetting(TODO_LAST_SYNC_AT_SETTING_KEY, stamp).catch(() => undefined);
+      }
+      return scheduled;
     },
-    [triggerGoogleSync]
+    [triggerGoogleSync, updateSetting]
   );
 
   const triggerTodoSyncAndRefresh = useCallback(
     async (reason: "page_enter" | "tab_heartbeat", throttleMs = 0) => {
-      const key = `todo:${reason}`;
-      const now = Date.now();
-      const last = syncThrottleRef.current[key] || 0;
-      if (throttleMs > 0 && now-last < throttleMs) {
-        return;
-      }
-      syncThrottleRef.current[key] = now;
-
       try {
-        const scheduled = await triggerGoogleSync({ area: "todo", reason });
+        const scheduled = await triggerTodoSync(reason, throttleMs);
         if (scheduled > 0) {
           await loadLists();
           await loadTodos(activeListIdRef.current, { silent: true });
@@ -312,7 +315,7 @@ function TodoPageInner() {
         // ignore sync refresh failures
       }
     },
-    [loadLists, loadTodos, triggerGoogleSync]
+    [loadLists, loadTodos, triggerTodoSync]
   );
 
   useEffect(() => { loadSettings(); }, [loadSettings]);
@@ -328,11 +331,11 @@ function TodoPageInner() {
     loadTodos(ALL_LIST_ID, { silent: true });
   }, [activeListId, loadTodos, realListIDsKey]);
   useEffect(() => {
-    triggerTodoSyncAndRefresh("page_enter", 5_000);
+    void triggerTodoSyncAndRefresh("page_enter", 5_000);
   }, [triggerTodoSyncAndRefresh]);
   useEffect(() => {
     const timer = window.setInterval(() => {
-      triggerTodoSyncAndRefresh("tab_heartbeat", 9 * 60_000);
+      void triggerTodoSyncAndRefresh("tab_heartbeat", 9 * 60_000);
     }, 10 * 60_000);
     return () => window.clearInterval(timer);
   }, [triggerTodoSyncAndRefresh]);
@@ -374,7 +377,7 @@ function TodoPageInner() {
       setShowNewList(false);
       setActiveListId(list.id);
       await loadLists();
-      triggerTodoSync("page_action", PAGE_ACTION_SYNC_COOLDOWN_MS);
+      void triggerTodoSync("page_action", PAGE_ACTION_SYNC_COOLDOWN_MS);
     } catch (err) {
       console.error("Create list failed:", err);
     }
@@ -408,7 +411,7 @@ function TodoPageInner() {
       setCreateParentId(undefined);
       await loadTodos();
       await loadLists();
-      triggerTodoSync("page_action", PAGE_ACTION_SYNC_COOLDOWN_MS);
+      void triggerTodoSync("page_action", PAGE_ACTION_SYNC_COOLDOWN_MS);
     } catch (err) {
       console.error("Create todo failed:", err);
     }
@@ -427,7 +430,7 @@ function TodoPageInner() {
     applyListDoneDelta(todo.list_id, nextDone);
     try {
       await updateTodo(todo.id, { is_done: nextDone });
-      triggerTodoSync("page_action", PAGE_ACTION_SYNC_COOLDOWN_MS);
+      void triggerTodoSync("page_action", PAGE_ACTION_SYNC_COOLDOWN_MS);
     } catch (err) {
       setTodos((prev) =>
         prev.map((item) =>
@@ -445,7 +448,7 @@ function TodoPageInner() {
     try {
       await updateTodo(todo.id, { is_pinned: !todo.is_pinned });
       await loadTodos();
-      triggerTodoSync("page_action", PAGE_ACTION_SYNC_COOLDOWN_MS);
+      void triggerTodoSync("page_action", PAGE_ACTION_SYNC_COOLDOWN_MS);
     } catch (err) {
       console.error("Pin toggle failed:", err);
     }
@@ -457,7 +460,7 @@ function TodoPageInner() {
       setEditingTodo(null);
       await loadTodos();
       await loadLists();
-      triggerTodoSync("page_action", PAGE_ACTION_SYNC_COOLDOWN_MS);
+      void triggerTodoSync("page_action", PAGE_ACTION_SYNC_COOLDOWN_MS);
     } catch (err) {
       console.error("Delete failed:", err);
     }
@@ -474,7 +477,7 @@ function TodoPageInner() {
       if (needsListRefresh) {
         await loadLists();
       }
-      triggerTodoSync("page_action", PAGE_ACTION_SYNC_COOLDOWN_MS);
+      void triggerTodoSync("page_action", PAGE_ACTION_SYNC_COOLDOWN_MS);
     } catch (err) {
       console.error("Update failed:", err);
     }
@@ -485,7 +488,7 @@ function TodoPageInner() {
     try {
       await deleteList(listId);
       await loadLists();
-      triggerTodoSync("page_action", PAGE_ACTION_SYNC_COOLDOWN_MS);
+      void triggerTodoSync("page_action", PAGE_ACTION_SYNC_COOLDOWN_MS);
     } catch (err) {
       console.error("Delete list failed:", err);
     }
@@ -588,13 +591,27 @@ function TodoPageInner() {
     // Persist to server
     try {
       await reorder(changes);
-      triggerTodoSync("page_action", PAGE_ACTION_SYNC_COOLDOWN_MS);
+      void triggerTodoSync("page_action", PAGE_ACTION_SYNC_COOLDOWN_MS);
     } catch (err) {
       console.error("Reorder failed:", err);
       setTodos(dragSnapshotRef.current);
       loadTodos(undefined, { silent: true });
     }
   }, [allFlat, loadTodos, reorder, todos, triggerTodoSync]);
+
+  const handleManualSync = useCallback(async () => {
+    if (syncingNow) return;
+    setSyncingNow(true);
+    try {
+      await triggerTodoSync("manual", 0);
+      await loadLists();
+      await loadTodos(activeListIdRef.current, { silent: true });
+    } catch {
+      // noop
+    } finally {
+      setSyncingNow(false);
+    }
+  }, [loadLists, loadTodos, syncingNow, triggerTodoSync]);
 
   const handleDragCancel = useCallback(() => {
     setDragActiveId(null);
@@ -936,6 +953,9 @@ function TodoPageInner() {
           onSortChange={setSortBy}
           filter={filter}
           onFilterChange={setFilter}
+          lastSyncedAt={lastSyncedAt}
+          syncingNow={syncingNow}
+          onManualSync={handleManualSync}
         />
 
         {/* Add todo button */}

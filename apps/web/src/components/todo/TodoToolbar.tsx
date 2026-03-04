@@ -9,7 +9,7 @@ import {
   DropdownMenuItem,
 } from "@/components/ui/dropdown-menu";
 import { PageToolbar, PageToolbarGroup } from "@/components/layout/PageToolbar";
-import { Search, ArrowUpDown, Filter } from "lucide-react";
+import { Search, ArrowUpDown, Filter, RefreshCw } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 type SortBy = "due" | "priority" | "created_at" | "manual";
@@ -37,6 +37,9 @@ interface TodoToolbarProps {
   onSortChange: (s: SortBy) => void;
   filter: FilterMode;
   onFilterChange: (f: FilterMode) => void;
+  lastSyncedAt?: string;
+  syncingNow?: boolean;
+  onManualSync?: () => void;
 }
 
 export function TodoToolbar({
@@ -47,7 +50,13 @@ export function TodoToolbar({
   onSortChange,
   filter,
   onFilterChange,
+  lastSyncedAt,
+  syncingNow = false,
+  onManualSync,
 }: TodoToolbarProps) {
+  const activeFilterLabel =
+    FILTER_OPTIONS.find((item) => item.value === filter)?.label || "전체";
+
   return (
     <PageToolbar className="py-3">
       <h2 className="font-medium text-text-strong">{listName}</h2>
@@ -62,29 +71,12 @@ export function TodoToolbar({
           />
         </div>
 
-        {/* Filter chips */}
-        <div className="hidden md:flex gap-1">
-          {FILTER_OPTIONS.map((f) => (
-            <button
-              key={f.value}
-              onClick={() => onFilterChange(f.value)}
-              className={cn(
-                "rounded-full px-2.5 py-1 text-xs transition-colors",
-                filter === f.value
-                  ? "bg-primary/10 text-primary font-medium"
-                  : "text-text-muted hover:bg-surface-accent"
-              )}
-            >
-              {f.label}
-            </button>
-          ))}
-        </div>
-
-        {/* Mobile filter */}
+        {/* Filter */}
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button variant="ghost" size="icon-sm" className="md:hidden">
+            <Button variant="ghost" size="sm" className="gap-1.5">
               <Filter size={14} />
+              <span>{activeFilterLabel}</span>
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
@@ -99,6 +91,19 @@ export function TodoToolbar({
             ))}
           </DropdownMenuContent>
         </DropdownMenu>
+
+        <div className="hidden items-center gap-2 text-xs text-text-muted md:flex">
+          <span>최근 동기화: {lastSyncedAt ? new Date(lastSyncedAt).toLocaleString("ko-KR") : "-"}</span>
+        </div>
+        <Button
+          variant="secondary"
+          size="icon-sm"
+          onClick={onManualSync}
+          disabled={!onManualSync || syncingNow}
+          title="지금 동기화"
+        >
+          <RefreshCw className={cn("h-4 w-4", syncingNow && "animate-spin")} />
+        </Button>
 
         {/* Sort */}
         <DropdownMenu>
