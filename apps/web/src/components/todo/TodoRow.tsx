@@ -146,6 +146,7 @@ export function TodoRow({
       <Checkbox
         checked={todo.is_done}
         onCheckedChange={onToggleDone}
+        className="mt-0.5 self-start"
       />
 
       {/* Priority flag */}
