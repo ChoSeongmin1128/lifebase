@@ -146,13 +146,13 @@ func minIntervalForReason(reason string) time.Duration {
 	case "tab_heartbeat":
 		return 10 * time.Minute
 	case "page_action":
-		return 2 * time.Minute
+		return 15 * time.Second
 	case "page_enter":
 		return 0
 	case "manual":
 		return 0
 	default:
-		return 2 * time.Minute
+		return 15 * time.Second
 	}
 }
 

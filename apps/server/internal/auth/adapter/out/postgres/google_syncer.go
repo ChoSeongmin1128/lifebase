@@ -140,8 +140,11 @@ func (s *googleAccountSyncer) syncCalendarsAndEvents(
 				&end,
 			)
 			if err != nil {
-				// sync token 만료 시 1회 초기 동기화로 재시도
-				if currentSyncToken != "" {
+				// syncToken 만료(410 fullSyncRequired/updatedMinTooLongAgo/deleted)만 1회 풀 동기화로 재시도
+				if currentSyncToken != "" && (isGoogleStatus(err, 410) ||
+					isGoogleReason(err, "fullSyncRequired") ||
+					isGoogleReason(err, "updatedMinTooLongAgo") ||
+					isGoogleReason(err, "deleted")) {
 					currentSyncToken = ""
 					pageToken = ""
 					nextSyncToken = ""
@@ -480,6 +483,8 @@ func (s *googleAccountSyncer) syncTaskListsAndTodos(
 
 	for googleListID, localListID := range localListIDByGoogleID {
 		pageToken := ""
+		seenGoogleIDs := make([]string, 0, 128)
+		seenGoogleIDSet := make(map[string]struct{})
 		for {
 			page, err := s.googleAuth.ListTasks(ctx, token, googleListID, pageToken)
 			if err != nil {
@@ -487,6 +492,13 @@ func (s *googleAccountSyncer) syncTaskListsAndTodos(
 			}
 
 			for idx, task := range page.Items {
+				if task.GoogleID != "" {
+					if _, exists := seenGoogleIDSet[task.GoogleID]; !exists {
+						seenGoogleIDSet[task.GoogleID] = struct{}{}
+						seenGoogleIDs = append(seenGoogleIDs, task.GoogleID)
+					}
+				}
+
 				if task.IsDeleted {
 					_, _ = s.db.Exec(ctx,
 						`UPDATE todos
@@ -550,6 +562,34 @@ func (s *googleAccountSyncer) syncTaskListsAndTodos(
 				break
 			}
 			pageToken = page.NextPageToken
+		}
+
+		// Some Google Task deletions are not always returned as tombstones.
+		// For full-list polling, treat locally cached items that were not seen as deleted.
+		if len(seenGoogleIDs) == 0 {
+			_, _ = s.db.Exec(ctx,
+				`UPDATE todos
+				 SET deleted_at = $3, updated_at = $3
+				 WHERE user_id = $1 AND list_id = $2
+				   AND google_id IS NOT NULL
+				   AND deleted_at IS NULL`,
+				userID,
+				localListID,
+				now,
+			)
+		} else {
+			_, _ = s.db.Exec(ctx,
+				`UPDATE todos
+				 SET deleted_at = $4, updated_at = $4
+				 WHERE user_id = $1 AND list_id = $2
+				   AND google_id IS NOT NULL
+				   AND NOT (google_id = ANY($3::text[]))
+				   AND deleted_at IS NULL`,
+				userID,
+				localListID,
+				seenGoogleIDs,
+				now,
+			)
 		}
 
 		if doneRetentionCutoff != nil {

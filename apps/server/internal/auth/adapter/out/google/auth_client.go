@@ -256,6 +256,37 @@ func (c *oauthClient) CreateTaskList(
 	return payload.ID, nil
 }
 
+func (c *oauthClient) DeleteTaskList(
+	ctx context.Context,
+	token portout.OAuthToken,
+	taskListID string,
+) error {
+	client := c.apiClient(ctx, token)
+	req, err := http.NewRequestWithContext(
+		ctx,
+		http.MethodDelete,
+		fmt.Sprintf(
+			"https://tasks.googleapis.com/tasks/v1/users/@me/lists/%s",
+			url.PathEscape(taskListID),
+		),
+		nil,
+	)
+	if err != nil {
+		return err
+	}
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusNoContent && resp.StatusCode != http.StatusOK {
+		return parseGoogleAPIError(resp, "google delete task list")
+	}
+	return nil
+}
+
 func (c *oauthClient) ListCalendarEvents(
 	ctx context.Context,
 	token portout.OAuthToken,
@@ -774,6 +805,11 @@ func parseGoogleAPIError(resp *http.Response, action string) error {
 		Error struct {
 			Code    int    `json:"code"`
 			Message string `json:"message"`
+			Errors  []struct {
+				Domain  string `json:"domain"`
+				Reason  string `json:"reason"`
+				Message string `json:"message"`
+			} `json:"errors"`
 		} `json:"error"`
 	}
 	_ = json.NewDecoder(resp.Body).Decode(&payload)
@@ -782,12 +818,23 @@ func parseGoogleAPIError(resp *http.Response, action string) error {
 	if payload.Error.Code != 0 {
 		status = payload.Error.Code
 	}
+	domain := ""
+	reason := ""
+	if len(payload.Error.Errors) > 0 {
+		domain = payload.Error.Errors[0].Domain
+		reason = payload.Error.Errors[0].Reason
+	}
 	message := payload.Error.Message
 	if message == "" {
 		message = fmt.Sprintf("%s returned %d", action, resp.StatusCode)
 	}
+	if reason != "" {
+		message = fmt.Sprintf("%s (%s)", message, reason)
+	}
 	return &portout.GoogleAPIError{
 		StatusCode: status,
+		Domain:     domain,
+		Reason:     reason,
 		Message:    message,
 	}
 }

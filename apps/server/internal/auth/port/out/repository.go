@@ -121,6 +121,8 @@ type TodoUpsertInput struct {
 
 type GoogleAPIError struct {
 	StatusCode int
+	Domain     string
+	Reason     string
 	Message    string
 }
 
@@ -145,6 +147,7 @@ type GoogleAuthClient interface {
 	UpdateCalendarEvent(ctx context.Context, token OAuthToken, calendarID, eventID string, input CalendarEventUpsertInput) (etag *string, err error)
 	DeleteCalendarEvent(ctx context.Context, token OAuthToken, calendarID, eventID string) error
 	CreateTaskList(ctx context.Context, token OAuthToken, title string) (taskListID string, err error)
+	DeleteTaskList(ctx context.Context, token OAuthToken, taskListID string) error
 	CreateTask(ctx context.Context, token OAuthToken, taskListID string, input TodoUpsertInput) (googleID string, err error)
 	UpdateTask(ctx context.Context, token OAuthToken, taskListID, taskID string, input TodoUpsertInput) error
 	DeleteTask(ctx context.Context, token OAuthToken, taskListID, taskID string) error

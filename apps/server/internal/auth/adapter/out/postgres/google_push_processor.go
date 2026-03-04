@@ -195,7 +195,7 @@ func (p *googlePushProcessor) processOne(ctx context.Context, item pushOutboxIte
 		return p.markDone(ctx, item.ID)
 	}
 
-	if isGoogleStatus(err, 401) || isGoogleStatus(err, 403) {
+	if isGoogleAuthError(err) {
 		_ = p.markAccountReauthRequired(ctx, item.AccountID)
 		return p.markDead(ctx, item.ID, shortenError(err))
 	}
@@ -564,10 +564,19 @@ func (p *googlePushProcessor) markAccountReauthRequired(ctx context.Context, acc
 func isRetryableGoogleError(err error) bool {
 	var apiErr *portout.GoogleAPIError
 	if errors.As(err, &apiErr) {
-		if apiErr.StatusCode == 401 || apiErr.StatusCode == 403 {
+		if isGoogleAuthError(err) {
 			return false
 		}
-		if apiErr.StatusCode == 429 {
+		if isGoogleRateLimitError(err) {
+			return true
+		}
+		if apiErr.StatusCode == 408 || apiErr.StatusCode == 409 || apiErr.StatusCode == 412 {
+			return true
+		}
+		if apiErr.Reason == "conditionNotMet" {
+			return true
+		}
+		if apiErr.Reason == "backendError" {
 			return true
 		}
 		return apiErr.StatusCode >= 500 && apiErr.StatusCode <= 599
@@ -578,6 +587,34 @@ func isRetryableGoogleError(err error) bool {
 func isGoogleStatus(err error, status int) bool {
 	var apiErr *portout.GoogleAPIError
 	return errors.As(err, &apiErr) && apiErr.StatusCode == status
+}
+
+func isGoogleReason(err error, reason string) bool {
+	var apiErr *portout.GoogleAPIError
+	return errors.As(err, &apiErr) && strings.EqualFold(apiErr.Reason, reason)
+}
+
+func isGoogleRateLimitError(err error) bool {
+	if isGoogleStatus(err, 429) {
+		return true
+	}
+	if !isGoogleStatus(err, 403) {
+		return false
+	}
+	return isGoogleReason(err, "rateLimitExceeded") ||
+		isGoogleReason(err, "userRateLimitExceeded") ||
+		isGoogleReason(err, "quotaExceeded")
+}
+
+func isGoogleAuthError(err error) bool {
+	if isGoogleStatus(err, 401) {
+		return true
+	}
+	if !isGoogleStatus(err, 403) {
+		return false
+	}
+	return isGoogleReason(err, "authError") ||
+		isGoogleReason(err, "invalidCredentials")
 }
 
 func nextRetryDelay(attempt int) time.Duration {

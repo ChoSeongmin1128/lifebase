@@ -2,6 +2,7 @@ package usecase
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -140,9 +141,40 @@ func (uc *todoUseCase) UpdateList(ctx context.Context, userID, listID, name stri
 }
 
 func (uc *todoUseCase) DeleteList(ctx context.Context, userID, listID string) error {
-	_, err := uc.lists.FindByID(ctx, userID, listID)
+	list, err := uc.lists.FindByID(ctx, userID, listID)
 	if err != nil {
 		return fmt.Errorf("list not found")
+	}
+
+	if list.GoogleID != nil && *list.GoogleID != "" {
+		if list.GoogleAccountID == nil || *list.GoogleAccountID == "" {
+			return fmt.Errorf("google linked list is missing account id")
+		}
+		if uc.googleAccts == nil || uc.googleClient == nil {
+			return fmt.Errorf("google integration is not configured")
+		}
+
+		account, err := uc.googleAccts.FindByID(ctx, userID, *list.GoogleAccountID)
+		if err != nil {
+			return fmt.Errorf("google account not found")
+		}
+		if account.Status != "active" {
+			return fmt.Errorf("google account is not active")
+		}
+
+		token := authportout.OAuthToken{
+			AccessToken:  account.AccessToken,
+			RefreshToken: account.RefreshToken,
+		}
+		if account.TokenExpiresAt != nil {
+			token.Expiry = *account.TokenExpiresAt
+		}
+		if err := uc.googleClient.DeleteTaskList(ctx, token, *list.GoogleID); err != nil {
+			var apiErr *authportout.GoogleAPIError
+			if !(errors.As(err, &apiErr) && apiErr.StatusCode == 404) {
+				return fmt.Errorf("delete google task list: %w", err)
+			}
+		}
 	}
 
 	return uc.lists.Delete(ctx, listID)
