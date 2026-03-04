@@ -24,5 +24,14 @@ export async function api<T = unknown>(
     throw new Error(`API ${res.status}: ${text}`);
   }
 
-  return res.json();
+  if (res.status === 204) {
+    return {} as T;
+  }
+
+  const text = await res.text();
+  if (!text) {
+    return {} as T;
+  }
+
+  return JSON.parse(text) as T;
 }

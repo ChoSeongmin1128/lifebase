@@ -436,9 +436,6 @@ func (c *oauthClient) ListTasks(
 
 	items := make([]portout.OAuthTask, 0, len(payload.Items))
 	for _, item := range payload.Items {
-		if item.Hidden {
-			continue
-		}
 		var dueDate *string
 		if item.Due != "" && len(item.Due) >= 10 {
 			day := item.Due[:10]

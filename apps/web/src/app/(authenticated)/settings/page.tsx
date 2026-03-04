@@ -328,6 +328,25 @@ export default function SettingsPage() {
                   </Select>
                 </SettingRow>
                 <Separator />
+                <SettingRow label="완료 항목 보존 기간">
+                  <Select
+                    value={get("todo_done_retention_period", "1y")}
+                    onValueChange={(v) => handleUpdateSetting("todo_done_retention_period", v)}
+                  >
+                    <SelectTrigger className="w-32 h-8 text-xs">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="1m">1달</SelectItem>
+                      <SelectItem value="3m">3달</SelectItem>
+                      <SelectItem value="6m">반년</SelectItem>
+                      <SelectItem value="1y">1년</SelectItem>
+                      <SelectItem value="3y">3년</SelectItem>
+                      <SelectItem value="unlimited">무제한</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </SettingRow>
+                <Separator />
                 <SettingRow label="캘린더에 완료된 Todo 표시">
                   <div className="flex gap-1">
                     {[

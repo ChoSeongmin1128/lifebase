@@ -3,18 +3,19 @@ package domain
 import "time"
 
 type TodoList struct {
-	ID              string    `json:"id"`
-	UserID          string    `json:"user_id"`
-	GoogleID        *string   `json:"google_id,omitempty"`
-	GoogleAccountID *string   `json:"google_account_id,omitempty"`
-	Name            string    `json:"name"`
-	SortOrder       int       `json:"sort_order"`
-	ActiveCount     int       `json:"active_count"`
-	DoneCount       int       `json:"done_count"`
-	TotalCount      int       `json:"total_count"`
-	Source          string    `json:"source"` // google | local
-	CreatedAt       time.Time `json:"created_at"`
-	UpdatedAt       time.Time `json:"updated_at"`
+	ID                 string    `json:"id"`
+	UserID             string    `json:"user_id"`
+	GoogleID           *string   `json:"google_id,omitempty"`
+	GoogleAccountID    *string   `json:"google_account_id,omitempty"`
+	GoogleAccountEmail *string   `json:"google_account_email,omitempty"`
+	Name               string    `json:"name"`
+	SortOrder          int       `json:"sort_order"`
+	ActiveCount        int       `json:"active_count"`
+	DoneCount          int       `json:"done_count"`
+	TotalCount         int       `json:"total_count"`
+	Source             string    `json:"source"` // google | local
+	CreatedAt          time.Time `json:"created_at"`
+	UpdatedAt          time.Time `json:"updated_at"`
 }
 
 type Todo struct {

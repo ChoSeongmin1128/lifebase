@@ -45,7 +45,7 @@ func (r *listRepo) FindByID(ctx context.Context, userID, id string) (*domain.Tod
 
 func (r *listRepo) ListByUser(ctx context.Context, userID string) ([]*domain.TodoList, error) {
 	rows, err := r.db.Query(ctx,
-		`SELECT l.id, l.user_id, l.google_id, l.google_account_id, l.name, l.sort_order,
+		`SELECT l.id, l.user_id, l.google_id, l.google_account_id, uga.google_email, l.name, l.sort_order,
 		        COALESCE(c.active_count, 0) AS active_count,
 		        COALESCE(c.done_count, 0) AS done_count,
 		        COALESCE(c.total_count, 0) AS total_count,
@@ -64,6 +64,9 @@ func (r *listRepo) ListByUser(ctx context.Context, userID string) ([]*domain.Tod
 		      WHERE user_id = $1
 		      GROUP BY list_id
 		   ) c ON c.list_id = l.id
+		   LEFT JOIN user_google_accounts uga
+		          ON uga.id::text = l.google_account_id
+		         AND uga.user_id::text = l.user_id
 		  WHERE l.user_id = $1
 		  ORDER BY l.sort_order, l.name`,
 		userID,
@@ -81,6 +84,7 @@ func (r *listRepo) ListByUser(ctx context.Context, userID string) ([]*domain.Tod
 			&l.UserID,
 			&l.GoogleID,
 			&l.GoogleAccountID,
+			&l.GoogleAccountEmail,
 			&l.Name,
 			&l.SortOrder,
 			&l.ActiveCount,

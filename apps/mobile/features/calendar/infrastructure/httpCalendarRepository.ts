@@ -31,6 +31,15 @@ export class HttpCalendarRepository implements CalendarRepository {
     return api<SettingsResponse>("/settings", { token });
   }
 
+  async updateSettings(values: Record<string, string>): Promise<void> {
+    const token = await this.getToken();
+    await api("/settings", {
+      method: "PATCH",
+      body: values,
+      token,
+    });
+  }
+
   async listEvents(start: string, end: string, calendarIDs?: string[]): Promise<CalendarEvent[]> {
     const token = await this.getToken();
     const params = new URLSearchParams({

@@ -52,6 +52,7 @@ interface TodoList {
   sort_order: number;
   is_virtual?: boolean;
   google_account_id?: string | null;
+  google_account_email?: string | null;
   active_count?: number;
   done_count?: number;
   total_count?: number;
@@ -146,9 +147,16 @@ function TodoPageInner() {
 
   const getListSourceLabel = useCallback((list: TodoList) => {
     if (list.is_virtual) return "통합";
-    if (list.source === "google") return "Google";
+    if (list.source === "google") {
+      if (list.google_account_email) return `Google · ${list.google_account_email}`;
+      return "Google · 계정 미확인";
+    }
     if (list.source === "local") return "로컬";
-    return list.google_account_id ? "Google" : "로컬";
+    if (list.google_account_id) {
+      if (list.google_account_email) return `Google · ${list.google_account_email}`;
+      return "Google · 계정 미확인";
+    }
+    return "로컬";
   }, []);
 
   const isTodoAccountEnabled = useCallback((accountID: string | null | undefined) => {

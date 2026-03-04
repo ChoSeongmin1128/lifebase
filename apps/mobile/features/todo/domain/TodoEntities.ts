@@ -11,5 +11,6 @@ export type MobileTodoList = {
   id: string;
   name: string;
   google_account_id?: string | null;
+  google_account_email?: string | null;
   source?: "google" | "local" | string;
 };

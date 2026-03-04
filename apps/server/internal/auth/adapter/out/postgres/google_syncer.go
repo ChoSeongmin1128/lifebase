@@ -423,6 +423,8 @@ func (s *googleAccountSyncer) syncTaskListsAndTodos(
 	token portout.OAuthToken,
 	now time.Time,
 ) error {
+	doneRetentionCutoff := s.resolveTodoDoneRetentionCutoff(ctx, userID, now)
+
 	taskLists, err := s.googleAuth.ListTaskLists(ctx, token)
 	if err != nil {
 		return fmt.Errorf("list google task lists: %w", err)
@@ -550,23 +552,68 @@ func (s *googleAccountSyncer) syncTaskListsAndTodos(
 			pageToken = page.NextPageToken
 		}
 
-		// 완료 항목은 최근 90일만 유지.
-		_, _ = s.db.Exec(ctx,
-			`UPDATE todos
-			 SET deleted_at = $4, updated_at = $4
-			 WHERE user_id = $1 AND list_id = $2
-			   AND is_done = TRUE
-			   AND done_at IS NOT NULL
-			   AND done_at < $3
-			   AND deleted_at IS NULL`,
-			userID,
-			localListID,
-			now.AddDate(0, 0, -90),
-			now,
-		)
+		if doneRetentionCutoff != nil {
+			_, _ = s.db.Exec(ctx,
+				`UPDATE todos
+				 SET deleted_at = $4, updated_at = $4
+				 WHERE user_id = $1 AND list_id = $2
+				   AND is_done = TRUE
+				   AND done_at IS NOT NULL
+				   AND done_at < $3
+				   AND deleted_at IS NULL`,
+				userID,
+				localListID,
+				*doneRetentionCutoff,
+				now,
+			)
+		}
 	}
 
 	return nil
+}
+
+func (s *googleAccountSyncer) resolveTodoDoneRetentionCutoff(
+	ctx context.Context,
+	userID string,
+	now time.Time,
+) *time.Time {
+	const defaultPeriod = "1y"
+
+	var raw string
+	err := s.db.QueryRow(
+		ctx,
+		`SELECT value FROM user_settings WHERE user_id = $1 AND key = 'todo_done_retention_period'`,
+		userID,
+	).Scan(&raw)
+	if err != nil && err != pgx.ErrNoRows {
+		raw = defaultPeriod
+	}
+	if err == pgx.ErrNoRows {
+		raw = defaultPeriod
+	}
+
+	switch strings.ToLower(strings.TrimSpace(raw)) {
+	case "1m":
+		t := now.AddDate(0, -1, 0)
+		return &t
+	case "3m":
+		t := now.AddDate(0, -3, 0)
+		return &t
+	case "6m":
+		t := now.AddDate(0, -6, 0)
+		return &t
+	case "1y":
+		t := now.AddDate(-1, 0, 0)
+		return &t
+	case "3y":
+		t := now.AddDate(-3, 0, 0)
+		return &t
+	case "unlimited":
+		return nil
+	default:
+		t := now.AddDate(-1, 0, 0)
+		return &t
+	}
 }
 
 func completedAt(task portout.OAuthTask, now time.Time) *time.Time {

@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import {
   View,
   Text,
@@ -27,6 +27,10 @@ export default function TodoScreen() {
   const { createTodo, creating } = useCreateTodo();
   const { listLists, createList, listTodos, updateDone } = useTodoActions();
   const { listGoogleAccounts } = useAuthFlow();
+  const googleAccountEmailByID = useMemo(
+    () => new Map(googleAccounts.map((account) => [account.id, account.google_email])),
+    [googleAccounts]
+  );
 
   const loadLists = useCallback(async () => {
     try {
@@ -132,6 +136,18 @@ export default function TodoScreen() {
   const active = todos.filter((t) => !t.is_pinned && !t.done);
   const done = todos.filter((t) => t.done);
 
+  const getListSourceLabel = useCallback((list: TodoList) => {
+    if (list.source === "local") return "로컬";
+    if (list.source === "google" || list.google_account_id) {
+      if (list.google_account_email) return `Google · ${list.google_account_email}`;
+      if (list.google_account_id && googleAccountEmailByID.has(list.google_account_id)) {
+        return `Google · ${googleAccountEmailByID.get(list.google_account_id)}`;
+      }
+      return "Google · 계정 미확인";
+    }
+    return "로컬";
+  }, [googleAccountEmailByID]);
+
   return (
     <View style={styles.container}>
       <FlatList
@@ -155,6 +171,15 @@ export default function TodoScreen() {
               ]}
             >
               {item.name}
+            </Text>
+            <Text
+              style={[
+                styles.listChipMeta,
+                selectedList === item.id && styles.listChipMetaActive,
+              ]}
+              numberOfLines={1}
+            >
+              {getListSourceLabel(item)}
             </Text>
           </TouchableOpacity>
         )}
@@ -299,6 +324,8 @@ const styles = StyleSheet.create({
   listChipActive: { backgroundColor: "#000" },
   listChipText: { fontSize: 13, color: "#666" },
   listChipTextActive: { color: "#fff", fontWeight: "600" },
+  listChipMeta: { fontSize: 10, color: "#9ca3af", marginTop: 1 },
+  listChipMetaActive: { color: "#e5e7eb" },
   inputRow: {
     padding: 12,
     borderBottomWidth: 1,

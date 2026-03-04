@@ -11,6 +11,10 @@ export class BrowseCalendarUseCase {
     return this.repo.getSettings();
   }
 
+  updateSettings(values: Record<string, string>) {
+    return this.repo.updateSettings(values);
+  }
+
   listEvents(start: string, end: string, calendarIDs?: string[]) {
     return this.repo.listEvents(start, end, calendarIDs);
   }

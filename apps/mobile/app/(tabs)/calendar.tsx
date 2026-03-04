@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import {
   View,
   Text,
@@ -7,6 +7,7 @@ import {
   StyleSheet,
 } from "react-native";
 import { useCalendarActions } from "../../features/calendar/ui/hooks/useCalendarActions";
+import { useAuthFlow } from "../../features/auth/ui/hooks/useAuthFlow";
 import {
   buildFixedMonthGridWithWeekStart,
   getFixedMonthFetchRangeWithWeekStart,
@@ -14,12 +15,26 @@ import {
 import type { CalendarData, CalendarEvent } from "../../features/calendar/domain/CalendarEntities";
 
 const SHOW_SPECIAL_CALENDARS_SETTING_KEY = "calendar_show_special_calendars";
+const SPECIAL_ACCOUNT_SELECTION_SETTING_KEY = "calendar_selected_special_account_ids";
+const SPECIAL_CALENDAR_SELECTION_SETTING_KEY = "calendar_selected_special_calendar_ids";
 
 function toDateKey(date: Date): string {
   const y = date.getFullYear();
   const m = String(date.getMonth() + 1).padStart(2, "0");
   const d = String(date.getDate()).padStart(2, "0");
   return `${y}-${m}-${d}`;
+}
+
+function parseStoredIDs(value: string): string[] {
+  if (!value) return [];
+  return value
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+function normalizeHolidayTitle(title: string): string {
+  return title.trim().replace(/\s+/g, " ").toLowerCase();
 }
 
 function parseWeekStartsOn(settings: Record<string, string>): number {
@@ -35,18 +50,31 @@ export default function CalendarScreen() {
   const [currentDate, setCurrentDate] = useState(new Date());
   const [selectedDateKey, setSelectedDateKey] = useState<string | null>(null);
   const [weekStartsOn, setWeekStartsOn] = useState(0);
-  const [showSpecialCalendars, setShowSpecialCalendars] = useState(false);
-  const { listCalendars, getSettings, listEvents, backfillEvents } = useCalendarActions();
+  const [selectedSpecialAccountIDs, setSelectedSpecialAccountIDs] = useState<string[]>([]);
+  const [selectedSpecialCalendarIDs, setSelectedSpecialCalendarIDs] = useState<string[]>([]);
+  const [googleAccountEmails, setGoogleAccountEmails] = useState<Map<string, string>>(new Map());
+  const pendingSelectAllSpecialRef = useRef(false);
+  const { listCalendars, getSettings, updateSettings, listEvents, backfillEvents } = useCalendarActions();
+  const { listGoogleAccounts } = useAuthFlow();
 
   const loadSettings = useCallback(async () => {
     try {
       const data = await getSettings();
       const settings = data.settings || {};
       setWeekStartsOn(parseWeekStartsOn(settings));
-      setShowSpecialCalendars(settings[SHOW_SPECIAL_CALENDARS_SETTING_KEY] === "true");
+      const selectedAccounts = parseStoredIDs(settings[SPECIAL_ACCOUNT_SELECTION_SETTING_KEY] || "");
+      const selectedCalendars = parseStoredIDs(settings[SPECIAL_CALENDAR_SELECTION_SETTING_KEY] || "");
+      setSelectedSpecialAccountIDs(selectedAccounts);
+      setSelectedSpecialCalendarIDs(selectedCalendars);
+      pendingSelectAllSpecialRef.current =
+        selectedAccounts.length === 0 &&
+        selectedCalendars.length === 0 &&
+        settings[SHOW_SPECIAL_CALENDARS_SETTING_KEY] === "true";
     } catch {
       setWeekStartsOn(0);
-      setShowSpecialCalendars(false);
+      setSelectedSpecialAccountIDs([]);
+      setSelectedSpecialCalendarIDs([]);
+      pendingSelectAllSpecialRef.current = false;
     }
   }, [getSettings]);
 
@@ -59,10 +87,53 @@ export default function CalendarScreen() {
     }
   }, [listCalendars]);
 
+  const loadGoogleAccounts = useCallback(async () => {
+    try {
+      const accounts = await listGoogleAccounts();
+      const map = new Map<string, string>();
+      (accounts || []).forEach((account) => {
+        map.set(account.id, account.google_email);
+      });
+      setGoogleAccountEmails(map);
+    } catch {
+      setGoogleAccountEmails(new Map());
+    }
+  }, [listGoogleAccounts]);
+
+  const specialCalendars = useMemo(
+    () => calendars.filter((calendar) => calendar.is_special),
+    [calendars]
+  );
+  const specialAccountIDs = useMemo(() => {
+    const ids = new Set<string>();
+    specialCalendars.forEach((calendar) => {
+      if (calendar.google_account_id) ids.add(calendar.google_account_id);
+    });
+    return Array.from(ids);
+  }, [specialCalendars]);
+  const selectedSpecialAccountSet = useMemo(
+    () => new Set(selectedSpecialAccountIDs),
+    [selectedSpecialAccountIDs]
+  );
+  const selectedSpecialCalendarSet = useMemo(
+    () => new Set(selectedSpecialCalendarIDs),
+    [selectedSpecialCalendarIDs]
+  );
+
+  const specialAccountLabel = useCallback((accountID: string) => {
+    if (googleAccountEmails.has(accountID)) return googleAccountEmails.get(accountID) || accountID;
+    return accountID;
+  }, [googleAccountEmails]);
+
   const load = useCallback(async () => {
     const { start, end } = getFixedMonthFetchRangeWithWeekStart(currentDate, weekStartsOn);
     const visibleCalendars = calendars.filter((calendar) => {
-      if (!showSpecialCalendars && calendar.is_special) return false;
+      if (calendar.is_special) {
+        if (calendar.google_account_id && !selectedSpecialAccountSet.has(calendar.google_account_id)) {
+          return false;
+        }
+        if (!selectedSpecialCalendarSet.has(calendar.id)) return false;
+      }
       return true;
     });
     const visibleCalendarIDs = visibleCalendars.map((calendar) => calendar.id);
@@ -106,7 +177,7 @@ export default function CalendarScreen() {
     } catch {
       setEvents([]);
     }
-  }, [backfillEvents, calendars, currentDate, listEvents, showSpecialCalendars, weekStartsOn]);
+  }, [backfillEvents, calendars, currentDate, listEvents, selectedSpecialAccountSet, selectedSpecialCalendarSet, weekStartsOn]);
 
   useEffect(() => {
     loadSettings();
@@ -115,6 +186,32 @@ export default function CalendarScreen() {
   useEffect(() => {
     loadCalendars();
   }, [loadCalendars]);
+
+  useEffect(() => {
+    loadGoogleAccounts();
+  }, [loadGoogleAccounts]);
+
+  useEffect(() => {
+    if (!pendingSelectAllSpecialRef.current) return;
+    if (specialCalendars.length === 0) return;
+    pendingSelectAllSpecialRef.current = false;
+
+    const allAccountIDs = Array.from(
+      new Set(
+        specialCalendars
+          .map((calendar) => calendar.google_account_id)
+          .filter((id): id is string => !!id)
+      )
+    );
+    const allCalendarIDs = specialCalendars.map((calendar) => calendar.id);
+    setSelectedSpecialAccountIDs(allAccountIDs);
+    setSelectedSpecialCalendarIDs(allCalendarIDs);
+    updateSettings({
+      [SPECIAL_ACCOUNT_SELECTION_SETTING_KEY]: allAccountIDs.join(","),
+      [SPECIAL_CALENDAR_SELECTION_SETTING_KEY]: allCalendarIDs.join(","),
+      [SHOW_SPECIAL_CALENDARS_SETTING_KEY]: "true",
+    }).catch(() => undefined);
+  }, [specialCalendars, updateSettings]);
 
   useEffect(() => {
     load();
@@ -149,8 +246,61 @@ export default function CalendarScreen() {
     return Array.from({ length: 7 }, (_, i) => labels[(weekStartsOn + i) % 7]);
   }, [weekStartsOn]);
 
+  const calMap = useMemo(
+    () => new Map(calendars.map((calendar) => [calendar.id, calendar])),
+    [calendars]
+  );
+  const displayEvents = useMemo(() => {
+    const seenHolidayKeys = new Set<string>();
+    return events.filter((event) => {
+      const calendar = calMap.get(event.calendar_id);
+      if (calendar?.kind === "holiday" && event.is_all_day) {
+        const key = `${event.start_time.slice(0, 10)}|${normalizeHolidayTitle(event.title)}`;
+        if (seenHolidayKeys.has(key)) return false;
+        seenHolidayKeys.add(key);
+      }
+      return true;
+    });
+  }, [calMap, events]);
+
+  const persistSpecialSelection = useCallback((accounts: string[], calendars: string[]) => {
+    setSelectedSpecialAccountIDs(accounts);
+    setSelectedSpecialCalendarIDs(calendars);
+    updateSettings({
+      [SPECIAL_ACCOUNT_SELECTION_SETTING_KEY]: accounts.join(","),
+      [SPECIAL_CALENDAR_SELECTION_SETTING_KEY]: calendars.join(","),
+      [SHOW_SPECIAL_CALENDARS_SETTING_KEY]: accounts.length > 0 && calendars.length > 0 ? "true" : "false",
+    }).catch(() => undefined);
+  }, [updateSettings]);
+
+  const handleToggleSpecialAccount = useCallback((accountID: string) => {
+    const exists = selectedSpecialAccountIDs.includes(accountID);
+    const nextAccounts = exists
+      ? selectedSpecialAccountIDs.filter((id) => id !== accountID)
+      : [...selectedSpecialAccountIDs, accountID];
+    persistSpecialSelection(nextAccounts, selectedSpecialCalendarIDs);
+  }, [persistSpecialSelection, selectedSpecialAccountIDs, selectedSpecialCalendarIDs]);
+
+  const handleToggleSpecialCalendar = useCallback((calendarID: string) => {
+    const exists = selectedSpecialCalendarIDs.includes(calendarID);
+    const nextCalendars = exists
+      ? selectedSpecialCalendarIDs.filter((id) => id !== calendarID)
+      : [...selectedSpecialCalendarIDs, calendarID];
+    persistSpecialSelection(selectedSpecialAccountIDs, nextCalendars);
+  }, [persistSpecialSelection, selectedSpecialAccountIDs, selectedSpecialCalendarIDs]);
+
+  const handleSelectAllSpecial = useCallback(() => {
+    const allAccountIDs = specialAccountIDs;
+    const allCalendarIDs = specialCalendars.map((calendar) => calendar.id);
+    persistSpecialSelection(allAccountIDs, allCalendarIDs);
+  }, [persistSpecialSelection, specialAccountIDs, specialCalendars]);
+
+  const handleClearSpecial = useCallback(() => {
+    persistSpecialSelection([], []);
+  }, [persistSpecialSelection]);
+
   const getEventsForDateKey = (dateKey: string) =>
-    events.filter((event) => {
+    displayEvents.filter((event) => {
       const start = event.start_time.split("T")[0];
       const end = event.end_time.split("T")[0];
       return dateKey >= start && dateKey <= end;
@@ -170,14 +320,56 @@ export default function CalendarScreen() {
         </TouchableOpacity>
       </View>
       <View style={styles.specialToggleRow}>
-        <TouchableOpacity
-          onPress={() => setShowSpecialCalendars((prev) => !prev)}
-          style={[styles.specialToggle, showSpecialCalendars && styles.specialToggleOn]}
-        >
-          <Text style={[styles.specialToggleText, showSpecialCalendars && styles.specialToggleTextOn]}>
-            {showSpecialCalendars ? "특수 캘린더 표시" : "특수 캘린더 숨김"}
-          </Text>
-        </TouchableOpacity>
+        <View style={styles.specialActionsRow}>
+          <TouchableOpacity onPress={handleSelectAllSpecial} style={styles.specialActionChip}>
+            <Text style={styles.specialActionText}>특수 전체 선택</Text>
+          </TouchableOpacity>
+          <TouchableOpacity onPress={handleClearSpecial} style={styles.specialActionChip}>
+            <Text style={styles.specialActionText}>모두 숨김</Text>
+          </TouchableOpacity>
+        </View>
+        <Text style={styles.specialSectionTitle}>특수 계정</Text>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.specialScroll}>
+          {specialAccountIDs.length === 0 ? (
+            <Text style={styles.specialEmpty}>선택 가능한 특수 계정 없음</Text>
+          ) : (
+            specialAccountIDs.map((accountID) => {
+              const selected = selectedSpecialAccountSet.has(accountID);
+              return (
+                <TouchableOpacity
+                  key={accountID}
+                  style={[styles.specialToggle, selected && styles.specialToggleOn]}
+                  onPress={() => handleToggleSpecialAccount(accountID)}
+                >
+                  <Text style={[styles.specialToggleText, selected && styles.specialToggleTextOn]} numberOfLines={1}>
+                    {specialAccountLabel(accountID)}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })
+          )}
+        </ScrollView>
+        <Text style={styles.specialSectionTitle}>특수 캘린더</Text>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.specialScroll}>
+          {specialCalendars.length === 0 ? (
+            <Text style={styles.specialEmpty}>선택 가능한 특수 캘린더 없음</Text>
+          ) : (
+            specialCalendars.map((calendar) => {
+              const selected = selectedSpecialCalendarSet.has(calendar.id);
+              return (
+                <TouchableOpacity
+                  key={calendar.id}
+                  style={[styles.specialToggle, selected && styles.specialToggleOn]}
+                  onPress={() => handleToggleSpecialCalendar(calendar.id)}
+                >
+                  <Text style={[styles.specialToggleText, selected && styles.specialToggleTextOn]} numberOfLines={1}>
+                    {calendar.name}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })
+          )}
+        </ScrollView>
       </View>
 
       <View style={styles.weekHeader}>
@@ -258,6 +450,38 @@ const styles = StyleSheet.create({
   specialToggleRow: {
     paddingHorizontal: 16,
     paddingBottom: 8,
+  },
+  specialActionsRow: {
+    flexDirection: "row",
+    gap: 8,
+    marginBottom: 6,
+  },
+  specialActionChip: {
+    borderWidth: 1,
+    borderColor: "#d1d5db",
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    backgroundColor: "#fff",
+  },
+  specialActionText: {
+    fontSize: 11,
+    color: "#374151",
+    fontWeight: "500",
+  },
+  specialSectionTitle: {
+    fontSize: 11,
+    color: "#6b7280",
+    marginBottom: 4,
+  },
+  specialScroll: {
+    maxHeight: 34,
+    marginBottom: 6,
+  },
+  specialEmpty: {
+    fontSize: 11,
+    color: "#9ca3af",
+    paddingVertical: 6,
   },
   specialToggle: {
     alignSelf: "flex-start",

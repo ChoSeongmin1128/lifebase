@@ -5,6 +5,7 @@ export interface TodoListItem {
   name: string;
   sort_order: number;
   google_account_id?: string | null;
+  google_account_email?: string | null;
   active_count?: number;
   done_count?: number;
   total_count?: number;

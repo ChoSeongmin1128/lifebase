@@ -11,6 +11,7 @@ export function useCalendarActions() {
     () => ({
       listCalendars: () => useCase.listCalendars(),
       getSettings: () => useCase.getSettings(),
+      updateSettings: (values: Record<string, string>) => useCase.updateSettings(values),
       listEvents: (start: string, end: string, calendarIDs?: string[]) => useCase.listEvents(start, end, calendarIDs),
       backfillEvents: (start: string, end: string, calendarIDs?: string[]) =>
         useCase.backfillEvents(start, end, calendarIDs),
