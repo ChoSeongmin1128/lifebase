@@ -38,6 +38,7 @@ import {
 import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { ChevronRight, Plus } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { getGoogleAccountDisplayName } from "@/lib/google-account-preferences";
 import {
   buildTree,
   flattenTree,
@@ -165,17 +166,20 @@ function TodoPageInner() {
 
   const getListSourceLabel = useCallback((list: TodoList) => {
     if (list.is_virtual) return "통합";
+    const displayName = getGoogleAccountDisplayName(
+      settings,
+      list.google_account_id ?? null,
+      list.google_account_email ?? null,
+    );
     if (list.source === "google") {
-      if (list.google_account_email) return `Google · ${list.google_account_email}`;
-      return "Google · 계정 미확인";
+      return `Google · ${displayName}`;
     }
     if (list.source === "local") return "로컬";
     if (list.google_account_id) {
-      if (list.google_account_email) return `Google · ${list.google_account_email}`;
-      return "Google · 계정 미확인";
+      return `Google · ${displayName}`;
     }
     return "로컬";
-  }, []);
+  }, [settings]);
 
   const isTodoAccountEnabled = useCallback((accountID: string | null | undefined) => {
     if (!accountID) return true;

@@ -1323,7 +1323,7 @@ function MonthView({
         ))}
       </div>
 
-      <div className="grid flex-1 grid-cols-7" style={{ gridTemplateRows: "repeat(6, 1fr)" }}>
+      <div className="grid flex-1 grid-rows-6">
         {weeks.map((weekCells, weekIndex) => {
           const spanBars = getWeekSpanBars(weekCells);
           const spanBarHeight = Math.max(
@@ -1331,112 +1331,120 @@ function MonthView({
             0
           );
 
-          return weekCells.map((cell, dayIndex) => {
-            const isToday = cell.dateKey === todayKey;
-            const isSelected = selectedDateKey === cell.dateKey;
-            const singleEvents = getSingleDayEvents(cell.dateKey);
-            const totalCount = countAllEventsForDate(cell.dateKey);
-            const holidayLabels = holidaysByDate.get(cell.dateKey) || [];
-            const hasHoliday = holidayLabels.length > 0;
-            const index = weekIndex * 7 + dayIndex;
-            const barsStartingHere = spanBars.filter((bar) => bar.startCol === dayIndex);
-
-            return (
-              <div
-                key={index}
-                className={cn(
-                  "relative min-h-[64px] md:min-h-[92px] border-b border-r border-border/50 p-1.5 overflow-hidden cursor-pointer",
-                  !cell.inCurrentMonth && "bg-surface-accent/20",
-                  isSelected && "ring-1 ring-inset ring-primary/50"
-                )}
-                onClick={(event) => onDayClick(cell.date, event)}
-              >
-                <div
-                  className={cn(
-                    "mb-0.5 inline-flex h-6 w-6 items-center justify-center rounded-full text-xs",
-                    isToday
-                      ? "bg-primary text-white font-medium"
-                      : hasHoliday
-                        ? "text-error font-semibold"
-                      : !cell.inCurrentMonth
-                          ? "text-text-muted"
-                        : cell.date.getDay() === 0
-                          ? "text-error"
-                          : cell.date.getDay() === 6
-                            ? "text-info"
-                            : "text-text-primary"
-                  )}
-                >
-                  {cell.day}
-                </div>
-                {hasHoliday ? (
+          return (
+            <div key={weekIndex} className="relative grid min-h-0 grid-cols-7 border-b border-border/50">
+              {spanBars.map((bar) => {
+                const spanCols = bar.endCol - bar.startCol + 1;
+                const startCell = weekCells[bar.startCol];
+                const hasHolidayAtStart = (holidaysByDate.get(startCell.dateKey) || []).length > 0;
+                return (
                   <div
+                    key={bar.event.id}
                     className={cn(
-                      "mb-0.5 truncate px-0.5 text-[10px] font-semibold leading-tight text-error",
-                      !cell.inCurrentMonth && "opacity-70"
+                      "absolute z-20 cursor-pointer truncate px-2 py-[2px] text-[12px] font-medium leading-[18px] text-white shadow-sm",
+                      !startCell.inCurrentMonth && "opacity-60"
                     )}
-                    title={holidayLabels.join(", ")}
+                    style={{
+                      top: `${spanBarTopOffset + (hasHolidayAtStart ? 12 : 0) + bar.lane * spanBarRowHeight}px`,
+                      left: `calc((100% / 7) * ${bar.startCol} + 3px)`,
+                      width: `calc((100% / 7) * ${spanCols} - 6px)`,
+                      backgroundColor: getEventColorByCalendar(bar.event.color_id, bar.event.calendar_id),
+                      borderTopLeftRadius: bar.startCol === 0 ? "4px" : "10px",
+                      borderBottomLeftRadius: bar.startCol === 0 ? "4px" : "10px",
+                      borderTopRightRadius: bar.endCol === 6 ? "4px" : "10px",
+                      borderBottomRightRadius: bar.endCol === 6 ? "4px" : "10px",
+                    }}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      onEventClick(bar.event);
+                    }}
                   >
-                    {holidayLabels[0]}
+                    {bar.event.title || "(제목 없음)"}
                   </div>
-                ) : null}
+                );
+              })}
+              {weekCells.map((cell) => {
+                const isToday = cell.dateKey === todayKey;
+                const isSelected = selectedDateKey === cell.dateKey;
+                const singleEvents = getSingleDayEvents(cell.dateKey);
+                const totalCount = countAllEventsForDate(cell.dateKey);
+                const holidayLabels = holidaysByDate.get(cell.dateKey) || [];
+                const hasHoliday = holidayLabels.length > 0;
 
-                {barsStartingHere.map((bar) => {
-                  const spanCols = bar.endCol - bar.startCol + 1;
-                  return (
+                return (
+                  <div
+                    key={cell.dateKey}
+                    className={cn(
+                      "relative min-h-[66px] border-r border-border/50 p-1.5 cursor-pointer md:min-h-[96px]",
+                      !cell.inCurrentMonth && "bg-surface-accent/20",
+                      isSelected && "ring-1 ring-inset ring-primary/50"
+                    )}
+                    onClick={(event) => onDayClick(cell.date, event)}
+                  >
                     <div
-                      key={bar.event.id}
                       className={cn(
-                        "absolute left-1 cursor-pointer truncate rounded-md px-1.5 py-[1px] text-[11px] leading-[17px] text-white z-10",
-                        !cell.inCurrentMonth && "opacity-60"
+                        "mb-0.5 inline-flex h-6 w-6 items-center justify-center rounded-full text-xs",
+                        isToday
+                          ? "bg-primary text-white font-medium"
+                          : hasHoliday
+                            ? "text-error font-semibold"
+                            : !cell.inCurrentMonth
+                              ? "text-text-muted"
+                              : cell.date.getDay() === 0
+                                ? "text-error"
+                                : cell.date.getDay() === 6
+                                  ? "text-info"
+                                  : "text-text-primary"
                       )}
-                      style={{
-                        top: `${spanBarTopOffset + (hasHoliday ? 12 : 0) + bar.lane * spanBarRowHeight}px`,
-                        width: `calc(${spanCols * 100}% - 6px)`,
-                        backgroundColor: getEventColorByCalendar(bar.event.color_id, bar.event.calendar_id),
-                      }}
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        onEventClick(bar.event);
-                      }}
                     >
-                      {bar.event.title || "(제목 없음)"}
+                      {cell.day}
                     </div>
-                  );
-                })}
-
-                <div className="space-y-0.5" style={{ marginTop: `${spanBarHeight + (hasHoliday ? 12 : 0)}px` }}>
-                  {singleEvents.slice(0, 2).map((event) => {
-                    return (
+                    {hasHoliday ? (
                       <div
-                        key={event.id}
-                        onClick={(clickEvent) => {
-                          clickEvent.stopPropagation();
-                          onEventClick(event);
-                        }}
                         className={cn(
-                          "flex items-center gap-0.5 cursor-pointer truncate px-0.5 text-[11px] leading-tight text-text-primary",
-                          !cell.inCurrentMonth && "opacity-60"
+                          "mb-0.5 truncate px-0.5 text-[10px] font-semibold leading-tight text-error",
+                          !cell.inCurrentMonth && "opacity-70"
                         )}
+                        title={holidayLabels.join(", ")}
                       >
-                        <div
-                          className="h-2 w-2 shrink-0 rounded-full"
-                          style={{ backgroundColor: getEventColorByCalendar(event.color_id, event.calendar_id) }}
-                        />
-                        <span className="inline-block w-[56px] shrink-0 tabular-nums text-text-muted">
-                          {formatTimeLabel(event.start_time)}
-                        </span>
-                        <span className="truncate">{event.title || "(제목 없음)"}</span>
+                        {holidayLabels[0]}
                       </div>
-                    );
-                  })}
-                  {totalCount > 3 && (
-                    <div className="text-[11px] text-text-muted px-0.5">+{totalCount - 3}</div>
-                  )}
-                </div>
-              </div>
-            );
-          });
+                    ) : null}
+
+                    <div className="space-y-0.5" style={{ marginTop: `${spanBarHeight + (hasHoliday ? 12 : 0)}px` }}>
+                      {singleEvents.slice(0, 2).map((event) => {
+                        return (
+                          <div
+                            key={event.id}
+                            onClick={(clickEvent) => {
+                              clickEvent.stopPropagation();
+                              onEventClick(event);
+                            }}
+                            className={cn(
+                              "flex cursor-pointer items-center gap-0.5 truncate px-0.5 text-[12px] leading-[1.25] text-text-primary",
+                              !cell.inCurrentMonth && "opacity-60"
+                            )}
+                          >
+                            <div
+                              className="h-1.5 w-1.5 shrink-0 rounded-full"
+                              style={{ backgroundColor: getEventColorByCalendar(event.color_id, event.calendar_id) }}
+                            />
+                            <span className="inline-block w-[52px] shrink-0 tabular-nums text-text-muted">
+                              {formatTimeLabel(event.start_time)}
+                            </span>
+                            <span className="truncate">{event.title || "(제목 없음)"}</span>
+                          </div>
+                        );
+                      })}
+                      {totalCount > 3 && (
+                        <div className="px-0.5 text-[12px] text-text-muted">+{totalCount - 3}</div>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          );
         })}
       </div>
     </div>
@@ -1564,7 +1572,7 @@ function WeekView({
                   return (
                     <div
                       key={event.id}
-                      className="cursor-pointer truncate rounded-md px-2 py-1 text-[11px] leading-[1.35] text-white"
+                      className="cursor-pointer truncate rounded-lg px-2.5 py-1.5 text-xs font-medium leading-[1.35] text-white shadow-sm"
                       style={{ backgroundColor: getEventColorByCalendar(event.color_id, event.calendar_id) }}
                       onClick={() => onEventClick(event)}
                     >
@@ -1624,7 +1632,7 @@ function WeekView({
                 return (
                   <div
                     key={event.id}
-                    className="absolute cursor-pointer overflow-hidden rounded px-1 py-0.5 text-[10px] text-white"
+                    className="absolute cursor-pointer overflow-hidden rounded-md px-1.5 py-1 text-[11px] leading-[1.25] text-white shadow-sm"
                     style={{
                       top: `${top}px`,
                       height: `${height}px`,
@@ -1639,7 +1647,7 @@ function WeekView({
                   >
                     <div className="truncate font-medium">{event.title || "(제목 없음)"}</div>
                     {height > 30 && (
-                      <div className="truncate opacity-80 tabular-nums">
+                      <div className="truncate tabular-nums opacity-85">
                         {formatTimeRangeLabel(event.start_time, event.end_time)}
                       </div>
                     )}

@@ -14,12 +14,14 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@/components/ui/select";
 import { Sun, Moon, Monitor } from "lucide-react";
 import {
+  ACCOUNT_COLOR_PALETTE,
   MULTI_ACCOUNT_FALLBACK_COLORS,
   buildGoogleAccountAliasSettingKey,
   buildGoogleAccountColorSettingKey,
   getGoogleAccountAlias,
   getGoogleAccountCustomColor,
   getGoogleAccountDisplayName,
+  isPresetAccountColor,
   normalizeHexColor,
 } from "@/lib/google-account-preferences";
 
@@ -81,7 +83,8 @@ export default function SettingsPage() {
       for (const [index, account] of googleAccounts.entries()) {
         if (next[account.id] !== undefined) continue;
         const fallbackColor = MULTI_ACCOUNT_FALLBACK_COLORS[index % MULTI_ACCOUNT_FALLBACK_COLORS.length];
-        next[account.id] = getGoogleAccountCustomColor(settings, account.id) || fallbackColor;
+        const stored = getGoogleAccountCustomColor(settings, account.id);
+        next[account.id] = isPresetAccountColor(stored) ? stored || fallbackColor : fallbackColor;
       }
       return next;
     });
@@ -188,12 +191,13 @@ export default function SettingsPage() {
     const settingKey = buildGoogleAccountColorSettingKey(account.id);
     const previous = settings[settingKey] ?? "";
     const fallbackColor = accountDefaultColorByID.get(account.id) || MULTI_ACCOUNT_FALLBACK_COLORS[0];
-    const normalized = normalizeHexColor(colorDrafts[account.id]) || fallbackColor;
+    const normalized = normalizeHexColor(colorDrafts[account.id]);
+    const nextColor = isPresetAccountColor(normalized) ? normalized || fallbackColor : fallbackColor;
 
-    setColorDrafts((prev) => ({ ...prev, [account.id]: normalized }));
-    setSettings((prev) => ({ ...prev, [settingKey]: normalized }));
+    setColorDrafts((prev) => ({ ...prev, [account.id]: nextColor }));
+    setSettings((prev) => ({ ...prev, [settingKey]: nextColor }));
     try {
-      await updateSetting(settingKey, normalized);
+      await updateSetting(settingKey, nextColor);
       toast.success("계정 색상 저장 완료");
     } catch (err) {
       console.error("Save account color failed:", err);
@@ -278,8 +282,12 @@ export default function SettingsPage() {
                           const colorKey = buildGoogleAccountColorSettingKey(account.id);
                           const fallbackColor = accountDefaultColorByID.get(account.id) || MULTI_ACCOUNT_FALLBACK_COLORS[0];
                           const effectiveColor =
-                            normalizeHexColor(colorDrafts[account.id]) ||
-                            normalizeHexColor(settings[colorKey]) ||
+                            (isPresetAccountColor(colorDrafts[account.id])
+                              ? normalizeHexColor(colorDrafts[account.id])
+                              : null) ||
+                            (isPresetAccountColor(settings[colorKey])
+                              ? normalizeHexColor(settings[colorKey])
+                              : null) ||
                             fallbackColor;
                           return (
                             <>
@@ -323,16 +331,30 @@ export default function SettingsPage() {
                           </Button>
                         </div>
                         <div className="mt-2 flex flex-wrap items-end gap-2">
-                          <div className="min-w-[10rem]">
+                          <div className="min-w-[14rem]">
                             <p className="mb-1 text-[11px] text-text-muted">다중 계정 색상</p>
-                            <input
-                              type="color"
-                              value={effectiveColor}
-                              className="h-8 w-14 rounded border border-border bg-background p-1"
-                              onChange={(e) =>
-                                setColorDrafts((prev) => ({ ...prev, [account.id]: e.target.value }))
-                              }
-                            />
+                            <div className="flex flex-wrap gap-1.5">
+                              {ACCOUNT_COLOR_PALETTE.map((color) => {
+                                const selected = effectiveColor === color;
+                                return (
+                                  <button
+                                    key={color}
+                                    type="button"
+                                    aria-label={`계정 색상 ${color}`}
+                                    title={color}
+                                    className={`h-6 w-6 rounded-full border transition ${
+                                      selected
+                                        ? "border-text-strong ring-2 ring-primary/35"
+                                        : "border-border hover:scale-105"
+                                    }`}
+                                    style={{ backgroundColor: color }}
+                                    onClick={() =>
+                                      setColorDrafts((prev) => ({ ...prev, [account.id]: color }))
+                                    }
+                                  />
+                                );
+                              })}
+                            </div>
                           </div>
                           <Button
                             type="button"

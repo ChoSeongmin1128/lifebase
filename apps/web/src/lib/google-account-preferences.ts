@@ -1,13 +1,19 @@
-export const MULTI_ACCOUNT_FALLBACK_COLORS = [
-  "#2563eb",
-  "#16a34a",
-  "#dc2626",
-  "#9333ea",
-  "#ea580c",
-  "#0891b2",
-  "#ca8a04",
-  "#0f766e",
+export const ACCOUNT_COLOR_PALETTE = [
+  "#1b998b",
+  "#14b8a6",
+  "#0ea5e9",
+  "#3b82f6",
+  "#6366f1",
+  "#8b5cf6",
+  "#a855f7",
+  "#ec4899",
+  "#f97316",
+  "#f59e0b",
+  "#84cc16",
+  "#64748b",
 ];
+
+export const MULTI_ACCOUNT_FALLBACK_COLORS = ACCOUNT_COLOR_PALETTE.slice(0, 8);
 
 export function buildGoogleAccountAliasSettingKey(accountID: string): string {
   return `google_account_alias_${accountID}`;
@@ -50,4 +56,10 @@ export function getGoogleAccountCustomColor(
 ): string | null {
   if (!accountID) return null;
   return normalizeHexColor(settings[buildGoogleAccountColorSettingKey(accountID)]);
+}
+
+export function isPresetAccountColor(value: string | null | undefined): boolean {
+  const normalized = normalizeHexColor(value);
+  if (!normalized) return false;
+  return ACCOUNT_COLOR_PALETTE.includes(normalized);
 }
