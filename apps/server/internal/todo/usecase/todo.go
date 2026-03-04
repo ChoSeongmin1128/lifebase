@@ -170,14 +170,34 @@ func (uc *todoUseCase) DeleteList(ctx context.Context, userID, listID string) er
 			token.Expiry = *account.TokenExpiresAt
 		}
 		if err := uc.googleClient.DeleteTaskList(ctx, token, *list.GoogleID); err != nil {
-			var apiErr *authportout.GoogleAPIError
-			if !(errors.As(err, &apiErr) && apiErr.StatusCode == 404) {
-				return fmt.Errorf("delete google task list: %w", err)
+			if mapped := mapDeleteGoogleTaskListError(err); mapped != nil {
+				return mapped
 			}
 		}
 	}
 
 	return uc.lists.Delete(ctx, listID)
+}
+
+func mapDeleteGoogleTaskListError(err error) error {
+	if err == nil {
+		return nil
+	}
+
+	var apiErr *authportout.GoogleAPIError
+	if !errors.As(err, &apiErr) {
+		return fmt.Errorf("delete google task list: %w", err)
+	}
+	if apiErr.StatusCode == 404 {
+		return nil
+	}
+	if apiErr.StatusCode == 400 && strings.EqualFold(apiErr.Reason, "invalid") {
+		return fmt.Errorf("Google 기본 Tasks 목록은 삭제할 수 없습니다")
+	}
+	if apiErr.StatusCode == 403 {
+		return fmt.Errorf("Google 목록 삭제 권한이 없습니다")
+	}
+	return fmt.Errorf("delete google task list: %w", err)
 }
 
 // Todos

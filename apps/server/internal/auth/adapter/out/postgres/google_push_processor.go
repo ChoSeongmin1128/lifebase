@@ -154,14 +154,20 @@ func (p *googlePushProcessor) claimPending(ctx context.Context, limit int) ([]pu
 
 func (p *googlePushProcessor) processOne(ctx context.Context, item pushOutboxItem) error {
 	lockKey := advisoryLockKey(item.AccountID)
+	lockConn, err := p.db.Acquire(ctx)
+	if err != nil {
+		return err
+	}
+	defer lockConn.Release()
+
 	var locked bool
-	if err := p.db.QueryRow(ctx, `SELECT pg_try_advisory_lock($1)`, lockKey).Scan(&locked); err != nil {
+	if err := lockConn.QueryRow(ctx, `SELECT pg_try_advisory_lock($1)`, lockKey).Scan(&locked); err != nil {
 		return err
 	}
 	if !locked {
 		return p.reschedule(ctx, item.ID, 15*time.Second, "account lock busy")
 	}
-	defer p.db.Exec(context.Background(), `SELECT pg_advisory_unlock($1)`, lockKey)
+	defer lockConn.Exec(context.Background(), `SELECT pg_advisory_unlock($1)`, lockKey)
 
 	account, err := p.loadAccountToken(ctx, item.UserID, item.AccountID)
 	if err != nil {
@@ -194,17 +200,18 @@ func (p *googlePushProcessor) processOne(ctx context.Context, item pushOutboxIte
 	if err == nil {
 		return p.markDone(ctx, item.ID)
 	}
+	mappedError := shortenText(googleSyncErrorMessage(err))
 
 	if isGoogleAuthError(err) {
 		_ = p.markAccountReauthRequired(ctx, item.AccountID)
-		return p.markDead(ctx, item.ID, shortenError(err))
+		return p.markDead(ctx, item.ID, mappedError)
 	}
 
 	nextAttempt := item.AttemptCount + 1
 	if nextAttempt >= pushOutboxMaxAttempts || !isRetryableGoogleError(err) {
-		return p.markDead(ctx, item.ID, shortenError(err))
+		return p.markDead(ctx, item.ID, mappedError)
 	}
-	return p.markRetry(ctx, item.ID, nextRetryDelay(nextAttempt), shortenError(err))
+	return p.markRetry(ctx, item.ID, nextRetryDelay(nextAttempt), mappedError)
 }
 
 func (p *googlePushProcessor) processCalendarPush(
@@ -559,62 +566,6 @@ func (p *googlePushProcessor) markAccountReauthRequired(ctx context.Context, acc
 		accountID,
 	)
 	return err
-}
-
-func isRetryableGoogleError(err error) bool {
-	var apiErr *portout.GoogleAPIError
-	if errors.As(err, &apiErr) {
-		if isGoogleAuthError(err) {
-			return false
-		}
-		if isGoogleRateLimitError(err) {
-			return true
-		}
-		if apiErr.StatusCode == 408 || apiErr.StatusCode == 409 || apiErr.StatusCode == 412 {
-			return true
-		}
-		if apiErr.Reason == "conditionNotMet" {
-			return true
-		}
-		if apiErr.Reason == "backendError" {
-			return true
-		}
-		return apiErr.StatusCode >= 500 && apiErr.StatusCode <= 599
-	}
-	return true
-}
-
-func isGoogleStatus(err error, status int) bool {
-	var apiErr *portout.GoogleAPIError
-	return errors.As(err, &apiErr) && apiErr.StatusCode == status
-}
-
-func isGoogleReason(err error, reason string) bool {
-	var apiErr *portout.GoogleAPIError
-	return errors.As(err, &apiErr) && strings.EqualFold(apiErr.Reason, reason)
-}
-
-func isGoogleRateLimitError(err error) bool {
-	if isGoogleStatus(err, 429) {
-		return true
-	}
-	if !isGoogleStatus(err, 403) {
-		return false
-	}
-	return isGoogleReason(err, "rateLimitExceeded") ||
-		isGoogleReason(err, "userRateLimitExceeded") ||
-		isGoogleReason(err, "quotaExceeded")
-}
-
-func isGoogleAuthError(err error) bool {
-	if isGoogleStatus(err, 401) {
-		return true
-	}
-	if !isGoogleStatus(err, 403) {
-		return false
-	}
-	return isGoogleReason(err, "authError") ||
-		isGoogleReason(err, "invalidCredentials")
 }
 
 func nextRetryDelay(attempt int) time.Duration {

@@ -140,11 +140,8 @@ func (s *googleAccountSyncer) syncCalendarsAndEvents(
 				&end,
 			)
 			if err != nil {
-				// syncToken 만료(410 fullSyncRequired/updatedMinTooLongAgo/deleted)만 1회 풀 동기화로 재시도
-				if currentSyncToken != "" && (isGoogleStatus(err, 410) ||
-					isGoogleReason(err, "fullSyncRequired") ||
-					isGoogleReason(err, "updatedMinTooLongAgo") ||
-					isGoogleReason(err, "deleted")) {
+				// syncToken 만료 계열은 1회 full sync로 재시도
+				if currentSyncToken != "" && shouldResetGoogleSyncToken(err) {
 					currentSyncToken = ""
 					pageToken = ""
 					nextSyncToken = ""
@@ -254,16 +251,24 @@ func (s *googleAccountSyncer) BackfillEvents(
 	now := time.Now()
 	for accountID, calendars := range calsByAccount {
 		lockKey := advisoryLockKey(fmt.Sprintf("%s:%d:%d", accountID, start.Unix(), end.Unix()))
+		lockConn, acquireErr := s.db.Acquire(ctx)
+		if acquireErr != nil {
+			return nil, acquireErr
+		}
+
 		var locked bool
-		if err := s.db.QueryRow(ctx, `SELECT pg_try_advisory_lock($1)`, lockKey).Scan(&locked); err != nil {
+		if err := lockConn.QueryRow(ctx, `SELECT pg_try_advisory_lock($1)`, lockKey).Scan(&locked); err != nil {
+			lockConn.Release()
 			return nil, err
 		}
 		if !locked {
+			lockConn.Release()
 			continue
 		}
 
 		func() {
-			defer s.db.Exec(context.Background(), `SELECT pg_advisory_unlock($1)`, lockKey)
+			defer lockConn.Exec(context.Background(), `SELECT pg_advisory_unlock($1)`, lockKey)
+			defer lockConn.Release()
 
 			token := portout.OAuthToken{
 				AccessToken:  calendars[0].accessToken,

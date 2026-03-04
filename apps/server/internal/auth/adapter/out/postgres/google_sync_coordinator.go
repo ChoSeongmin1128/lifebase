@@ -102,14 +102,20 @@ func (c *googleSyncCoordinator) syncAccountIfDue(
 	}
 
 	lockKey := advisoryLockKey(account.ID)
+	lockConn, err := c.db.Acquire(ctx)
+	if err != nil {
+		return false, err
+	}
+	defer lockConn.Release()
+
 	var locked bool
-	if err := c.db.QueryRow(ctx, `SELECT pg_try_advisory_lock($1)`, lockKey).Scan(&locked); err != nil {
+	if err := lockConn.QueryRow(ctx, `SELECT pg_try_advisory_lock($1)`, lockKey).Scan(&locked); err != nil {
 		return false, err
 	}
 	if !locked {
 		return false, nil
 	}
-	defer c.db.Exec(context.Background(), `SELECT pg_advisory_unlock($1)`, lockKey)
+	defer lockConn.Exec(context.Background(), `SELECT pg_advisory_unlock($1)`, lockKey)
 
 	now := time.Now()
 	lastAt, err := c.lastSyncAt(ctx, account.ID, reason)
@@ -127,7 +133,10 @@ func (c *googleSyncCoordinator) syncAccountIfDue(
 
 	err = c.syncer.SyncAccount(ctx, userID, account, options)
 	if err != nil {
-		_ = c.updateSyncError(ctx, account.ID, err.Error(), now)
+		if isGoogleAuthError(err) {
+			_ = c.markAccountReauthRequired(ctx, account.ID)
+		}
+		_ = c.updateSyncError(ctx, account.ID, shortenText(googleSyncErrorMessage(err)), now)
 		return true, err
 	}
 	if err := c.updateSyncSuccess(ctx, account.ID, now); err != nil {
@@ -295,6 +304,17 @@ func (c *googleSyncCoordinator) updateSyncError(ctx context.Context, accountID, 
 		 SET last_error = $2, updated_at = $3
 		 WHERE account_id = $1`,
 		accountID, message, now,
+	)
+	return err
+}
+
+func (c *googleSyncCoordinator) markAccountReauthRequired(ctx context.Context, accountID string) error {
+	_, err := c.db.Exec(ctx,
+		`UPDATE user_google_accounts
+		    SET status = 'reauth_required',
+		        updated_at = NOW()
+		  WHERE id = $1`,
+		accountID,
 	)
 	return err
 }

@@ -22,6 +22,7 @@ import { useTodoActions } from "@/features/todo/ui/hooks/useTodoActions";
 import { useSettingsActions } from "@/features/settings/ui/hooks/useSettingsActions";
 import { useAuthFlow } from "@/features/auth/ui/hooks/useAuthFlow";
 import type { GoogleAccountSummary } from "@/features/auth/domain/AuthSession";
+import { useToast } from "@/components/providers/ToastProvider";
 import {
   DndContext,
   closestCenter,
@@ -62,6 +63,15 @@ interface TodoList {
 const PAGE_ACTION_SYNC_COOLDOWN_MS = 15_000;
 const ALL_LIST_ID = "__all__";
 const TODO_LAST_SYNC_AT_SETTING_KEY = "todo_last_sync_at";
+const TODO_DONE_COLLAPSED_SETTING_KEY = "todo_done_section_collapsed";
+const TODO_LAST_ACTIVE_LIST_ID_SETTING_KEY = "todo_last_active_list_id";
+
+function toErrorMessage(err: unknown, fallback: string): string {
+  if (err instanceof Error && err.message.trim()) {
+    return err.message;
+  }
+  return fallback;
+}
 
 function TodoPageInner() {
   const router = useRouter();
@@ -71,6 +81,7 @@ function TodoPageInner() {
 
   const [lists, setLists] = useState<TodoList[]>([]);
   const [settings, setSettings] = useState<Record<string, string>>({});
+  const [settingsLoaded, setSettingsLoaded] = useState(false);
   const [activeListId, setActiveListIdState] = useState<string>(listFromUrl || ALL_LIST_ID);
   const activeListIdRef = useRef<string>(listFromUrl || ALL_LIST_ID);
 
@@ -105,10 +116,13 @@ function TodoPageInner() {
   const [searchQuery, setSearchQuery] = useState("");
   const [sortBy, setSortBy] = useState<TodoSortBy>("due");
   const [filter, setFilter] = useState<TodoFilterMode>("all");
-  const [doneCollapsed, setDoneCollapsed] = useState(false);
+  const [doneCollapsed, setDoneCollapsed] = useState(true);
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const [showCreateDialog, setShowCreateDialog] = useState(false);
   const [createParentId, setCreateParentId] = useState<string | undefined>();
+  const [listDeleteTarget, setListDeleteTarget] = useState<TodoList | null>(null);
+  const [deletingList, setDeletingList] = useState(false);
+  const [clearingCompleted, setClearingCompleted] = useState(false);
   const [lastSyncedAt, setLastSyncedAt] = useState("");
   const [syncingNow, setSyncingNow] = useState(false);
   const quickActionHandledRef = useRef(false);
@@ -124,6 +138,7 @@ function TodoPageInner() {
   const { listLists, createList, deleteList, listTodos, updateTodo, deleteTodo, reorder } = useTodoActions();
   const { getSettings, updateSetting } = useSettingsActions();
   const { listGoogleAccounts, triggerGoogleSync } = useAuthFlow();
+  const toast = useToast();
   const isAllView = activeListId === ALL_LIST_ID;
   const realLists = useMemo(() => lists.filter((list) => !list.is_virtual), [lists]);
   const realListsRef = useRef<TodoList[]>([]);
@@ -172,15 +187,25 @@ function TodoPageInner() {
   }, [isTodoAccountEnabled]);
 
   const loadSettings = useCallback(async () => {
+    setSettingsLoaded(false);
     try {
       const next = await getSettings();
       setSettings(next || {});
+      const preferredListID = (listFromUrl || next?.[TODO_LAST_ACTIVE_LIST_ID_SETTING_KEY] || ALL_LIST_ID).trim();
+      setActiveListId(preferredListID || ALL_LIST_ID);
       setLastSyncedAt(next?.[TODO_LAST_SYNC_AT_SETTING_KEY] || "");
+      setDoneCollapsed(next?.[TODO_DONE_COLLAPSED_SETTING_KEY] !== "false");
     } catch {
       setSettings({});
       setLastSyncedAt("");
+      setDoneCollapsed(true);
+      if (listFromUrl) {
+        setActiveListId(listFromUrl);
+      }
+    } finally {
+      setSettingsLoaded(true);
     }
-  }, [getSettings]);
+  }, [getSettings, listFromUrl, setActiveListId]);
 
   const loadGoogleAccounts = useCallback(async () => {
     try {
@@ -319,26 +344,46 @@ function TodoPageInner() {
   );
 
   useEffect(() => { loadSettings(); }, [loadSettings]);
-  useEffect(() => { loadGoogleAccounts(); }, [loadGoogleAccounts]);
-  useEffect(() => { loadLists(); }, [loadLists, settings]);
-  useEffect(() => { loadTodos(activeListId); }, [activeListId, loadTodos]);
   useEffect(() => {
+    if (!settingsLoaded) return;
+    if (!activeListId) return;
+    if (settings[TODO_LAST_ACTIVE_LIST_ID_SETTING_KEY] === activeListId) return;
+
+    setSettings((prev) => ({ ...prev, [TODO_LAST_ACTIVE_LIST_ID_SETTING_KEY]: activeListId }));
+    updateSetting(TODO_LAST_ACTIVE_LIST_ID_SETTING_KEY, activeListId).catch((err) => {
+      console.error("Persist active todo list failed:", err);
+      toast.warning("마지막 목록 저장 실패", "다음 진입 시 마지막 목록 복원이 되지 않을 수 있습니다.");
+    });
+  }, [activeListId, settings, settingsLoaded, toast, updateSetting]);
+  useEffect(() => { loadGoogleAccounts(); }, [loadGoogleAccounts]);
+  useEffect(() => {
+    if (!settingsLoaded) return;
+    loadLists();
+  }, [loadLists, settingsLoaded, settings]);
+  useEffect(() => {
+    if (!settingsLoaded) return;
+    loadTodos(activeListId);
+  }, [activeListId, loadTodos, settingsLoaded]);
+  useEffect(() => {
+    if (!settingsLoaded) return;
     if (activeListId !== ALL_LIST_ID) return;
     if (!realListIDsKey) {
       setTodos([]);
       return;
     }
     loadTodos(ALL_LIST_ID, { silent: true });
-  }, [activeListId, loadTodos, realListIDsKey]);
+  }, [activeListId, loadTodos, realListIDsKey, settingsLoaded]);
   useEffect(() => {
+    if (!settingsLoaded) return;
     void triggerTodoSyncAndRefresh("page_enter", 5_000);
-  }, [triggerTodoSyncAndRefresh]);
+  }, [settingsLoaded, triggerTodoSyncAndRefresh]);
   useEffect(() => {
+    if (!settingsLoaded) return;
     const timer = window.setInterval(() => {
       void triggerTodoSyncAndRefresh("tab_heartbeat", 9 * 60_000);
     }, 10 * 60_000);
     return () => window.clearInterval(timer);
-  }, [triggerTodoSyncAndRefresh]);
+  }, [settingsLoaded, triggerTodoSyncAndRefresh]);
   useEffect(() => {
     if (quickAction !== "create") return;
     if (quickActionHandledRef.current) return;
@@ -483,14 +528,43 @@ function TodoPageInner() {
     }
   };
 
-  const handleDeleteList = async (listId: string) => {
-    if (listId === ALL_LIST_ID) return;
+  const handleDeleteList = async (listId: string): Promise<boolean> => {
+    if (listId === ALL_LIST_ID) return false;
     try {
       await deleteList(listId);
       await loadLists();
       void triggerTodoSync("page_action", PAGE_ACTION_SYNC_COOLDOWN_MS);
+      return true;
     } catch (err) {
       console.error("Delete list failed:", err);
+      toast.error("목록 삭제 실패", toErrorMessage(err, "목록을 삭제하지 못했습니다."));
+      return false;
+    }
+  };
+
+  const handleConfirmDeleteList = async () => {
+    if (!listDeleteTarget || deletingList) return;
+    setDeletingList(true);
+    try {
+      const ok = await handleDeleteList(listDeleteTarget.id);
+      if (ok) {
+        setListDeleteTarget(null);
+      }
+    } finally {
+      setDeletingList(false);
+    }
+  };
+
+  const handleToggleDoneSection = async () => {
+    if (filter === "done") return;
+    const next = !doneCollapsed;
+    setDoneCollapsed(next);
+    setSettings((prev) => ({ ...prev, [TODO_DONE_COLLAPSED_SETTING_KEY]: next ? "true" : "false" }));
+    try {
+      await updateSetting(TODO_DONE_COLLAPSED_SETTING_KEY, next ? "true" : "false");
+    } catch (err) {
+      console.error("Persist done section state failed:", err);
+      toast.warning("완료 섹션 상태 저장 실패", "다음 새로고침 시 상태가 초기화될 수 있습니다.");
     }
   };
 
@@ -531,6 +605,42 @@ function TodoPageInner() {
   const pinnedFlat = flattenTree(pinnedRoots, collapsed, dragActiveId);
   const activeFlat = flattenTree(activeRoots, collapsed, dragActiveId);
   const doneFlat = flattenTree(doneRoots, collapsed, dragActiveId);
+  const doneDeleteRootIDs = useMemo(() => {
+    const doneIDSet = new Set(todos.filter((todo) => todo.is_done).map((todo) => todo.id));
+    return todos
+      .filter((todo) => {
+        if (!todo.is_done) return false;
+        if (!todo.parent_id) return true;
+        return !doneIDSet.has(todo.parent_id);
+      })
+      .map((todo) => todo.id);
+  }, [todos]);
+
+  const handleClearCompleted = useCallback(async () => {
+    if (clearingCompleted) return;
+    if (doneDeleteRootIDs.length === 0) return;
+
+    setClearingCompleted(true);
+    try {
+      const results = await Promise.allSettled(doneDeleteRootIDs.map((todoID) => deleteTodo(todoID)));
+      const failed = results.filter((result) => result.status === "rejected").length;
+
+      await loadTodos(activeListIdRef.current, { silent: true });
+      await loadLists();
+      void triggerTodoSync("page_action", PAGE_ACTION_SYNC_COOLDOWN_MS);
+
+      if (failed === 0) {
+        toast.success("완료 항목 정리 완료");
+      } else {
+        toast.warning("일부 완료 항목 정리 실패", `${failed}개 항목을 삭제하지 못했습니다.`);
+      }
+    } catch (err) {
+      console.error("Clear completed failed:", err);
+      toast.error("완료 항목 정리 실패", toErrorMessage(err, "완료 항목 삭제 중 오류가 발생했습니다."));
+    } finally {
+      setClearingCompleted(false);
+    }
+  }, [activeListIdRef, clearingCompleted, deleteTodo, doneDeleteRootIDs, loadLists, loadTodos, toast, triggerTodoSync]);
 
   const allFlat = useMemo(
     () => [...pinnedFlat, ...activeFlat, ...doneFlat],
@@ -704,23 +814,32 @@ function TodoPageInner() {
       {/* Done */}
       {doneFlat.length > 0 && (
         <>
-          <button
-            type="button"
-            className="mt-3 flex w-full items-center gap-1 px-4 pb-1 text-[10px] font-medium uppercase tracking-wider text-text-muted hover:text-text-secondary"
-            onClick={() => {
-              if (filter === "done") return;
-              setDoneCollapsed((prev) => !prev);
-            }}
-          >
-            <ChevronRight
-              size={12}
-              className={cn(
-                "transition-transform",
-                showCompletedSection ? "rotate-90" : "rotate-0",
-              )}
-            />
-            <span>완료됨 ({doneFlat.length})</span>
-          </button>
+          <div className="mt-3 flex items-center justify-between gap-2 px-4 pb-1">
+            <button
+              type="button"
+              className="flex items-center gap-1 text-[10px] font-medium uppercase tracking-wider text-text-muted hover:text-text-secondary"
+              onClick={handleToggleDoneSection}
+            >
+              <ChevronRight
+                size={12}
+                className={cn(
+                  "transition-transform",
+                  showCompletedSection ? "rotate-90" : "rotate-0",
+                )}
+              />
+              <span>완료됨 ({doneFlat.length})</span>
+            </button>
+            <Button
+              type="button"
+              size="sm"
+              variant="ghost"
+              className="h-6 px-2 text-[11px] text-text-muted hover:text-text-strong"
+              onClick={handleClearCompleted}
+              disabled={clearingCompleted || doneDeleteRootIDs.length === 0}
+            >
+              {clearingCompleted ? "정리 중..." : "완료 항목 모두 지우기"}
+            </Button>
+          </div>
           {showCompletedSection && doneFlat.map(renderTodoRow)}
         </>
       )}
@@ -742,8 +861,16 @@ function TodoPageInner() {
           <h2 className="mb-2 text-xs font-medium text-text-muted uppercase tracking-wider">목록</h2>
           {lists.map((list) => (
             <div key={list.id} className="group/list relative">
-              <button
+              <div
+                role="button"
+                tabIndex={0}
                 onClick={() => setActiveListId(list.id)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    setActiveListId(list.id);
+                  }
+                }}
                 className={cn(
                   "mb-0.5 flex w-full items-start justify-between rounded-lg px-3 py-2 transition-colors",
                   activeListId === list.id
@@ -760,24 +887,30 @@ function TodoPageInner() {
                     <span className="tabular-nums">진행 {getListActiveCount(list)}</span>
                     <span>·</span>
                     <span className="tabular-nums">완료 {getListDoneCount(list)}</span>
-                    <span className="mx-1 text-border">|</span>
-                    <span>{getListSourceLabel(list)}</span>
                   </div>
+                  <p
+                    className={cn(
+                      "mt-0.5 truncate text-[11px]",
+                      activeListId === list.id ? "text-text-secondary" : "text-text-muted",
+                    )}
+                  >
+                    {getListSourceLabel(list)}
+                  </p>
                 </div>
                 {!list.is_virtual && (
-                  <span
+                  <button
+                    type="button"
                     onClick={(e) => {
                       e.stopPropagation();
-                      if (confirm(`"${list.name}" 목록을 삭제하시겠습니까?`)) {
-                        handleDeleteList(list.id);
-                      }
+                      setListDeleteTarget(list);
                     }}
                     className="ml-1 hidden text-text-muted hover:text-error group-hover/list:inline-block text-xs"
+                    aria-label={`${list.name} 목록 삭제`}
                   >
                     ×
-                  </span>
+                  </button>
                 )}
-              </button>
+              </div>
             </div>
           ))}
           {showNewList ? (
@@ -977,7 +1110,7 @@ function TodoPageInner() {
 
         {/* Todo list */}
         <div className="flex-1 overflow-auto">
-          {loading ? (
+          {!settingsLoaded || loading ? (
             <div className="flex items-center justify-center py-20 text-text-muted">
               불러오는 중...
             </div>
@@ -1097,6 +1230,40 @@ function TodoPageInner() {
               </Button>
               <Button variant="ghost" size="sm" onClick={() => setEditingTodo(null)}>
                 닫기
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        )}
+      </Dialog>
+
+      {/* List Delete Confirm Modal */}
+      <Dialog open={!!listDeleteTarget} onOpenChange={(v) => !v && setListDeleteTarget(null)}>
+        {listDeleteTarget && (
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>목록 삭제</DialogTitle>
+            </DialogHeader>
+            <p className="text-sm text-text-secondary">
+              &quot;{listDeleteTarget.name}&quot; 목록을 삭제하시겠습니까?
+            </p>
+            <DialogFooter className="justify-end gap-2">
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={() => setListDeleteTarget(null)}
+                disabled={deletingList}
+              >
+                취소
+              </Button>
+              <Button
+                type="button"
+                variant="danger"
+                size="sm"
+                onClick={handleConfirmDeleteList}
+                disabled={deletingList}
+              >
+                {deletingList ? "삭제 중..." : "삭제"}
               </Button>
             </DialogFooter>
           </DialogContent>
