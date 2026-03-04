@@ -359,16 +359,22 @@ func (c *oauthClient) ListCalendarEvents(
 
 	events := make([]portout.OAuthCalendarEvent, 0, len(payload.Items))
 	for _, item := range payload.Items {
-		startTime, endTime, isAllDay, parseErr := parseGoogleEventDateTime(item.Start.Date, item.Start.DateTime, item.End.Date, item.End.DateTime)
-		if parseErr != nil {
-			continue
-		}
 		timezone := item.Start.TimeZone
 		if timezone == "" {
 			timezone = item.End.TimeZone
 		}
 		if timezone == "" {
 			timezone = "Asia/Seoul"
+		}
+		startTime, endTime, isAllDay, parseErr := parseGoogleEventDateTime(
+			item.Start.Date,
+			item.Start.DateTime,
+			item.End.Date,
+			item.End.DateTime,
+			timezone,
+		)
+		if parseErr != nil {
+			continue
 		}
 
 		var colorID *string
@@ -715,6 +721,7 @@ func (c *oauthClient) apiClient(ctx context.Context, token portout.OAuthToken) *
 
 func parseGoogleEventDateTime(
 	startDate, startDateTime, endDate, endDateTime string,
+	timezone string,
 ) (time.Time, time.Time, bool, error) {
 	if startDateTime != "" && endDateTime != "" {
 		start, err := time.Parse(time.RFC3339, startDateTime)
@@ -729,13 +736,34 @@ func parseGoogleEventDateTime(
 	}
 
 	if startDate != "" && endDate != "" {
-		start, err := time.Parse("2006-01-02", startDate)
+		loc := time.UTC
+		if strings.TrimSpace(timezone) != "" {
+			if loaded, err := time.LoadLocation(timezone); err == nil {
+				loc = loaded
+			}
+		}
+
+		start, err := time.ParseInLocation("2006-01-02", startDate, loc)
 		if err != nil {
 			return time.Time{}, time.Time{}, true, err
 		}
-		end, err := time.Parse("2006-01-02", endDate)
+		endExclusive, err := time.ParseInLocation("2006-01-02", endDate, loc)
 		if err != nil {
 			return time.Time{}, time.Time{}, true, err
+		}
+		// Google all-day "end.date" is exclusive. Convert to inclusive local end-of-day.
+		end := endExclusive.Add(-time.Nanosecond)
+		if !end.After(start) {
+			end = time.Date(
+				start.Year(),
+				start.Month(),
+				start.Day(),
+				23,
+				59,
+				59,
+				int(time.Second-time.Nanosecond),
+				loc,
+			)
 		}
 		return start, end, true, nil
 	}
@@ -877,13 +905,16 @@ func buildGoogleCalendarEventBody(input portout.CalendarEventUpsertInput) map[st
 	end := input.EndTime.In(loc)
 
 	if input.IsAllDay {
-		startDate := start.Format("2006-01-02")
-		endDate := end.Format("2006-01-02")
-		if !end.After(start) || endDate == startDate {
-			endDate = start.AddDate(0, 0, 1).Format("2006-01-02")
+		startDay := time.Date(start.Year(), start.Month(), start.Day(), 0, 0, 0, 0, loc)
+		endDay := time.Date(end.Year(), end.Month(), end.Day(), 0, 0, 0, 0, loc)
+		if endDay.Before(startDay) {
+			endDay = startDay
 		}
-		body["start"] = map[string]string{"date": startDate}
-		body["end"] = map[string]string{"date": endDate}
+
+		// Google all-day payload expects exclusive end date.
+		endExclusive := endDay.AddDate(0, 0, 1)
+		body["start"] = map[string]string{"date": startDay.Format("2006-01-02")}
+		body["end"] = map[string]string{"date": endExclusive.Format("2006-01-02")}
 	} else {
 		tz := input.Timezone
 		if tz == "" {
