@@ -1337,7 +1337,6 @@ function MonthView({
               {spanBars.map((bar) => {
                 const spanCols = bar.endCol - bar.startCol + 1;
                 const startCell = weekCells[bar.startCol];
-                const hasHolidayAtStart = (holidaysByDate.get(startCell.dateKey) || []).length > 0;
                 return (
                   <div
                     key={bar.event.id}
@@ -1346,7 +1345,7 @@ function MonthView({
                       !startCell.inCurrentMonth && "opacity-60"
                     )}
                     style={{
-                      top: `${spanBarTopOffset + (hasHolidayAtStart ? 12 : 0) + bar.lane * spanBarRowHeight}px`,
+                      top: `${spanBarTopOffset + bar.lane * spanBarRowHeight}px`,
                       left: `calc((100% / 7) * ${bar.startCol} + 3px)`,
                       width: `calc((100% / 7) * ${spanCols} - 6px)`,
                       backgroundColor: getEventColorByCalendar(bar.event.color_id, bar.event.calendar_id),
@@ -1382,37 +1381,39 @@ function MonthView({
                     )}
                     onClick={(event) => onDayClick(cell.date, event)}
                   >
-                    <div
-                      className={cn(
-                        "mb-0.5 inline-flex h-6 w-6 items-center justify-center rounded-full text-xs",
-                        isToday
-                          ? "bg-primary text-white font-medium"
-                          : hasHoliday
-                            ? "text-error font-semibold"
-                            : !cell.inCurrentMonth
-                              ? "text-text-muted"
-                              : cell.date.getDay() === 0
-                                ? "text-error"
-                                : cell.date.getDay() === 6
-                                  ? "text-info"
-                                  : "text-text-primary"
-                      )}
-                    >
-                      {cell.day}
-                    </div>
-                    {hasHoliday ? (
+                    <div className="mb-0.5 flex items-center gap-1">
                       <div
                         className={cn(
-                          "mb-0.5 truncate px-0.5 text-[10px] font-semibold leading-tight text-error",
-                          !cell.inCurrentMonth && "opacity-70"
+                          "inline-flex h-6 w-6 items-center justify-center rounded-full text-xs",
+                          isToday
+                            ? "bg-primary text-white font-medium"
+                            : hasHoliday
+                              ? "text-error font-semibold"
+                              : !cell.inCurrentMonth
+                                ? "text-text-muted"
+                                : cell.date.getDay() === 0
+                                  ? "text-error"
+                                  : cell.date.getDay() === 6
+                                    ? "text-info"
+                                    : "text-text-primary"
                         )}
-                        title={holidayLabels.join(", ")}
                       >
-                        {holidayLabels[0]}
+                        {cell.day}
                       </div>
-                    ) : null}
+                      {hasHoliday ? (
+                        <div
+                          className={cn(
+                            "min-w-0 flex-1 truncate text-[10px] font-semibold leading-tight text-error",
+                            !cell.inCurrentMonth && "opacity-70"
+                          )}
+                          title={holidayLabels.join(", ")}
+                        >
+                          {holidayLabels[0]}
+                        </div>
+                      ) : null}
+                    </div>
 
-                    <div className="space-y-0.5" style={{ marginTop: `${spanBarHeight + (hasHoliday ? 12 : 0)}px` }}>
+                    <div className="space-y-0.5" style={{ marginTop: `${spanBarHeight}px` }}>
                       {singleEvents.slice(0, 2).map((event) => {
                         return (
                           <div
@@ -1547,14 +1548,16 @@ function WeekView({
                 isToday ? "font-medium text-text-strong" : hasHoliday ? "font-medium text-error" : "text-text-secondary"
               )}
             >
-              <span className={isToday ? "inline-flex h-6 min-w-6 items-center justify-center rounded-full bg-primary px-1 text-white" : ""}>
-                {weekdays[date.getDay()]} {date.getDate()}
-              </span>
-              {hasHoliday ? (
-                <p className="mt-0.5 truncate text-[10px] font-semibold text-error" title={holidayLabels.join(", ")}>
-                  {holidayLabels[0]}
-                </p>
-              ) : null}
+              <div className="flex min-w-0 items-center justify-center gap-1">
+                <span className={isToday ? "inline-flex h-6 min-w-6 items-center justify-center rounded-full bg-primary px-1 text-white" : ""}>
+                  {weekdays[date.getDay()]} {date.getDate()}
+                </span>
+                {hasHoliday ? (
+                  <span className="min-w-0 max-w-[84px] truncate text-[10px] font-semibold text-error" title={holidayLabels.join(", ")}>
+                    {holidayLabels[0]}
+                  </span>
+                ) : null}
+              </div>
             </div>
           );
         })}
