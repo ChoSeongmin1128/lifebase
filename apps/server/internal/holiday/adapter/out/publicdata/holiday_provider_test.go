@@ -35,3 +35,36 @@ func TestParseHolidayItems_SingleObject(t *testing.T) {
 		t.Fatalf("unexpected holiday name: %s", items[0].Name)
 	}
 }
+
+func TestParseHolidayItems_EmptyString(t *testing.T) {
+	raw := json.RawMessage(`""`)
+	items, err := parseHolidayItems(raw, 2026, 8)
+	if err != nil {
+		t.Fatalf("parse error: %v", err)
+	}
+	if len(items) != 0 {
+		t.Fatalf("unexpected item count: %d", len(items))
+	}
+}
+
+func TestExtractItemRaw_EmptyItemsString(t *testing.T) {
+	raw := json.RawMessage(`""`)
+	itemRaw, err := extractItemRaw(raw)
+	if err != nil {
+		t.Fatalf("extract error: %v", err)
+	}
+	if len(itemRaw) != 0 {
+		t.Fatalf("expected empty item raw, got: %s", string(itemRaw))
+	}
+}
+
+func TestExtractItemRaw_WrappedEmptyItem(t *testing.T) {
+	raw := json.RawMessage(`{"item":""}`)
+	itemRaw, err := extractItemRaw(raw)
+	if err != nil {
+		t.Fatalf("extract error: %v", err)
+	}
+	if len(itemRaw) != 0 {
+		t.Fatalf("expected empty item raw, got: %s", string(itemRaw))
+	}
+}

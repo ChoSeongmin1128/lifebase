@@ -97,9 +97,7 @@ func (p *holidayProvider) fetchOnce(ctx context.Context, endpoint string, year, 
 				ResultMsg  string `json:"resultMsg"`
 			} `json:"header"`
 			Body struct {
-				Items struct {
-					Item json.RawMessage `json:"item"`
-				} `json:"items"`
+				Items json.RawMessage `json:"items"`
 			} `json:"body"`
 		} `json:"response"`
 	}
@@ -115,7 +113,12 @@ func (p *holidayProvider) fetchOnce(ctx context.Context, endpoint string, year, 
 		return nil, resultCode, fmt.Errorf("kasi api error: %s", payload.Response.Header.ResultMsg)
 	}
 
-	items, err := parseHolidayItems(payload.Response.Body.Items.Item, year, month)
+	itemRaw, err := extractItemRaw(payload.Response.Body.Items)
+	if err != nil {
+		return nil, resultCode, err
+	}
+
+	items, err := parseHolidayItems(itemRaw, year, month)
 	if err != nil {
 		return nil, resultCode, err
 	}
@@ -123,9 +126,48 @@ func (p *holidayProvider) fetchOnce(ctx context.Context, endpoint string, year, 
 	return items, resultCode, nil
 }
 
+func extractItemRaw(itemsRaw json.RawMessage) (json.RawMessage, error) {
+	trimmed := strings.TrimSpace(string(itemsRaw))
+	if trimmed == "" || trimmed == "null" || trimmed == "{}" || trimmed == `""` {
+		return nil, nil
+	}
+
+	// 일반 케이스: { "item": ... }
+	var wrapped struct {
+		Item json.RawMessage `json:"item"`
+	}
+	if err := json.Unmarshal(itemsRaw, &wrapped); err == nil {
+		itemTrimmed := strings.TrimSpace(string(wrapped.Item))
+		if itemTrimmed == "" || itemTrimmed == "null" || itemTrimmed == "{}" || itemTrimmed == `""` {
+			return nil, nil
+		}
+		return wrapped.Item, nil
+	}
+
+	// 일부 케이스에서 items가 item payload 자체로 내려오는 경우를 허용
+	if strings.HasPrefix(trimmed, "[") || strings.HasPrefix(trimmed, "{") {
+		return itemsRaw, nil
+	}
+
+	// items가 문자열이면 빈 문자열만 무시, 그 외는 오류로 처리
+	if strings.HasPrefix(trimmed, "\"") {
+		var value string
+		if err := json.Unmarshal(itemsRaw, &value); err != nil {
+			return nil, err
+		}
+		value = strings.TrimSpace(value)
+		if value == "" {
+			return nil, nil
+		}
+		return json.RawMessage(value), nil
+	}
+
+	return nil, fmt.Errorf("unexpected items payload: %s", trimmed)
+}
+
 func parseHolidayItems(raw json.RawMessage, year, month int) ([]domain.Holiday, error) {
 	trimmed := strings.TrimSpace(string(raw))
-	if trimmed == "" || trimmed == "null" || trimmed == "{}" {
+	if trimmed == "" || trimmed == "null" || trimmed == "{}" || trimmed == `""` {
 		return []domain.Holiday{}, nil
 	}
 
