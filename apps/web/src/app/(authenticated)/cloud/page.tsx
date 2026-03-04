@@ -99,6 +99,7 @@ function CloudPageInner() {
   const [path, setPath] = useState<{ id: string | null; name: string }[]>([
     { id: null, name: "내 클라우드" },
   ]);
+  const [knownFolderNames, setKnownFolderNames] = useState<Map<string, string>>(new Map());
   const [loading, setLoading] = useState(true);
   const [sortBy, setSortBy] = useState<SortBy>("name");
   const [sortDir, setSortDir] = useState<SortDir>("asc");
@@ -130,11 +131,9 @@ function CloudPageInner() {
   const quickActionHandledRef = useRef(false);
 
   const currentFolderID = useMemo(() => {
-    const fromPath = path[path.length - 1].id;
-    if (fromPath) return fromPath;
-    if (isMyFilesSection && folderFromUrl) return folderFromUrl;
-    return null;
-  }, [folderFromUrl, isMyFilesSection, path]);
+    if (!isMyFilesSection) return null;
+    return folderFromUrl || null;
+  }, [folderFromUrl, isMyFilesSection]);
   const authed = isAuthenticated();
   const cloud = useCloudActions();
   const toast = useToast();
@@ -192,6 +191,17 @@ function CloudPageInner() {
         sortDir,
       });
       setItems(nextItems);
+      if (isMyFilesSection) {
+        setKnownFolderNames((prev) => {
+          const next = new Map(prev);
+          nextItems.forEach((item) => {
+            if (item.type === "folder" && item.folder) {
+              next.set(item.folder.id, item.folder.name);
+            }
+          });
+          return next;
+        });
+      }
     } catch {
       setItems([]);
     } finally {
@@ -204,6 +214,7 @@ function CloudPageInner() {
     section,
     sortBy,
     sortDir,
+    isMyFilesSection,
   ]);
 
   const loadStars = useCallback(async () => {
@@ -223,6 +234,7 @@ function CloudPageInner() {
   useEffect(() => {
     if (!isMyFilesSection) {
       setPath([{ id: null, name: "내 클라우드" }]);
+      setKnownFolderNames(new Map());
     }
     setRenaming(null);
     setShowNewFolder(false);
@@ -241,6 +253,26 @@ function CloudPageInner() {
     loadItems();
   }, [isMyFilesSection, loadItems, loadStars]);
   useEffect(() => {
+    if (!isMyFilesSection) return;
+    if (!folderFromUrl) {
+      setPath([{ id: null, name: "내 클라우드" }]);
+      return;
+    }
+
+    setPath((prev) => {
+      const foundIndex = prev.findIndex((entry) => entry.id === folderFromUrl);
+      const knownName = knownFolderNames.get(folderFromUrl);
+      if (foundIndex >= 0) {
+        const next = prev.slice(0, foundIndex + 1);
+        if (knownName && next[foundIndex].name !== knownName) {
+          next[foundIndex] = { ...next[foundIndex], name: knownName };
+        }
+        return next;
+      }
+      return [...prev, { id: folderFromUrl, name: knownName || "폴더" }];
+    });
+  }, [folderFromUrl, isMyFilesSection, knownFolderNames]);
+  useEffect(() => {
     if (quickAction !== "upload") return;
     if (quickActionHandledRef.current) return;
     if (!isMyFilesSection || !authed) return;
@@ -255,6 +287,7 @@ function CloudPageInner() {
 
   const navigateToFolder = (folder: FolderData) => {
     if (!isMyFilesSection) return;
+    setKnownFolderNames((prev) => new Map(prev).set(folder.id, folder.name));
     setPath((prev) => [...prev, { id: folder.id, name: folder.name }]);
     syncFolderUrl(folder.id, "push");
   };
