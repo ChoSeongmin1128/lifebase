@@ -40,3 +40,10 @@ scripts/lifebase.log
 # OS files
 Thumbs.db
 desktop.ini
+
+# Codex local overrides/runtime (keep shared .codex/*.toml tracked)
+.codex/*.local.toml
+.codex/agents/*.local.toml
+.codex/state/
+.codex/jobs/
+.codex/tmp/

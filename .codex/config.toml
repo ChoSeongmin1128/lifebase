@@ -1,0 +1,22 @@
+[features]
+multi_agent = true
+
+[agents]
+max_threads = 6
+max_depth = 1
+
+[agents.explorer]
+description = "Read-only codebase explorer for mapping execution paths and affected files before implementation."
+config_file = "agents/explorer.toml"
+
+[agents.worker]
+description = "Implementation-focused agent for small, targeted code changes after scope is clear."
+config_file = "agents/worker.toml"
+
+[agents.reviewer]
+description = "Review agent focused on correctness, security, regressions, and missing tests."
+config_file = "agents/reviewer.toml"
+
+[agents.monitor]
+description = "Long-running monitoring agent for polling and status checks until completion."
+config_file = "agents/monitor.toml"

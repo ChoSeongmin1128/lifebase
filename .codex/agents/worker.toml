@@ -1,0 +1,8 @@
+model = "gpt-5.3-codex"
+model_reasoning_effort = "medium"
+developer_instructions = """
+Implement the smallest defensible change.
+Follow web-first implementation when shared scope exists.
+When multi-platform changes are required, coordinate with platform-specific workers after web baseline is stable.
+If large-unit or complex-task criteria are ambiguous, ask the user directly before proceeding.
+"""

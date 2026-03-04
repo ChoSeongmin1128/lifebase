@@ -3,6 +3,7 @@
 ## 마이그레이션
 - 도구: goose (Go 코드 내 실행 가능, NO TRANSACTION 옵션 지원)
 - 마이그레이션 파일은 `migrations/` 디렉토리에 순차 번호로 관리
+- 스키마 변경은 반드시 Up/Down 쌍으로 작성한다
 
 ## 네이밍
 - 테이블명: snake_case, 복수형 (예: `users`, `todo_lists`, `event_reminders`)
@@ -27,4 +28,10 @@
 
 ## Soft Delete
 - 휴지통 대상(files, folders): `deleted_at` 기반 soft delete
-- 30일 경과 후 워커가 hard delete (물리 파일 → 썸네일 → DB 순서)
+- 30일 경과 후 워커가 hard delete (물리 파일 -> 썸네일 -> DB 순서)
+
+## 마이그레이션 체크리스트
+- 변경 전: 영향 테이블/인덱스/쿼리 경로를 기록한다
+- 변경 중: 인덱스/기본값/null 허용 여부를 명시한다
+- 변경 후: `migrate:up`, `migrate:status`, 핵심 조회 경로를 검증한다
+- 롤백 기준: 운영 리스크가 있으면 즉시 `migrate:down` 가능해야 한다
