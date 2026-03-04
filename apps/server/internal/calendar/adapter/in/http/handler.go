@@ -114,6 +114,10 @@ func (h *CalendarHandler) CreateEvent(w http.ResponseWriter, r *http.Request) {
 func (h *CalendarHandler) GetEvent(w http.ResponseWriter, r *http.Request) {
 	userID := middleware.GetUserID(r.Context())
 	eventID := chi.URLParam(r, "eventID")
+	if eventID == "day-summary" {
+		h.GetDaySummary(w, r)
+		return
+	}
 
 	event, err := h.cal.GetEvent(r.Context(), userID, eventID)
 	if err != nil {

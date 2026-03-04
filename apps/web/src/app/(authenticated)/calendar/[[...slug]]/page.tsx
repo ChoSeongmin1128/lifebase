@@ -610,15 +610,34 @@ export default function CalendarPage() {
           : summary.events || [];
       setDaySummary({ ...summary, events: visibleEvents });
     } catch {
-      setDaySummary(null);
-      setDaySummaryError("일정 정보를 불러오지 못했습니다.");
+      const allowedCalendarIDs = new Set(filteredCalendarIDs);
+      const fallbackEvents = (events || []).filter((event) => {
+        if (allowedCalendarIDs.size > 0 && !allowedCalendarIDs.has(event.calendar_id)) return false;
+        const start = getEventStartDateKey(event);
+        const end = getEventEndDateKey(event);
+        return yearViewFocusDate >= start && yearViewFocusDate <= end;
+      });
+      const fallbackHolidays = (holidaysByDate.get(yearViewFocusDate) || []).map((name) => ({
+        date: yearViewFocusDate,
+        name,
+      }));
+      setDaySummary({
+        date: yearViewFocusDate,
+        timezone,
+        holidays: fallbackHolidays,
+        events: fallbackEvents,
+        todos: [],
+      });
+      setDaySummaryError("");
     } finally {
       setDaySummaryLoading(false);
     }
   }, [
     calendars.length,
+    events,
     filteredCalendarIDs,
     getDaySummary,
+    holidaysByDate,
     timezone,
     view,
     yearViewFocusDate,

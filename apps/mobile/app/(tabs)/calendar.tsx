@@ -279,8 +279,35 @@ export default function CalendarScreen() {
       })
       .catch(() => {
         if (cancelled) return;
-        setDaySummary(null);
-        setDaySummaryError("날짜 요약을 불러오지 못했습니다.");
+        const allowedCalendarIDs = new Set(visibleCalendarIDs);
+        const calendarKindByID = new Map(calendars.map((calendar) => [calendar.id, calendar.kind]));
+        const fallbackEvents = (events || []).filter((event) => {
+          if (allowedCalendarIDs.size > 0 && !allowedCalendarIDs.has(event.calendar_id)) return false;
+          const start = event.start_time.split("T")[0];
+          const end = event.end_time.split("T")[0];
+          return selectedDateKey >= start && selectedDateKey <= end;
+        });
+        const holidayByKey = new Map<string, { date: string; name: string }>();
+        fallbackEvents.forEach((event) => {
+          const kind = calendarKindByID.get(event.calendar_id);
+          if (kind !== "holiday" || !event.is_all_day) return;
+          const key = normalizeHolidayTitle(event.title);
+          if (holidayByKey.has(key)) return;
+          holidayByKey.set(key, { date: selectedDateKey, name: event.title });
+        });
+        const mergedHolidays = Array.from(holidayByKey.values());
+        const mergedEvents = fallbackEvents.filter((event) => {
+          const kind = calendarKindByID.get(event.calendar_id);
+          return !(kind === "holiday" && event.is_all_day);
+        });
+        setDaySummary({
+          date: selectedDateKey,
+          timezone,
+          holidays: mergedHolidays,
+          events: mergedEvents,
+          todos: [],
+        });
+        setDaySummaryError("");
       })
       .finally(() => {
         if (cancelled) return;
@@ -290,7 +317,7 @@ export default function CalendarScreen() {
     return () => {
       cancelled = true;
     };
-  }, [calendars.length, getDaySummary, selectedDateKey, timezone, visibleCalendarIDs]);
+  }, [calendars, events, getDaySummary, selectedDateKey, timezone, visibleCalendarIDs]);
 
   const prevMonth = () => {
     setCurrentDate(
