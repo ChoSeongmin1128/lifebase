@@ -1,4 +1,5 @@
 import type {
+  CreateListInput,
   ReorderItem,
   TodoAppRepository,
 } from "@/features/todo/repository/TodoAppRepository";
@@ -10,12 +11,15 @@ export class ManageTodoUseCase {
     return this.repo.listLists();
   }
 
-  createList(name: string) {
-    const normalized = name.trim();
+  createList(input: CreateListInput) {
+    const normalized = input.name.trim();
     if (!normalized) {
       throw new Error("목록 이름이 비어 있습니다.");
     }
-    return this.repo.createList(normalized);
+    return this.repo.createList({
+      ...input,
+      name: normalized,
+    });
   }
 
   deleteList(listId: string) {

@@ -47,11 +47,15 @@ type OAuthUserInfo struct {
 }
 
 type OAuthCalendar struct {
-	GoogleID  string
-	Name      string
-	ColorID   *string
-	IsPrimary bool
-	IsVisible bool
+	GoogleID   string
+	Name       string
+	ColorID    *string
+	IsPrimary  bool
+	IsVisible  bool
+	Kind       string
+	IsReadOnly bool
+	IsSpecial  bool
+	AccessRole string
 }
 
 type OAuthTaskList struct {
@@ -140,6 +144,7 @@ type GoogleAuthClient interface {
 	CreateCalendarEvent(ctx context.Context, token OAuthToken, calendarID string, input CalendarEventUpsertInput) (googleID string, etag *string, err error)
 	UpdateCalendarEvent(ctx context.Context, token OAuthToken, calendarID, eventID string, input CalendarEventUpsertInput) (etag *string, err error)
 	DeleteCalendarEvent(ctx context.Context, token OAuthToken, calendarID, eventID string) error
+	CreateTaskList(ctx context.Context, token OAuthToken, title string) (taskListID string, err error)
 	CreateTask(ctx context.Context, token OAuthToken, taskListID string, input TodoUpsertInput) (googleID string, err error)
 	UpdateTask(ctx context.Context, token OAuthToken, taskListID, taskID string, input TodoUpsertInput) error
 	DeleteTask(ctx context.Context, token OAuthToken, taskListID, taskID string) error

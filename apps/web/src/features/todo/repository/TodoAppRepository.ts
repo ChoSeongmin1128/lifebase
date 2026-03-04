@@ -17,9 +17,15 @@ export interface ReorderItem {
   sort_order: number;
 }
 
+export interface CreateListInput {
+  name: string;
+  target?: "local" | "google";
+  google_account_id?: string | null;
+}
+
 export interface TodoAppRepository {
   listLists(): Promise<TodoListItem[]>;
-  createList(name: string): Promise<TodoListItem>;
+  createList(input: CreateListInput): Promise<TodoListItem>;
   deleteList(listId: string): Promise<void>;
   listTodos(listId: string, includeDone: boolean): Promise<TodoItem[]>;
   updateTodo(todoId: string, updates: Record<string, unknown>): Promise<void>;

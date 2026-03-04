@@ -2,6 +2,7 @@ import { api } from "@/features/shared/infrastructure/http-api";
 import { getAccessToken } from "@/features/auth/infrastructure/token-auth";
 import type { TodoItem } from "@/features/todo/domain/dnd-tree";
 import type {
+  CreateListInput,
   ReorderItem,
   TodoAppRepository,
   TodoListItem,
@@ -30,11 +31,15 @@ export class HttpTodoAppRepository implements TodoAppRepository {
     return data.lists || [];
   }
 
-  createList(name: string): Promise<TodoListItem> {
+  createList(input: CreateListInput): Promise<TodoListItem> {
     const token = this.getToken();
     return api<TodoListItem>("/todo/lists", {
       method: "POST",
-      body: { name },
+      body: {
+        name: input.name,
+        target: input.target || "local",
+        google_account_id: input.google_account_id || undefined,
+      },
       token,
     });
   }

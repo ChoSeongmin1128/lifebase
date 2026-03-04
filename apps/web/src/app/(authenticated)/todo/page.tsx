@@ -21,6 +21,7 @@ import { useCreateTodo } from "@/features/todo/ui/hooks/useCreateTodo";
 import { useTodoActions } from "@/features/todo/ui/hooks/useTodoActions";
 import { useSettingsActions } from "@/features/settings/ui/hooks/useSettingsActions";
 import { useAuthFlow } from "@/features/auth/ui/hooks/useAuthFlow";
+import type { GoogleAccountSummary } from "@/features/auth/domain/AuthSession";
 import {
   DndContext,
   closestCenter,
@@ -34,7 +35,7 @@ import {
   useSensors,
 } from "@dnd-kit/core";
 import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
-import { Plus } from "lucide-react";
+import { ChevronRight, Plus } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
   buildTree,
@@ -49,6 +50,7 @@ interface TodoList {
   id: string;
   name: string;
   sort_order: number;
+  is_virtual?: boolean;
   google_account_id?: string | null;
   active_count?: number;
   done_count?: number;
@@ -57,6 +59,7 @@ interface TodoList {
 }
 
 const PAGE_ACTION_SYNC_COOLDOWN_MS = 15_000;
+const ALL_LIST_ID = "__all__";
 
 function TodoPageInner() {
   const router = useRouter();
@@ -66,8 +69,8 @@ function TodoPageInner() {
 
   const [lists, setLists] = useState<TodoList[]>([]);
   const [settings, setSettings] = useState<Record<string, string>>({});
-  const [activeListId, setActiveListIdState] = useState<string>(listFromUrl);
-  const activeListIdRef = useRef<string>(listFromUrl);
+  const [activeListId, setActiveListIdState] = useState<string>(listFromUrl || ALL_LIST_ID);
+  const activeListIdRef = useRef<string>(listFromUrl || ALL_LIST_ID);
 
   const setActiveListId = useCallback((id: string) => {
     activeListIdRef.current = id;
@@ -81,18 +84,26 @@ function TodoPageInner() {
   useEffect(() => {
     if (!activeListId) return;
     if (listFromUrl !== activeListId) {
-      router.replace(`/todo?list=${activeListId}`, { scroll: false });
+      if (activeListId === ALL_LIST_ID) {
+        router.replace("/todo", { scroll: false });
+      } else {
+        router.replace(`/todo?list=${activeListId}`, { scroll: false });
+      }
     }
   }, [activeListId, listFromUrl, router]);
 
   const [todos, setTodos] = useState<TodoItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [newListName, setNewListName] = useState("");
+  const [newListTarget, setNewListTarget] = useState<"local" | "google">("local");
+  const [newListGoogleAccountID, setNewListGoogleAccountID] = useState("");
+  const [googleAccounts, setGoogleAccounts] = useState<GoogleAccountSummary[]>([]);
   const [showNewList, setShowNewList] = useState(false);
   const [editingTodo, setEditingTodo] = useState<TodoItem | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [sortBy, setSortBy] = useState<TodoSortBy>("due");
   const [filter, setFilter] = useState<TodoFilterMode>("all");
+  const [doneCollapsed, setDoneCollapsed] = useState(false);
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const [showCreateDialog, setShowCreateDialog] = useState(false);
   const [createParentId, setCreateParentId] = useState<string | undefined>();
@@ -108,8 +119,18 @@ function TodoPageInner() {
   const { createTodo, creating } = useCreateTodo();
   const { listLists, createList, deleteList, listTodos, updateTodo, deleteTodo, reorder } = useTodoActions();
   const { getSettings } = useSettingsActions();
-  const { triggerGoogleSync } = useAuthFlow();
-  const defaultListId = lists.length > 0 ? lists[0].id : null;
+  const { listGoogleAccounts, triggerGoogleSync } = useAuthFlow();
+  const isAllView = activeListId === ALL_LIST_ID;
+  const realLists = useMemo(() => lists.filter((list) => !list.is_virtual), [lists]);
+  const realListsRef = useRef<TodoList[]>([]);
+  const realListIDsKey = useMemo(() => realLists.map((list) => list.id).join(","), [realLists]);
+  const listNameByID = useMemo(
+    () => new Map(realLists.map((list) => [list.id, list.name])),
+    [realLists],
+  );
+  useEffect(() => {
+    realListsRef.current = realLists;
+  }, [realLists]);
 
   const getListActiveCount = useCallback((list: TodoList) => {
     if (typeof list.active_count === "number") return list.active_count;
@@ -124,6 +145,7 @@ function TodoPageInner() {
   }, []);
 
   const getListSourceLabel = useCallback((list: TodoList) => {
+    if (list.is_virtual) return "통합";
     if (list.source === "google") return "Google";
     if (list.source === "local") return "로컬";
     return list.google_account_id ? "Google" : "로컬";
@@ -147,54 +169,106 @@ function TodoPageInner() {
     }
   }, [getSettings]);
 
+  const loadGoogleAccounts = useCallback(async () => {
+    try {
+      const accounts = await listGoogleAccounts();
+      setGoogleAccounts((accounts || []).filter((account) => account.status === "active"));
+    } catch {
+      setGoogleAccounts([]);
+    }
+  }, [listGoogleAccounts]);
+
   const loadLists = useCallback(async () => {
     try {
       const fetchedLists = await listLists();
 
-      if (fetchedLists.length === 0) {
-        try {
-          const list = await createList("할 일");
-          setLists([list]);
-          setActiveListId(list.id);
-          return;
-        } catch {
-          // ignore
-        }
-      }
-
-      const visibleLists = filterVisibleLists(fetchedLists);
-      setLists(visibleLists);
+      const visibleLists = filterVisibleLists(fetchedLists).map((list) => ({ ...list, is_virtual: false }));
+      const allList: TodoList = {
+        id: ALL_LIST_ID,
+        is_virtual: true,
+        name: "전체",
+        sort_order: -1,
+        active_count: visibleLists.reduce((sum, list) => sum + (list.active_count || 0), 0),
+        done_count: visibleLists.reduce((sum, list) => sum + (list.done_count || 0), 0),
+        total_count: visibleLists.reduce((sum, list) => sum + (list.total_count || 0), 0),
+        source: "local",
+      };
+      const nextLists = [allList, ...visibleLists];
+      setLists(nextLists);
       setActiveListIdState((prev) => {
-        if (!prev && visibleLists.length > 0) {
-          return visibleLists[0].id;
+        if (!prev) {
+          return ALL_LIST_ID;
         }
-        if (prev && !visibleLists.some((list) => list.id === prev)) {
-          return visibleLists[0]?.id ?? "";
+        if (prev && !nextLists.some((list) => list.id === prev)) {
+          return ALL_LIST_ID;
         }
         return prev;
       });
     } catch {
       setLists([]);
+      setActiveListIdState(ALL_LIST_ID);
     }
-  }, [createList, filterVisibleLists, listLists, setActiveListId]);
+  }, [filterVisibleLists, listLists]);
 
-  const loadTodos = useCallback(async (listID?: string) => {
+  const loadTodos = useCallback(async (listID?: string, options?: { silent?: boolean }) => {
+    const silent = options?.silent === true;
     const targetListID = listID ?? activeListIdRef.current;
     if (!targetListID) {
       setTodos([]);
       setLoading(false);
       return;
     }
-    setLoading(true);
+    if (!silent) setLoading(true);
     try {
-      const next = await listTodos(targetListID, filter === "done");
-      setTodos(next || []);
+      // 완료 섹션 렌더링을 위해 완료 항목 포함 조회
+      if (targetListID === ALL_LIST_ID) {
+        const todoGroups = await Promise.all(
+          realListsRef.current.map(async (list) => {
+            try {
+              return await listTodos(list.id, true);
+            } catch {
+              return [];
+            }
+          }),
+        );
+        setTodos(todoGroups.flat());
+      } else {
+        const next = await listTodos(targetListID, true);
+        setTodos(next || []);
+      }
     } catch {
       setTodos([]);
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
-  }, [filter, listTodos]);
+  }, [listTodos]);
+
+  const applyListDoneDelta = useCallback((listID: string, nextDone: boolean) => {
+    const doneDelta = nextDone ? 1 : -1;
+    const activeDelta = -doneDelta;
+    setLists((prev) =>
+      prev.map((list) => {
+        if (list.id !== listID && list.id !== ALL_LIST_ID) return list;
+        const doneCount = typeof list.done_count === "number" ? list.done_count : 0;
+        const totalCount =
+          typeof list.total_count === "number"
+            ? list.total_count
+            : doneCount + (typeof list.active_count === "number" ? list.active_count : 0);
+        const activeCount =
+          typeof list.active_count === "number"
+            ? list.active_count
+            : Math.max(totalCount - doneCount, 0);
+        const nextDoneCount = Math.max(doneCount + doneDelta, 0);
+        const nextActiveCount = Math.max(activeCount + activeDelta, 0);
+        return {
+          ...list,
+          done_count: nextDoneCount,
+          active_count: nextActiveCount,
+          total_count: nextDoneCount + nextActiveCount,
+        };
+      }),
+    );
+  }, []);
 
   const triggerTodoSync = useCallback(
     (reason: "page_enter" | "page_action" | "tab_heartbeat", throttleMs = 0) => {
@@ -224,7 +298,7 @@ function TodoPageInner() {
         const scheduled = await triggerGoogleSync({ area: "todo", reason });
         if (scheduled > 0) {
           await loadLists();
-          await loadTodos(activeListIdRef.current);
+          await loadTodos(activeListIdRef.current, { silent: true });
         }
       } catch {
         // ignore sync refresh failures
@@ -234,8 +308,17 @@ function TodoPageInner() {
   );
 
   useEffect(() => { loadSettings(); }, [loadSettings]);
+  useEffect(() => { loadGoogleAccounts(); }, [loadGoogleAccounts]);
   useEffect(() => { loadLists(); }, [loadLists, settings]);
   useEffect(() => { loadTodos(activeListId); }, [activeListId, loadTodos]);
+  useEffect(() => {
+    if (activeListId !== ALL_LIST_ID) return;
+    if (!realListIDsKey) {
+      setTodos([]);
+      return;
+    }
+    loadTodos(ALL_LIST_ID, { silent: true });
+  }, [activeListId, loadTodos, realListIDsKey]);
   useEffect(() => {
     triggerTodoSyncAndRefresh("page_enter", 5_000);
   }, [triggerTodoSyncAndRefresh]);
@@ -250,6 +333,12 @@ function TodoPageInner() {
     if (quickActionHandledRef.current) return;
     if (!activeListId) return;
 
+    if (activeListId === ALL_LIST_ID) {
+      if (realLists.length === 0) return;
+      setActiveListId(realLists[0].id);
+      return;
+    }
+
     quickActionHandledRef.current = true;
     setCreateParentId(undefined);
     setShowCreateDialog(true);
@@ -260,13 +349,20 @@ function TodoPageInner() {
     }
     const next = params.toString();
     router.replace(next ? `/todo?${next}` : "/todo", { scroll: false });
-  }, [quickAction, activeListId, router]);
+  }, [quickAction, activeListId, realLists, router, setActiveListId]);
 
   const handleCreateList = async () => {
     if (!newListName.trim()) return;
+    if (newListTarget === "google" && !newListGoogleAccountID) return;
     try {
-      const list = await createList(newListName);
+      const list = await createList({
+        name: newListName,
+        target: newListTarget,
+        google_account_id: newListTarget === "google" ? newListGoogleAccountID : null,
+      });
       setNewListName("");
+      setNewListTarget("local");
+      setNewListGoogleAccountID("");
       setShowNewList(false);
       setActiveListId(list.id);
       await loadLists();
@@ -283,7 +379,7 @@ function TodoPageInner() {
     notes: string;
     parentId?: string;
   }) => {
-    if (!activeListId || creating) return;
+    if (!activeListId || activeListId === ALL_LIST_ID || creating) return;
     try {
       await createTodo({
         listId: activeListId,
@@ -311,12 +407,28 @@ function TodoPageInner() {
   };
 
   const handleToggleDone = async (todo: TodoItem) => {
+    const nextDone = !todo.is_done;
+    const nextDoneAt = nextDone ? new Date().toISOString() : null;
+    setTodos((prev) =>
+      prev.map((item) =>
+        item.id === todo.id
+          ? { ...item, is_done: nextDone, done_at: nextDoneAt }
+          : item,
+      ),
+    );
+    applyListDoneDelta(todo.list_id, nextDone);
     try {
-      await updateTodo(todo.id, { is_done: !todo.is_done });
-      await loadTodos();
-      await loadLists();
+      await updateTodo(todo.id, { is_done: nextDone });
       triggerTodoSync("page_action", PAGE_ACTION_SYNC_COOLDOWN_MS);
     } catch (err) {
+      setTodos((prev) =>
+        prev.map((item) =>
+          item.id === todo.id
+            ? { ...item, is_done: todo.is_done, done_at: todo.done_at }
+            : item,
+        ),
+      );
+      applyListDoneDelta(todo.list_id, !nextDone);
       console.error("Toggle failed:", err);
     }
   };
@@ -361,7 +473,7 @@ function TodoPageInner() {
   };
 
   const handleDeleteList = async (listId: string) => {
-    if (listId === defaultListId) return;
+    if (listId === ALL_LIST_ID) return;
     try {
       await deleteList(listId);
       await loadLists();
@@ -399,13 +511,11 @@ function TodoPageInner() {
   if (filter === "has_priority") filteredTodos = filteredTodos.filter((t) => t.priority !== "normal");
   if (filter === "done") filteredTodos = filteredTodos.filter((t) => t.is_done);
 
-  // Build tree structure
-  const tree = buildTree(filteredTodos);
-
-  // Separate pinned/active/done at root level
-  const pinnedRoots = tree.filter((t) => t.is_pinned && !t.is_done);
-  const activeRoots = tree.filter((t) => !t.is_pinned && !t.is_done);
-  const doneRoots = tree.filter((t) => t.is_done);
+  // 상태별로 분리된 트리를 만들면 완료 항목이 부모 상태와 무관하게 누락되지 않는다.
+  const pinnedRoots = buildTree(filteredTodos.filter((t) => t.is_pinned && !t.is_done));
+  const activeRoots = buildTree(filteredTodos.filter((t) => !t.is_pinned && !t.is_done));
+  const doneRoots = buildTree(filteredTodos.filter((t) => t.is_done));
+  const showCompletedSection = filter === "done" || !doneCollapsed;
 
   const pinnedFlat = flattenTree(pinnedRoots, collapsed, dragActiveId);
   const activeFlat = flattenTree(activeRoots, collapsed, dragActiveId);
@@ -474,7 +584,7 @@ function TodoPageInner() {
     } catch (err) {
       console.error("Reorder failed:", err);
       setTodos(dragSnapshotRef.current);
-      loadTodos();
+      loadTodos(undefined, { silent: true });
     }
   }, [allFlat, loadTodos, reorder, todos, triggerTodoSync]);
 
@@ -506,7 +616,7 @@ function TodoPageInner() {
 
   const projectedDepth = projection?.depth ?? 0;
 
-  const isDndEnabled = sortBy === "manual";
+  const isDndEnabled = sortBy === "manual" && !isAllView;
 
   const renderTodoRow = (item: FlattenedItem) => {
     const { todo, depth } = item;
@@ -528,6 +638,7 @@ function TodoPageInner() {
         )}
         <TodoRow
           todo={todo}
+          listLabel={isAllView ? listNameByID.get(todo.list_id) : undefined}
           depth={depth}
           isOverdue={isOverdue(todo.due)}
           hasChildren={hasChildren}
@@ -535,14 +646,14 @@ function TodoPageInner() {
           childCount={childCount}
           showDragHandle={isDndEnabled}
           isDragging={isDragging}
-          lists={lists}
+          lists={realLists}
           onToggleCollapse={() => toggleCollapse(todo.id)}
           onToggleDone={() => handleToggleDone(todo)}
           onTogglePin={() => handleTogglePin(todo)}
           onEdit={() => setEditingTodo(todo)}
           onDelete={() => handleDeleteTodo(todo.id)}
           onChangePriority={(p) => handleUpdateTodo(todo.id, { priority: p })}
-          onAddSubtask={depth < 1 ? () => { setCreateParentId(todo.id); setShowCreateDialog(true); } : undefined}
+          onAddSubtask={!isAllView && depth < 1 ? () => { setCreateParentId(todo.id); setShowCreateDialog(true); } : undefined}
           onMoveToList={(listId) => handleUpdateTodo(todo.id, { list_id: listId })}
         />
       </div>
@@ -568,10 +679,24 @@ function TodoPageInner() {
       {/* Done */}
       {doneFlat.length > 0 && (
         <>
-          <div className="px-4 pt-4 pb-1 text-[10px] font-medium uppercase tracking-wider text-text-muted">
-            완료됨 ({doneFlat.length})
-          </div>
-          {doneFlat.map(renderTodoRow)}
+          <button
+            type="button"
+            className="mt-3 flex w-full items-center gap-1 px-4 pb-1 text-[10px] font-medium uppercase tracking-wider text-text-muted hover:text-text-secondary"
+            onClick={() => {
+              if (filter === "done") return;
+              setDoneCollapsed((prev) => !prev);
+            }}
+          >
+            <ChevronRight
+              size={12}
+              className={cn(
+                "transition-transform",
+                showCompletedSection ? "rotate-90" : "rotate-0",
+              )}
+            />
+            <span>완료됨 ({doneFlat.length})</span>
+          </button>
+          {showCompletedSection && doneFlat.map(renderTodoRow)}
         </>
       )}
 
@@ -590,7 +715,7 @@ function TodoPageInner() {
       <div className="hidden md:block w-56 shrink-0 border-r border-border overflow-auto">
         <div className="p-3">
           <h2 className="mb-2 text-xs font-medium text-text-muted uppercase tracking-wider">목록</h2>
-          {lists.map((list, index) => (
+          {lists.map((list) => (
             <div key={list.id} className="group/list relative">
               <button
                 onClick={() => setActiveListId(list.id)}
@@ -614,7 +739,7 @@ function TodoPageInner() {
                     <span>{getListSourceLabel(list)}</span>
                   </div>
                 </div>
-                {index !== 0 && (
+                {!list.is_virtual && (
                   <span
                     onClick={(e) => {
                       e.stopPropagation();
@@ -631,7 +756,7 @@ function TodoPageInner() {
             </div>
           ))}
           {showNewList ? (
-            <div className="mt-1 flex gap-1">
+            <div className="mt-1 space-y-1">
               <Input
                 autoFocus
                 placeholder="목록 이름"
@@ -639,10 +764,62 @@ function TodoPageInner() {
                 onChange={(e) => setNewListName(e.target.value)}
                 onKeyDown={(e) => {
                   if (e.key === "Enter") handleCreateList();
-                  if (e.key === "Escape") { setShowNewList(false); setNewListName(""); }
+                  if (e.key === "Escape") {
+                    setShowNewList(false);
+                    setNewListName("");
+                    setNewListTarget("local");
+                    setNewListGoogleAccountID("");
+                  }
                 }}
                 className="h-8 flex-1"
               />
+              <div className="flex gap-1">
+                <select
+                  value={newListTarget}
+                  onChange={(e) => setNewListTarget(e.target.value as "local" | "google")}
+                  className="h-8 flex-1 rounded-md border border-border bg-background px-2 text-xs"
+                >
+                  <option value="local">로컬 목록</option>
+                  <option value="google">Google 목록</option>
+                </select>
+                {newListTarget === "google" && (
+                  <select
+                    value={newListGoogleAccountID}
+                    onChange={(e) => setNewListGoogleAccountID(e.target.value)}
+                    className="h-8 flex-1 rounded-md border border-border bg-background px-2 text-xs"
+                  >
+                    <option value="">계정 선택</option>
+                    {googleAccounts.map((account) => (
+                      <option key={account.id} value={account.id}>
+                        {account.google_email}
+                      </option>
+                    ))}
+                  </select>
+                )}
+              </div>
+              <div className="flex gap-1">
+                <Button
+                  size="sm"
+                  className="h-8 flex-1"
+                  onClick={handleCreateList}
+                  disabled={!newListName.trim() || (newListTarget === "google" && !newListGoogleAccountID)}
+                >
+                  생성
+                </Button>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="h-8"
+                  onClick={() => {
+                    setShowNewList(false);
+                    setNewListName("");
+                    setNewListTarget("local");
+                    setNewListGoogleAccountID("");
+                  }}
+                >
+                  취소
+                </Button>
+              </div>
             </div>
           ) : (
             <button
@@ -684,6 +861,62 @@ function TodoPageInner() {
           +
         </button>
       </div>
+      {showNewList && (
+        <div className="md:hidden border-b border-border px-4 py-2 space-y-2">
+          <Input
+            placeholder="목록 이름"
+            value={newListName}
+            onChange={(e) => setNewListName(e.target.value)}
+            className="h-9"
+          />
+          <div className="flex gap-2">
+            <select
+              value={newListTarget}
+              onChange={(e) => setNewListTarget(e.target.value as "local" | "google")}
+              className="h-9 flex-1 rounded-md border border-border bg-background px-2 text-xs"
+            >
+              <option value="local">로컬 목록</option>
+              <option value="google">Google 목록</option>
+            </select>
+            {newListTarget === "google" && (
+              <select
+                value={newListGoogleAccountID}
+                onChange={(e) => setNewListGoogleAccountID(e.target.value)}
+                className="h-9 flex-1 rounded-md border border-border bg-background px-2 text-xs"
+              >
+                <option value="">계정 선택</option>
+                {googleAccounts.map((account) => (
+                  <option key={account.id} value={account.id}>
+                    {account.google_email}
+                  </option>
+                ))}
+              </select>
+            )}
+          </div>
+          <div className="flex gap-2">
+            <Button
+              size="sm"
+              className="flex-1"
+              onClick={handleCreateList}
+              disabled={!newListName.trim() || (newListTarget === "google" && !newListGoogleAccountID)}
+            >
+              생성
+            </Button>
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => {
+                setShowNewList(false);
+                setNewListName("");
+                setNewListTarget("local");
+                setNewListGoogleAccountID("");
+              }}
+            >
+              취소
+            </Button>
+          </div>
+        </div>
+      )}
 
       {/* Right: Todos */}
       <div className="flex flex-1 flex-col min-w-0">
@@ -699,11 +932,19 @@ function TodoPageInner() {
 
         {/* Add todo button */}
         <button
-          onClick={() => { setCreateParentId(undefined); setShowCreateDialog(true); }}
-          className="flex items-center gap-2 border-b border-border px-4 py-2.5 text-sm text-text-muted hover:bg-surface-accent/50 transition-colors w-full"
+          onClick={() => {
+            if (isAllView) return;
+            setCreateParentId(undefined);
+            setShowCreateDialog(true);
+          }}
+          disabled={isAllView}
+          className={cn(
+            "flex w-full items-center gap-2 border-b border-border px-4 py-2.5 text-sm text-text-muted transition-colors",
+            isAllView ? "cursor-not-allowed opacity-60" : "hover:bg-surface-accent/50",
+          )}
         >
           <Plus size={14} />
-          새 Todo 추가...
+          {isAllView ? "전체 뷰에서는 Todo 추가 불가" : "새 Todo 추가..."}
         </button>
 
         {/* Todo list */}
@@ -733,6 +974,7 @@ function TodoPageInner() {
                 {activeTodo && (
                   <TodoRow
                     todo={activeTodo}
+                    listLabel={isAllView ? listNameByID.get(activeTodo.list_id) : undefined}
                     depth={projectedDepth}
                     isOverdue={isOverdue(activeTodo.due)}
                     hasChildren={activeTodo.children.length > 0}

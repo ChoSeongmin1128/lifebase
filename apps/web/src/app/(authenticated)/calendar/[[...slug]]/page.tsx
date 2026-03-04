@@ -77,6 +77,7 @@ const COLORS = [
 const ACCOUNT_COLORS = ["#2563eb", "#16a34a", "#dc2626", "#9333ea", "#ea580c", "#0891b2", "#ca8a04", "#0f766e"];
 const UNASSIGNED_ACCOUNT_COLOR = "#9ca3af";
 const ACCOUNT_FILTER_SETTING_KEY = "calendar_selected_google_account_ids";
+const SHOW_SPECIAL_CALENDARS_SETTING_KEY = "calendar_show_special_calendars";
 const PAGE_ACTION_SYNC_COOLDOWN_MS = 15_000;
 
 function getGoogleEventColor(colorId: string | null, calColorId: string | null): string {
@@ -282,6 +283,7 @@ export default function CalendarPage() {
   const [weekHours, setWeekHours] = useState({ start: 8, end: 22 });
   const [weekStartsOn, setWeekStartsOn] = useState(0);
   const [settings, setSettings] = useState<Record<string, string>>({});
+  const [showSpecialCalendars, setShowSpecialCalendars] = useState(false);
   const [googleAccounts, setGoogleAccounts] = useState<GoogleAccountSummary[]>([]);
   const [selectedGoogleAccountIDs, setSelectedGoogleAccountIDs] = useState<string[]>([]);
   const [settingsLoaded, setSettingsLoaded] = useState(false);
@@ -302,7 +304,7 @@ export default function CalendarPage() {
     makeDefaultEditorForm(new Date(), new Date(Date.now() + 60 * 60 * 1000), "")
   );
 
-  const { listCalendars, getSettings, listEvents, createEvent, updateEvent, deleteEvent } = useCalendarActions();
+  const { listCalendars, getSettings, listEvents, backfillEvents, createEvent, updateEvent, deleteEvent } = useCalendarActions();
   const { updateSetting } = useSettingsActions();
   const { listGoogleAccounts, triggerGoogleSync } = useAuthFlow();
 
@@ -375,8 +377,17 @@ export default function CalendarPage() {
   );
 
   const filteredCalendars = useMemo(
-    () => calendars.filter(isCalendarIncludedByAccountFilter),
-    [calendars, isCalendarIncludedByAccountFilter]
+    () =>
+      calendars.filter((calendar) => {
+        if (!isCalendarIncludedByAccountFilter(calendar)) return false;
+        if (!showSpecialCalendars && calendar.is_special) return false;
+        return true;
+      }),
+    [calendars, isCalendarIncludedByAccountFilter, showSpecialCalendars]
+  );
+  const writableFilteredCalendars = useMemo(
+    () => filteredCalendars.filter((calendar) => !calendar.is_readonly),
+    [filteredCalendars]
   );
   const filteredCalendarIDs = useMemo(
     () => filteredCalendars.map((calendar) => calendar.id),
@@ -384,8 +395,8 @@ export default function CalendarPage() {
   );
 
   const defaultCalendarID = useMemo(
-    () => filteredCalendars.find((cal) => cal.is_visible)?.id || filteredCalendars[0]?.id || "",
-    [filteredCalendars]
+    () => writableFilteredCalendars.find((cal) => cal.is_visible)?.id || writableFilteredCalendars[0]?.id || "",
+    [writableFilteredCalendars]
   );
   useEffect(() => {
     if (!editorForm.calendarId && defaultCalendarID) {
@@ -409,6 +420,7 @@ export default function CalendarPage() {
       setSettings(settings);
       setWeekHours(parseWeekHourRange(settings));
       setWeekStartsOn(parseWeekStartsOn(settings));
+      setShowSpecialCalendars(settings[SHOW_SPECIAL_CALENDARS_SETTING_KEY] === "true");
       const storedAccountIDs = parseStoredAccountIDs(settings[ACCOUNT_FILTER_SETTING_KEY] || "");
       setSelectedGoogleAccountIDs(storedAccountIDs);
       accountSelectionPersistedRef.current = storedAccountIDs.join(",");
@@ -416,6 +428,7 @@ export default function CalendarPage() {
       setSettings({});
       setWeekHours({ start: 8, end: 22 });
       setWeekStartsOn(0);
+      setShowSpecialCalendars(false);
       setSelectedGoogleAccountIDs([]);
       accountSelectionPersistedRef.current = "";
     } finally {
@@ -438,19 +451,50 @@ export default function CalendarPage() {
     try {
       if (calendars.length > 0 && filteredCalendarIDs.length === 0) {
         setEvents([]);
+        setLoading(false);
         return;
       }
 
       const shouldFilterByCalendarIDs =
         filteredCalendarIDs.length > 0 && filteredCalendarIDs.length !== calendars.length;
-      const next = await listEvents(start, end, shouldFilterByCalendarIDs ? filteredCalendarIDs : undefined);
-      setEvents(next || []);
+      const initial = await listEvents(start, end, shouldFilterByCalendarIDs ? filteredCalendarIDs : undefined);
+      setEvents(initial || []);
+      setLoading(false);
+
+      const startAt = new Date(start).getTime();
+      const endAt = new Date(end).getTime();
+      const needsBackfillCalendarIDs = filteredCalendars
+        .filter((calendar) => !!calendar.google_account_id)
+        .filter((calendar) => {
+          if (!calendar.synced_start || !calendar.synced_end) return true;
+          const syncedStart = new Date(calendar.synced_start).getTime();
+          const syncedEnd = new Date(calendar.synced_end).getTime();
+          return startAt < syncedStart || endAt > syncedEnd;
+        })
+        .map((calendar) => calendar.id);
+      if (needsBackfillCalendarIDs.length > 0) {
+        await backfillEvents(start, end, needsBackfillCalendarIDs);
+        setCalendars((prev) =>
+          prev.map((calendar) => {
+            if (!needsBackfillCalendarIDs.includes(calendar.id)) return calendar;
+            const nextStart = calendar.synced_start
+              ? new Date(Math.min(new Date(calendar.synced_start).getTime(), startAt)).toISOString()
+              : new Date(startAt).toISOString();
+            const nextEnd = calendar.synced_end
+              ? new Date(Math.max(new Date(calendar.synced_end).getTime(), endAt)).toISOString()
+              : new Date(endAt).toISOString();
+            return { ...calendar, synced_start: nextStart, synced_end: nextEnd };
+          }),
+        );
+        const merged = await listEvents(start, end, shouldFilterByCalendarIDs ? filteredCalendarIDs : undefined);
+        setEvents(merged || []);
+      }
     } catch {
       setEvents([]);
     } finally {
       setLoading(false);
     }
-  }, [calendars.length, currentDate, filteredCalendarIDs, listEvents, view, weekStartsOn]);
+  }, [backfillEvents, calendars.length, currentDate, filteredCalendarIDs, filteredCalendars, listEvents, view, weekStartsOn]);
 
   const triggerCalendarSync = useCallback(
     (reason: "page_enter" | "page_action" | "tab_heartbeat", throttleMs = 0) => {
@@ -551,6 +595,12 @@ export default function CalendarPage() {
       }
       return [...prev, accountID];
     });
+  };
+
+  const handleToggleSpecialCalendars = () => {
+    const next = !showSpecialCalendars;
+    setShowSpecialCalendars(next);
+    updateSetting(SHOW_SPECIAL_CALENDARS_SETTING_KEY, next ? "true" : "false").catch(() => undefined);
   };
 
   const navigate = (dir: number) => {
@@ -725,6 +775,16 @@ export default function CalendarPage() {
 
   const headerLabel = getHeaderLabel(currentDate, view);
   const calMap = useMemo(() => new Map(calendars.map((cal) => [cal.id, cal])), [calendars]);
+  const selectedEventCalendar = selectedEvent ? calMap.get(selectedEvent.calendar_id) : undefined;
+  const isSelectedEventReadOnly = !!selectedEventCalendar?.is_readonly;
+  const formatCalendarLabel = useCallback((calendar: CalendarData) => {
+    const badges: string[] = [];
+    if (calendar.kind === "holiday") badges.push("휴일");
+    if (calendar.kind === "birthday") badges.push("생일");
+    if (calendar.is_readonly) badges.push("읽기 전용");
+    if (badges.length === 0) return calendar.name;
+    return `${calendar.name} · ${badges.join(" · ")}`;
+  }, []);
   const getDisplayEventColor = useCallback(
     (eventColorID: string | null, calendarID: string): string => {
       const calendar = calMap.get(calendarID);
@@ -754,6 +814,9 @@ export default function CalendarPage() {
           <h2 className="text-lg font-semibold text-text-strong">{headerLabel}</h2>
         </PageToolbarGroup>
         <PageToolbarGroup className="gap-2">
+          <Button variant="secondary" size="sm" onClick={handleToggleSpecialCalendars}>
+            {showSpecialCalendars ? "특수 캘린더 표시" : "특수 캘린더 숨김"}
+          </Button>
           {syncEnabledGoogleAccountIDs.length > 0 && (
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
@@ -911,9 +974,23 @@ export default function CalendarPage() {
               </div>
             </div>
             <div className="mt-3 flex justify-between gap-2">
-              <Button variant="danger" size="sm" onClick={() => handleDeleteEvent(selectedEvent.id)}>삭제</Button>
+              <Button
+                variant="danger"
+                size="sm"
+                disabled={isSelectedEventReadOnly}
+                onClick={() => handleDeleteEvent(selectedEvent.id)}
+              >
+                {isSelectedEventReadOnly ? "읽기 전용" : "삭제"}
+              </Button>
               <div className="flex gap-2">
-                <Button variant="secondary" size="sm" onClick={() => openEditEditor(selectedEvent)}>수정</Button>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  disabled={isSelectedEventReadOnly}
+                  onClick={() => openEditEditor(selectedEvent)}
+                >
+                  {isSelectedEventReadOnly ? "수정 불가" : "수정"}
+                </Button>
                 <Button variant="ghost" size="sm" onClick={() => setSelectedEvent(null)}>닫기</Button>
               </div>
             </div>
@@ -943,9 +1020,9 @@ export default function CalendarPage() {
                   <SelectValue placeholder="캘린더" />
                 </SelectTrigger>
                 <SelectContent>
-                  {filteredCalendars.map((calendar) => (
+                  {writableFilteredCalendars.map((calendar) => (
                     <SelectItem key={calendar.id} value={calendar.id}>
-                      {calendar.name}
+                      {formatCalendarLabel(calendar)}
                     </SelectItem>
                   ))}
                 </SelectContent>

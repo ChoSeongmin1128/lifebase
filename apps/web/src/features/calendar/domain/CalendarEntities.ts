@@ -5,6 +5,11 @@ export interface CalendarData {
   google_account_id: string | null;
   is_primary: boolean;
   is_visible: boolean;
+  kind: "primary" | "custom" | "holiday" | "birthday" | "subscribed" | string;
+  is_readonly: boolean;
+  is_special: boolean;
+  synced_start: string | null;
+  synced_end: string | null;
 }
 
 export interface EventData {
@@ -37,4 +42,19 @@ export interface EventPayload {
 
 export interface CreateEventInput extends EventPayload {
   calendar_id: string;
+}
+
+export interface BackfillEventsInput {
+  start: string;
+  end: string;
+  calendar_ids?: string[];
+  reason?: "range_backfill";
+}
+
+export interface BackfillEventsResult {
+  fetched_events: number;
+  updated_events: number;
+  deleted_events: number;
+  covered_start: string;
+  covered_end: string;
 }

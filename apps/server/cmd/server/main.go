@@ -145,8 +145,11 @@ func main() {
 	thumbnailQueue := cloudasynq.NewThumbnailQueue(asynqClient)
 	cloudUC := cloudusecase.NewCloudUseCase(folderRepo, fileRepo, cloudSharedRepo, starRepo, storage, thumbnailQueue)
 	galleryUC := galleryusecase.NewGalleryUseCase(mediaRepo)
-	calendarUC := calendarusecase.NewCalendarUseCase(calendarRepo, eventRepo, reminderRepo, eventOutboxRepo)
-	todoUC := todousecase.NewTodoUseCase(todoListRepo, todoItemRepo, todoOutboxRepo)
+	calendarUC := calendarusecase.NewCalendarUseCase(calendarRepo, eventRepo, reminderRepo, eventOutboxRepo, googleAccountSyncer)
+	todoUC := todousecase.NewTodoUseCase(todoListRepo, todoItemRepo, todoOutboxRepo, todousecase.TodoExternalDeps{
+		GoogleAccounts: googleAccountRepo,
+		GoogleClient:   authOAuthClient,
+	})
 	sharingUC := sharingusecase.NewSharingUseCase(shareRepo, inviteRepo)
 	settingsUC := settingsusecase.NewSettingsUseCase(settingspg.NewSettingsRepo(dbpool))
 	homeUC := homeusecase.NewHomeUseCase(homeRepo)
@@ -283,6 +286,7 @@ func main() {
 				r.Delete("/{calendarID}", calendarHandler.DeleteCalendar)
 			})
 			r.Route("/events", func(r chi.Router) {
+				r.Post("/backfill", calendarHandler.BackfillEvents)
 				r.Post("/", calendarHandler.CreateEvent)
 				r.Get("/", calendarHandler.ListEvents)
 				r.Get("/{eventID}", calendarHandler.GetEvent)

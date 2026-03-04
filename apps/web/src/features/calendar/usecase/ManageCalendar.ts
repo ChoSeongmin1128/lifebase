@@ -1,4 +1,5 @@
 import type {
+  BackfillEventsInput,
   CreateEventInput,
   EventPayload,
 } from "@/features/calendar/domain/CalendarEntities";
@@ -17,6 +18,10 @@ export class ManageCalendarUseCase {
 
   listEvents(start: string, end: string, calendarIDs?: string[]) {
     return this.repo.listEvents(start, end, calendarIDs);
+  }
+
+  backfillEvents(input: BackfillEventsInput) {
+    return this.repo.backfillEvents(input);
   }
 
   createEvent(input: CreateEventInput) {

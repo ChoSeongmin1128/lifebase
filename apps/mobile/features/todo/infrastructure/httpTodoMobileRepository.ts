@@ -1,7 +1,7 @@
 import { api } from "../../shared/infrastructure/http-api";
 import { getAccessToken } from "../../auth/infrastructure/token-auth";
 import type { MobileTodoItem, MobileTodoList } from "../domain/TodoEntities";
-import type { TodoMobileRepository } from "../repository/TodoMobileRepository";
+import type { MobileCreateListInput, TodoMobileRepository } from "../repository/TodoMobileRepository";
 
 interface TodoListResponse {
   lists?: MobileTodoList[];
@@ -26,6 +26,19 @@ export class HttpTodoMobileRepository implements TodoMobileRepository {
     return data.lists || [];
   }
 
+  async createList(input: MobileCreateListInput): Promise<MobileTodoList> {
+    const token = await this.getToken();
+    return api<MobileTodoList>("/todo/lists", {
+      method: "POST",
+      body: {
+        name: input.name,
+        target: input.target || "local",
+        google_account_id: input.google_account_id || undefined,
+      },
+      token,
+    });
+  }
+
   async listTodos(listId: string): Promise<MobileTodoItem[]> {
     const token = await this.getToken();
     const data = await api<TodoResponse>(`/todo?list_id=${encodeURIComponent(listId)}`, { token });
@@ -36,7 +49,7 @@ export class HttpTodoMobileRepository implements TodoMobileRepository {
     const token = await this.getToken();
     await api(`/todo/${todoId}`, {
       method: "PATCH",
-      body: { done },
+      body: { is_done: done },
       token,
     });
   }

@@ -21,16 +21,22 @@ func NewCalendarRepo(db *pgxpool.Pool) *calendarRepo {
 
 func (r *calendarRepo) Create(ctx context.Context, cal *domain.Calendar) error {
 	_, err := r.db.Exec(ctx,
-		`INSERT INTO calendars (id, user_id, google_id, google_account_id, name, color_id, is_primary, is_visible, created_at, updated_at)
-		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+		`INSERT INTO calendars (id, user_id, google_id, google_account_id, name, kind, color_id, is_primary, is_visible, is_readonly, is_special, sync_token, synced_start, synced_end, created_at, updated_at)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)`,
 		cal.ID,
 		cal.UserID,
 		cal.GoogleID,
 		cal.GoogleAccountID,
 		cal.Name,
+		cal.Kind,
 		cal.ColorID,
 		cal.IsPrimary,
 		cal.IsVisible,
+		cal.IsReadOnly,
+		cal.IsSpecial,
+		cal.SyncToken,
+		cal.SyncedStart,
+		cal.SyncedEnd,
 		cal.CreatedAt,
 		cal.UpdatedAt,
 	)
@@ -40,7 +46,7 @@ func (r *calendarRepo) Create(ctx context.Context, cal *domain.Calendar) error {
 func (r *calendarRepo) FindByID(ctx context.Context, userID, id string) (*domain.Calendar, error) {
 	var c domain.Calendar
 	err := r.db.QueryRow(ctx,
-		`SELECT id, user_id, google_id, google_account_id, name, color_id, is_primary, is_visible, sync_token, created_at, updated_at
+		`SELECT id, user_id, google_id, google_account_id, name, kind, color_id, is_primary, is_visible, is_readonly, is_special, sync_token, synced_start, synced_end, created_at, updated_at
 		 FROM calendars WHERE id = $1 AND user_id = $2`, id, userID,
 	).Scan(
 		&c.ID,
@@ -48,10 +54,15 @@ func (r *calendarRepo) FindByID(ctx context.Context, userID, id string) (*domain
 		&c.GoogleID,
 		&c.GoogleAccountID,
 		&c.Name,
+		&c.Kind,
 		&c.ColorID,
 		&c.IsPrimary,
 		&c.IsVisible,
+		&c.IsReadOnly,
+		&c.IsSpecial,
 		&c.SyncToken,
+		&c.SyncedStart,
+		&c.SyncedEnd,
 		&c.CreatedAt,
 		&c.UpdatedAt,
 	)
@@ -63,7 +74,7 @@ func (r *calendarRepo) FindByID(ctx context.Context, userID, id string) (*domain
 
 func (r *calendarRepo) ListByUser(ctx context.Context, userID string) ([]*domain.Calendar, error) {
 	rows, err := r.db.Query(ctx,
-		`SELECT id, user_id, google_id, google_account_id, name, color_id, is_primary, is_visible, sync_token, created_at, updated_at
+		`SELECT id, user_id, google_id, google_account_id, name, kind, color_id, is_primary, is_visible, is_readonly, is_special, sync_token, synced_start, synced_end, created_at, updated_at
 		 FROM calendars WHERE user_id = $1 ORDER BY is_primary DESC, name ASC`, userID)
 	if err != nil {
 		return nil, err
@@ -79,10 +90,15 @@ func (r *calendarRepo) ListByUser(ctx context.Context, userID string) ([]*domain
 			&c.GoogleID,
 			&c.GoogleAccountID,
 			&c.Name,
+			&c.Kind,
 			&c.ColorID,
 			&c.IsPrimary,
 			&c.IsVisible,
+			&c.IsReadOnly,
+			&c.IsSpecial,
 			&c.SyncToken,
+			&c.SyncedStart,
+			&c.SyncedEnd,
 			&c.CreatedAt,
 			&c.UpdatedAt,
 		); err != nil {

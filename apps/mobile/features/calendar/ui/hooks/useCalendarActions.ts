@@ -9,8 +9,11 @@ export function useCalendarActions() {
 
   return useMemo(
     () => ({
+      listCalendars: () => useCase.listCalendars(),
       getSettings: () => useCase.getSettings(),
-      listEvents: (start: string, end: string) => useCase.listEvents(start, end),
+      listEvents: (start: string, end: string, calendarIDs?: string[]) => useCase.listEvents(start, end, calendarIDs),
+      backfillEvents: (start: string, end: string, calendarIDs?: string[]) =>
+        useCase.backfillEvents(start, end, calendarIDs),
     }),
     [useCase],
   );

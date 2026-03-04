@@ -15,6 +15,12 @@ type CreateTodoInput struct {
 	Priority string  `json:"priority"`
 }
 
+type CreateListInput struct {
+	Name            string  `json:"name"`
+	Target          string  `json:"target"` // local | google
+	GoogleAccountID *string `json:"google_account_id"`
+}
+
 type UpdateTodoInput struct {
 	Title     *string `json:"title"`
 	Notes     *string `json:"notes"`
@@ -36,6 +42,7 @@ type ReorderItem struct {
 type TodoUseCase interface {
 	// Lists
 	CreateList(ctx context.Context, userID, name string) (*domain.TodoList, error)
+	CreateListWithTarget(ctx context.Context, userID string, input CreateListInput) (*domain.TodoList, error)
 	ListLists(ctx context.Context, userID string) ([]*domain.TodoList, error)
 	UpdateList(ctx context.Context, userID, listID, name string) error
 	DeleteList(ctx context.Context, userID, listID string) error

@@ -1,6 +1,8 @@
 import { api } from "@/features/shared/infrastructure/http-api";
 import { getAccessToken } from "@/features/auth/infrastructure/token-auth";
 import type {
+  BackfillEventsInput,
+  BackfillEventsResult,
   CalendarData,
   CalendarSettingsResponse,
   CreateEventInput,
@@ -48,6 +50,20 @@ export class HttpCalendarRepository implements CalendarRepository {
     }
     const data = await api<EventsResponse>(`/events?${params.toString()}`, { token });
     return data.events || [];
+  }
+
+  backfillEvents(input: BackfillEventsInput): Promise<BackfillEventsResult> {
+    const token = this.getToken();
+    return api<BackfillEventsResult>("/events/backfill", {
+      method: "POST",
+      body: {
+        start: input.start,
+        end: input.end,
+        calendar_ids: input.calendar_ids || [],
+        reason: input.reason || "range_backfill",
+      },
+      token,
+    });
   }
 
   async createEvent(input: CreateEventInput): Promise<void> {

@@ -3,19 +3,28 @@ package usecase
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
 
+	authportout "lifebase/internal/auth/port/out"
 	"lifebase/internal/todo/domain"
 	portin "lifebase/internal/todo/port/in"
 	portout "lifebase/internal/todo/port/out"
 )
 
 type todoUseCase struct {
-	lists  portout.TodoListRepository
-	todos  portout.TodoRepository
-	outbox portout.TodoPushOutbox
+	lists        portout.TodoListRepository
+	todos        portout.TodoRepository
+	outbox       portout.TodoPushOutbox
+	googleAccts  authportout.GoogleAccountRepository
+	googleClient authportout.GoogleAuthClient
+}
+
+type TodoExternalDeps struct {
+	GoogleAccounts authportout.GoogleAccountRepository
+	GoogleClient   authportout.GoogleAuthClient
 }
 
 func normalizeParentID(parentID *string) *string {
@@ -26,13 +35,38 @@ func normalizeParentID(parentID *string) *string {
 	return &id
 }
 
-func NewTodoUseCase(lists portout.TodoListRepository, todos portout.TodoRepository, outbox portout.TodoPushOutbox) portin.TodoUseCase {
-	return &todoUseCase{lists: lists, todos: todos, outbox: outbox}
+func NewTodoUseCase(lists portout.TodoListRepository, todos portout.TodoRepository, outbox portout.TodoPushOutbox, deps ...TodoExternalDeps) portin.TodoUseCase {
+	uc := &todoUseCase{lists: lists, todos: todos, outbox: outbox}
+	if len(deps) > 0 {
+		uc.googleAccts = deps[0].GoogleAccounts
+		uc.googleClient = deps[0].GoogleClient
+	}
+	return uc
 }
 
 // Lists
 
 func (uc *todoUseCase) CreateList(ctx context.Context, userID, name string) (*domain.TodoList, error) {
+	return uc.CreateListWithTarget(ctx, userID, portin.CreateListInput{
+		Name:   name,
+		Target: "local",
+	})
+}
+
+func (uc *todoUseCase) CreateListWithTarget(ctx context.Context, userID string, input portin.CreateListInput) (*domain.TodoList, error) {
+	name := strings.TrimSpace(input.Name)
+	if name == "" {
+		return nil, fmt.Errorf("list name is required")
+	}
+
+	target := strings.ToLower(strings.TrimSpace(input.Target))
+	if target == "" {
+		target = "local"
+	}
+	if target != "local" && target != "google" {
+		return nil, fmt.Errorf("invalid list target")
+	}
+
 	now := time.Now()
 	list := &domain.TodoList{
 		ID:        uuid.New().String(),
@@ -45,6 +79,49 @@ func (uc *todoUseCase) CreateList(ctx context.Context, userID, name string) (*do
 	if err := uc.lists.Create(ctx, list); err != nil {
 		return nil, fmt.Errorf("create list: %w", err)
 	}
+
+	if target == "google" {
+		if input.GoogleAccountID == nil || strings.TrimSpace(*input.GoogleAccountID) == "" {
+			_ = uc.lists.Delete(ctx, list.ID)
+			return nil, fmt.Errorf("google_account_id is required")
+		}
+		if uc.googleAccts == nil || uc.googleClient == nil {
+			_ = uc.lists.Delete(ctx, list.ID)
+			return nil, fmt.Errorf("google integration is not configured")
+		}
+
+		accountID := strings.TrimSpace(*input.GoogleAccountID)
+		account, err := uc.googleAccts.FindByID(ctx, userID, accountID)
+		if err != nil {
+			_ = uc.lists.Delete(ctx, list.ID)
+			return nil, fmt.Errorf("google account not found")
+		}
+		if account.Status != "active" {
+			_ = uc.lists.Delete(ctx, list.ID)
+			return nil, fmt.Errorf("google account is not active")
+		}
+
+		token := authportout.OAuthToken{
+			AccessToken:  account.AccessToken,
+			RefreshToken: account.RefreshToken,
+		}
+		if account.TokenExpiresAt != nil {
+			token.Expiry = *account.TokenExpiresAt
+		}
+		googleListID, err := uc.googleClient.CreateTaskList(ctx, token, name)
+		if err != nil {
+			_ = uc.lists.Delete(ctx, list.ID)
+			return nil, fmt.Errorf("create google task list: %w", err)
+		}
+		list.GoogleID = &googleListID
+		list.GoogleAccountID = &accountID
+		list.UpdatedAt = time.Now()
+		if err := uc.lists.Update(ctx, list); err != nil {
+			_ = uc.lists.Delete(ctx, list.ID)
+			return nil, fmt.Errorf("link google list: %w", err)
+		}
+	}
+
 	return list, nil
 }
 
@@ -66,15 +143,6 @@ func (uc *todoUseCase) DeleteList(ctx context.Context, userID, listID string) er
 	_, err := uc.lists.FindByID(ctx, userID, listID)
 	if err != nil {
 		return fmt.Errorf("list not found")
-	}
-
-	// Protect default list (first list by sort_order)
-	allLists, err := uc.lists.ListByUser(ctx, userID)
-	if err != nil {
-		return fmt.Errorf("list lookup: %w", err)
-	}
-	if len(allLists) > 0 && allLists[0].ID == listID {
-		return fmt.Errorf("cannot delete default list")
 	}
 
 	return uc.lists.Delete(ctx, listID)

@@ -17,6 +17,7 @@ type calendarUseCase struct {
 	events    portout.EventRepository
 	reminders portout.ReminderRepository
 	outbox    portout.EventPushOutbox
+	backfill  portout.CalendarBackfillService
 }
 
 func NewCalendarUseCase(
@@ -24,12 +25,14 @@ func NewCalendarUseCase(
 	events portout.EventRepository,
 	reminders portout.ReminderRepository,
 	outbox portout.EventPushOutbox,
+	backfill portout.CalendarBackfillService,
 ) portin.CalendarUseCase {
 	return &calendarUseCase{
 		calendars: calendars,
 		events:    events,
 		reminders: reminders,
 		outbox:    outbox,
+		backfill:  backfill,
 	}
 }
 
@@ -38,14 +41,17 @@ func NewCalendarUseCase(
 func (uc *calendarUseCase) CreateCalendar(ctx context.Context, userID, name string, colorID *string) (*domain.Calendar, error) {
 	now := time.Now()
 	cal := &domain.Calendar{
-		ID:        uuid.New().String(),
-		UserID:    userID,
-		Name:      name,
-		ColorID:   colorID,
-		IsPrimary: false,
-		IsVisible: true,
-		CreatedAt: now,
-		UpdatedAt: now,
+		ID:         uuid.New().String(),
+		UserID:     userID,
+		Name:       name,
+		Kind:       "custom",
+		ColorID:    colorID,
+		IsPrimary:  false,
+		IsVisible:  true,
+		IsReadOnly: false,
+		IsSpecial:  false,
+		CreatedAt:  now,
+		UpdatedAt:  now,
 	}
 
 	if err := uc.calendars.Create(ctx, cal); err != nil {
@@ -92,9 +98,12 @@ func (uc *calendarUseCase) DeleteCalendar(ctx context.Context, userID, calID str
 
 func (uc *calendarUseCase) CreateEvent(ctx context.Context, userID string, input portin.CreateEventInput) (*domain.Event, error) {
 	// Verify calendar belongs to user
-	_, err := uc.calendars.FindByID(ctx, userID, input.CalendarID)
+	cal, err := uc.calendars.FindByID(ctx, userID, input.CalendarID)
 	if err != nil {
 		return nil, fmt.Errorf("calendar not found")
+	}
+	if cal.IsReadOnly {
+		return nil, domain.ErrReadOnlyCalendar
 	}
 
 	startTime, err := time.Parse(time.RFC3339, input.StartTime)
@@ -183,10 +192,45 @@ func (uc *calendarUseCase) ListEvents(ctx context.Context, userID string, calend
 	return uc.events.ListByRange(ctx, userID, calendarIDs, start, end)
 }
 
+func (uc *calendarUseCase) BackfillEvents(ctx context.Context, userID string, input portin.BackfillEventsInput) (*portin.BackfillEventsResult, error) {
+	if uc.backfill == nil {
+		return nil, fmt.Errorf("calendar backfill is not configured")
+	}
+	start, err := time.Parse(time.RFC3339, input.Start)
+	if err != nil {
+		return nil, fmt.Errorf("invalid start format")
+	}
+	end, err := time.Parse(time.RFC3339, input.End)
+	if err != nil {
+		return nil, fmt.Errorf("invalid end format")
+	}
+	if !end.After(start) {
+		return nil, fmt.Errorf("end must be after start")
+	}
+	result, err := uc.backfill.BackfillEvents(ctx, userID, start, end, input.CalendarIDs)
+	if err != nil {
+		return nil, err
+	}
+	return &portin.BackfillEventsResult{
+		FetchedEvents: result.FetchedEvents,
+		UpdatedEvents: result.UpdatedEvents,
+		DeletedEvents: result.DeletedEvents,
+		CoveredStart:  result.CoveredStart,
+		CoveredEnd:    result.CoveredEnd,
+	}, nil
+}
+
 func (uc *calendarUseCase) UpdateEvent(ctx context.Context, userID, eventID string, input portin.UpdateEventInput) (*domain.Event, error) {
 	event, err := uc.events.FindByID(ctx, userID, eventID)
 	if err != nil {
 		return nil, fmt.Errorf("event not found")
+	}
+	cal, err := uc.calendars.FindByID(ctx, userID, event.CalendarID)
+	if err != nil {
+		return nil, fmt.Errorf("calendar not found")
+	}
+	if cal.IsReadOnly {
+		return nil, domain.ErrReadOnlyCalendar
 	}
 
 	if input.Title != nil {
@@ -261,6 +305,17 @@ func (uc *calendarUseCase) UpdateEvent(ctx context.Context, userID, eventID stri
 }
 
 func (uc *calendarUseCase) DeleteEvent(ctx context.Context, userID, eventID string) error {
+	event, err := uc.events.FindByID(ctx, userID, eventID)
+	if err != nil {
+		return fmt.Errorf("event not found")
+	}
+	cal, err := uc.calendars.FindByID(ctx, userID, event.CalendarID)
+	if err != nil {
+		return fmt.Errorf("calendar not found")
+	}
+	if cal.IsReadOnly {
+		return domain.ErrReadOnlyCalendar
+	}
 	if err := uc.events.SoftDelete(ctx, userID, eventID); err != nil {
 		return err
 	}

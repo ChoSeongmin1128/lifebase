@@ -34,3 +34,15 @@ type EventPushOutbox interface {
 	EnqueueUpdate(ctx context.Context, userID, eventID string, expectedUpdatedAt time.Time) error
 	EnqueueDelete(ctx context.Context, userID, eventID string, expectedUpdatedAt time.Time) error
 }
+
+type CalendarBackfillResult struct {
+	FetchedEvents int
+	UpdatedEvents int
+	DeletedEvents int
+	CoveredStart  time.Time
+	CoveredEnd    time.Time
+}
+
+type CalendarBackfillService interface {
+	BackfillEvents(ctx context.Context, userID string, start, end time.Time, calendarIDs []string) (*CalendarBackfillResult, error)
+}

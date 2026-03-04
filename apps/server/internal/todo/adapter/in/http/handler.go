@@ -6,9 +6,9 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
-	portin "lifebase/internal/todo/port/in"
 	"lifebase/internal/shared/middleware"
 	"lifebase/internal/shared/response"
+	portin "lifebase/internal/todo/port/in"
 )
 
 type TodoHandler struct {
@@ -23,15 +23,13 @@ func NewTodoHandler(todo portin.TodoUseCase) *TodoHandler {
 
 func (h *TodoHandler) CreateList(w http.ResponseWriter, r *http.Request) {
 	userID := middleware.GetUserID(r.Context())
-	var req struct {
-		Name string `json:"name"`
-	}
+	var req portin.CreateListInput
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Name == "" {
 		response.Error(w, http.StatusBadRequest, "INVALID_REQUEST", "name is required")
 		return
 	}
 
-	list, err := h.todo.CreateList(r.Context(), userID, req.Name)
+	list, err := h.todo.CreateListWithTarget(r.Context(), userID, req)
 	if err != nil {
 		response.Error(w, http.StatusBadRequest, "CREATE_FAILED", err.Error())
 		return

@@ -2,11 +2,13 @@ package http
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 	"strings"
 
 	"github.com/go-chi/chi/v5"
 
+	"lifebase/internal/calendar/domain"
 	portin "lifebase/internal/calendar/port/in"
 	"lifebase/internal/shared/middleware"
 	"lifebase/internal/shared/response"
@@ -99,6 +101,10 @@ func (h *CalendarHandler) CreateEvent(w http.ResponseWriter, r *http.Request) {
 
 	event, err := h.cal.CreateEvent(r.Context(), userID, input)
 	if err != nil {
+		if errors.Is(err, domain.ErrReadOnlyCalendar) {
+			response.Error(w, http.StatusForbidden, "READ_ONLY_CALENDAR", "read-only calendar")
+			return
+		}
 		response.Error(w, http.StatusBadRequest, "CREATE_FAILED", err.Error())
 		return
 	}
@@ -141,6 +147,26 @@ func (h *CalendarHandler) ListEvents(w http.ResponseWriter, r *http.Request) {
 	response.JSON(w, http.StatusOK, map[string]any{"events": events})
 }
 
+func (h *CalendarHandler) BackfillEvents(w http.ResponseWriter, r *http.Request) {
+	userID := middleware.GetUserID(r.Context())
+	var input portin.BackfillEventsInput
+	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
+		response.Error(w, http.StatusBadRequest, "INVALID_REQUEST", "invalid request body")
+		return
+	}
+	if input.Start == "" || input.End == "" {
+		response.Error(w, http.StatusBadRequest, "INVALID_REQUEST", "start and end are required")
+		return
+	}
+
+	result, err := h.cal.BackfillEvents(r.Context(), userID, input)
+	if err != nil {
+		response.Error(w, http.StatusBadRequest, "BACKFILL_FAILED", err.Error())
+		return
+	}
+	response.JSON(w, http.StatusOK, result)
+}
+
 func (h *CalendarHandler) UpdateEvent(w http.ResponseWriter, r *http.Request) {
 	userID := middleware.GetUserID(r.Context())
 	eventID := chi.URLParam(r, "eventID")
@@ -152,6 +178,10 @@ func (h *CalendarHandler) UpdateEvent(w http.ResponseWriter, r *http.Request) {
 
 	event, err := h.cal.UpdateEvent(r.Context(), userID, eventID, input)
 	if err != nil {
+		if errors.Is(err, domain.ErrReadOnlyCalendar) {
+			response.Error(w, http.StatusForbidden, "READ_ONLY_CALENDAR", "read-only calendar")
+			return
+		}
 		response.Error(w, http.StatusBadRequest, "UPDATE_FAILED", err.Error())
 		return
 	}
@@ -163,6 +193,10 @@ func (h *CalendarHandler) DeleteEvent(w http.ResponseWriter, r *http.Request) {
 	eventID := chi.URLParam(r, "eventID")
 
 	if err := h.cal.DeleteEvent(r.Context(), userID, eventID); err != nil {
+		if errors.Is(err, domain.ErrReadOnlyCalendar) {
+			response.Error(w, http.StatusForbidden, "READ_ONLY_CALENDAR", "read-only calendar")
+			return
+		}
 		response.Error(w, http.StatusBadRequest, "DELETE_FAILED", err.Error())
 		return
 	}

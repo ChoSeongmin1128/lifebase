@@ -11,7 +11,9 @@ import {
   buildFixedMonthGridWithWeekStart,
   getFixedMonthFetchRangeWithWeekStart,
 } from "../../lib/calendar/month-grid";
-import type { CalendarEvent, SettingsResponse } from "../../features/calendar/domain/CalendarEntities";
+import type { CalendarData, CalendarEvent } from "../../features/calendar/domain/CalendarEntities";
+
+const SHOW_SPECIAL_CALENDARS_SETTING_KEY = "calendar_show_special_calendars";
 
 function toDateKey(date: Date): string {
   const y = date.getFullYear();
@@ -28,35 +30,91 @@ function parseWeekStartsOn(settings: Record<string, string>): number {
 }
 
 export default function CalendarScreen() {
+  const [calendars, setCalendars] = useState<CalendarData[]>([]);
   const [events, setEvents] = useState<CalendarEvent[]>([]);
   const [currentDate, setCurrentDate] = useState(new Date());
   const [selectedDateKey, setSelectedDateKey] = useState<string | null>(null);
   const [weekStartsOn, setWeekStartsOn] = useState(0);
-  const { getSettings, listEvents } = useCalendarActions();
+  const [showSpecialCalendars, setShowSpecialCalendars] = useState(false);
+  const { listCalendars, getSettings, listEvents, backfillEvents } = useCalendarActions();
 
   const loadSettings = useCallback(async () => {
     try {
       const data = await getSettings();
-      setWeekStartsOn(parseWeekStartsOn(data.settings || {}));
+      const settings = data.settings || {};
+      setWeekStartsOn(parseWeekStartsOn(settings));
+      setShowSpecialCalendars(settings[SHOW_SPECIAL_CALENDARS_SETTING_KEY] === "true");
     } catch {
       setWeekStartsOn(0);
+      setShowSpecialCalendars(false);
     }
   }, [getSettings]);
 
+  const loadCalendars = useCallback(async () => {
+    try {
+      const next = await listCalendars();
+      setCalendars(next || []);
+    } catch {
+      setCalendars([]);
+    }
+  }, [listCalendars]);
+
   const load = useCallback(async () => {
     const { start, end } = getFixedMonthFetchRangeWithWeekStart(currentDate, weekStartsOn);
+    const visibleCalendars = calendars.filter((calendar) => {
+      if (!showSpecialCalendars && calendar.is_special) return false;
+      return true;
+    });
+    const visibleCalendarIDs = visibleCalendars.map((calendar) => calendar.id);
 
     try {
-      const data = await listEvents(start, end);
-      setEvents(data || []);
+      if (calendars.length > 0 && visibleCalendarIDs.length === 0) {
+        setEvents([]);
+        return;
+      }
+      const initial = await listEvents(start, end, visibleCalendarIDs);
+      setEvents(initial || []);
+
+      const startAt = new Date(start).getTime();
+      const endAt = new Date(end).getTime();
+      const needsBackfillCalendarIDs = visibleCalendars
+        .filter((calendar) => !!calendar.google_account_id)
+        .filter((calendar) => {
+          if (!calendar.synced_start || !calendar.synced_end) return true;
+          const syncedStart = new Date(calendar.synced_start).getTime();
+          const syncedEnd = new Date(calendar.synced_end).getTime();
+          return startAt < syncedStart || endAt > syncedEnd;
+        })
+        .map((calendar) => calendar.id);
+      if (needsBackfillCalendarIDs.length > 0) {
+        await backfillEvents(start, end, needsBackfillCalendarIDs);
+        setCalendars((prev) =>
+          prev.map((calendar) => {
+            if (!needsBackfillCalendarIDs.includes(calendar.id)) return calendar;
+            const nextStart = calendar.synced_start
+              ? new Date(Math.min(new Date(calendar.synced_start).getTime(), startAt)).toISOString()
+              : new Date(startAt).toISOString();
+            const nextEnd = calendar.synced_end
+              ? new Date(Math.max(new Date(calendar.synced_end).getTime(), endAt)).toISOString()
+              : new Date(endAt).toISOString();
+            return { ...calendar, synced_start: nextStart, synced_end: nextEnd };
+          }),
+        );
+        const merged = await listEvents(start, end, visibleCalendarIDs);
+        setEvents(merged || []);
+      }
     } catch {
       setEvents([]);
     }
-  }, [currentDate, listEvents, weekStartsOn]);
+  }, [backfillEvents, calendars, currentDate, listEvents, showSpecialCalendars, weekStartsOn]);
 
   useEffect(() => {
     loadSettings();
   }, [loadSettings]);
+
+  useEffect(() => {
+    loadCalendars();
+  }, [loadCalendars]);
 
   useEffect(() => {
     load();
@@ -111,6 +169,16 @@ export default function CalendarScreen() {
           <Text style={styles.nav}>▶</Text>
         </TouchableOpacity>
       </View>
+      <View style={styles.specialToggleRow}>
+        <TouchableOpacity
+          onPress={() => setShowSpecialCalendars((prev) => !prev)}
+          style={[styles.specialToggle, showSpecialCalendars && styles.specialToggleOn]}
+        >
+          <Text style={[styles.specialToggleText, showSpecialCalendars && styles.specialToggleTextOn]}>
+            {showSpecialCalendars ? "특수 캘린더 표시" : "특수 캘린더 숨김"}
+          </Text>
+        </TouchableOpacity>
+      </View>
 
       <View style={styles.weekHeader}>
         {weekLabels.map((d) => (
@@ -154,7 +222,7 @@ export default function CalendarScreen() {
                       key={event.id}
                       style={[
                         styles.eventDot,
-                        { backgroundColor: event.color || "#4285F4" },
+                        { backgroundColor: event.color_id ? "#34A853" : "#4285F4" },
                         !cell.inCurrentMonth && styles.eventDotOutside,
                       ]}
                     >
@@ -187,6 +255,25 @@ const styles = StyleSheet.create({
   },
   nav: { fontSize: 18, padding: 8, color: "#333" },
   title: { fontSize: 18, fontWeight: "600" },
+  specialToggleRow: {
+    paddingHorizontal: 16,
+    paddingBottom: 8,
+  },
+  specialToggle: {
+    alignSelf: "flex-start",
+    borderWidth: 1,
+    borderColor: "#ddd",
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    backgroundColor: "#fff",
+  },
+  specialToggleOn: {
+    backgroundColor: "#111827",
+    borderColor: "#111827",
+  },
+  specialToggleText: { fontSize: 12, color: "#4b5563" },
+  specialToggleTextOn: { color: "#fff" },
   weekHeader: {
     flexDirection: "row",
     borderBottomWidth: 1,

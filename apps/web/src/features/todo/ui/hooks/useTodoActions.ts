@@ -3,7 +3,7 @@
 import { useMemo } from "react";
 import { ManageTodoUseCase } from "@/features/todo/usecase/ManageTodo";
 import { HttpTodoAppRepository } from "@/features/todo/infrastructure/httpTodoAppRepository";
-import type { ReorderItem } from "@/features/todo/repository/TodoAppRepository";
+import type { CreateListInput, ReorderItem } from "@/features/todo/repository/TodoAppRepository";
 
 export function useTodoActions() {
   const useCase = useMemo(() => {
@@ -13,7 +13,7 @@ export function useTodoActions() {
   return useMemo(
     () => ({
       listLists: () => useCase.listLists(),
-      createList: (name: string) => useCase.createList(name),
+      createList: (input: CreateListInput) => useCase.createList(input),
       deleteList: (listId: string) => useCase.deleteList(listId),
       listTodos: (listId: string, includeDone: boolean) => useCase.listTodos(listId, includeDone),
       updateTodo: (todoId: string, updates: Record<string, unknown>) => useCase.updateTodo(todoId, updates),

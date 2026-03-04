@@ -50,6 +50,7 @@ interface TodoList {
 
 interface TodoRowProps {
   todo: TodoItem;
+  listLabel?: string;
   depth?: number;
   isOverdue: boolean;
   hasChildren?: boolean;
@@ -71,6 +72,7 @@ interface TodoRowProps {
 
 export function TodoRow({
   todo,
+  listLabel,
   depth = 0,
   isOverdue,
   hasChildren,
@@ -168,6 +170,11 @@ export function TodoRow({
       </div>
 
       {/* Due badge */}
+      {listLabel && (
+        <span className="shrink-0 rounded-full bg-surface-accent px-1.5 py-0.5 text-[10px] text-text-muted">
+          {listLabel}
+        </span>
+      )}
       {todo.due && !todo.is_done && (
         <span
           className={cn(

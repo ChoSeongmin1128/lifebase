@@ -99,9 +99,9 @@ func (r *listRepo) ListByUser(ctx context.Context, userID string) ([]*domain.Tod
 
 func (r *listRepo) Update(ctx context.Context, list *domain.TodoList) error {
 	_, err := r.db.Exec(ctx,
-		`UPDATE todo_lists SET name = $3, sort_order = $4, google_account_id = $5, updated_at = $6
+		`UPDATE todo_lists SET name = $3, sort_order = $4, google_id = $5, google_account_id = $6, updated_at = $7
 		 WHERE id = $1 AND user_id = $2`,
-		list.ID, list.UserID, list.Name, list.SortOrder, list.GoogleAccountID, list.UpdatedAt,
+		list.ID, list.UserID, list.Name, list.SortOrder, list.GoogleID, list.GoogleAccountID, list.UpdatedAt,
 	)
 	return err
 }

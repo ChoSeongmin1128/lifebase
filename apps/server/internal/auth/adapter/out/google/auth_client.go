@@ -108,11 +108,12 @@ func (c *oauthClient) ListCalendars(ctx context.Context, token portout.OAuthToke
 
 		var payload struct {
 			Items []struct {
-				ID       string `json:"id"`
-				Summary  string `json:"summary"`
-				ColorID  string `json:"colorId"`
-				Primary  bool   `json:"primary"`
-				Selected *bool  `json:"selected"`
+				ID         string `json:"id"`
+				Summary    string `json:"summary"`
+				ColorID    string `json:"colorId"`
+				Primary    bool   `json:"primary"`
+				Selected   *bool  `json:"selected"`
+				AccessRole string `json:"accessRole"`
 			} `json:"items"`
 			NextPageToken string `json:"nextPageToken"`
 		}
@@ -140,13 +141,18 @@ func (c *oauthClient) ListCalendars(ctx context.Context, token portout.OAuthToke
 			if item.ColorID != "" {
 				colorID = &item.ColorID
 			}
+			kind, isReadOnly, isSpecial := classifyGoogleCalendar(item.ID, name, item.Primary, item.AccessRole)
 
 			calendars = append(calendars, portout.OAuthCalendar{
-				GoogleID:  item.ID,
-				Name:      name,
-				ColorID:   colorID,
-				IsPrimary: item.Primary,
-				IsVisible: isVisible,
+				GoogleID:   item.ID,
+				Name:       name,
+				ColorID:    colorID,
+				IsPrimary:  item.Primary,
+				IsVisible:  isVisible,
+				Kind:       kind,
+				IsReadOnly: isReadOnly,
+				IsSpecial:  isSpecial,
+				AccessRole: item.AccessRole,
 			})
 		}
 
@@ -210,6 +216,44 @@ func (c *oauthClient) ListTaskLists(ctx context.Context, token portout.OAuthToke
 	}
 
 	return lists, nil
+}
+
+func (c *oauthClient) CreateTaskList(
+	ctx context.Context,
+	token portout.OAuthToken,
+	title string,
+) (taskListID string, err error) {
+	client := c.apiClient(ctx, token)
+	body := map[string]any{
+		"title": title,
+	}
+
+	resp, err := doGoogleJSONRequest(
+		ctx,
+		client,
+		http.MethodPost,
+		"https://tasks.googleapis.com/tasks/v1/users/@me/lists",
+		body,
+	)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return "", parseGoogleAPIError(resp, "google create task list")
+	}
+
+	var payload struct {
+		ID string `json:"id"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
+		return "", err
+	}
+	if payload.ID == "" {
+		return "", fmt.Errorf("google create task list: missing id")
+	}
+	return payload.ID, nil
 }
 
 func (c *oauthClient) ListCalendarEvents(
@@ -749,6 +793,27 @@ func parseGoogleAPIError(resp *http.Response, action string) error {
 		StatusCode: status,
 		Message:    message,
 	}
+}
+
+func classifyGoogleCalendar(id, summary string, primary bool, accessRole string) (kind string, isReadOnly bool, isSpecial bool) {
+	lowerID := strings.ToLower(id)
+	lowerSummary := strings.ToLower(summary)
+
+	isReadOnly = accessRole == "reader" || accessRole == "freeBusyReader"
+	if primary {
+		return "primary", isReadOnly, false
+	}
+
+	if strings.Contains(lowerID, "holiday.calendar.google.com") || strings.Contains(lowerID, "#holiday@") || strings.Contains(lowerSummary, "holiday") || strings.Contains(lowerSummary, "공휴일") {
+		return "holiday", isReadOnly, true
+	}
+	if strings.Contains(lowerID, "#contacts@") || strings.Contains(lowerSummary, "birthday") || strings.Contains(lowerSummary, "생일") {
+		return "birthday", isReadOnly, true
+	}
+	if isReadOnly {
+		return "subscribed", true, false
+	}
+	return "custom", false, false
 }
 
 func buildGoogleCalendarEventBody(input portout.CalendarEventUpsertInput) map[string]any {

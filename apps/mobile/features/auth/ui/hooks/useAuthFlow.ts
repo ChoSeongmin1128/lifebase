@@ -10,6 +10,9 @@ export function useAuthFlow() {
   return useMemo(
     () => ({
       requestAuthUrl: () => useCase.requestAuthUrl(),
+      listGoogleAccounts: () => useCase.listGoogleAccounts(),
+      triggerGoogleSync: (input: { area?: "calendar" | "todo" | "both"; reason?: "page_enter" | "page_action" | "tab_heartbeat" | "manual" }) =>
+        useCase.triggerGoogleSync(input),
     }),
     [useCase],
   );

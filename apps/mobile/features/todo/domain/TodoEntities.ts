@@ -10,4 +10,6 @@ export type MobileTodoItem = {
 export type MobileTodoList = {
   id: string;
   name: string;
+  google_account_id?: string | null;
+  source?: "google" | "local" | string;
 };

@@ -3,6 +3,7 @@ package postgres
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -11,6 +12,7 @@ import (
 
 	authdomain "lifebase/internal/auth/domain"
 	portout "lifebase/internal/auth/port/out"
+	calendarportout "lifebase/internal/calendar/port/out"
 )
 
 type googleAccountSyncer struct {
@@ -75,9 +77,10 @@ func (s *googleAccountSyncer) syncCalendarsAndEvents(
 	for _, cal := range calendars {
 		_, err := s.db.Exec(ctx,
 			`UPDATE calendars
-			 SET google_account_id = $4, name = $3, color_id = $5, is_primary = $6, is_visible = $7, updated_at = $8
+			 SET google_account_id = $4, name = $3, kind = $5, color_id = $6, is_primary = $7, is_visible = $8,
+			     is_readonly = $9, is_special = $10, updated_at = $11
 			 WHERE user_id = $1 AND google_id = $2`,
-			userID, cal.GoogleID, cal.Name, accountID, cal.ColorID, cal.IsPrimary, cal.IsVisible, now,
+			userID, cal.GoogleID, cal.Name, accountID, cal.Kind, cal.ColorID, cal.IsPrimary, cal.IsVisible, cal.IsReadOnly, cal.IsSpecial, now,
 		)
 		if err != nil {
 			return fmt.Errorf("update calendar: %w", err)
@@ -96,9 +99,9 @@ func (s *googleAccountSyncer) syncCalendarsAndEvents(
 			}
 			localCalendarID = uuid.New().String()
 			_, err = s.db.Exec(ctx,
-				`INSERT INTO calendars (id, user_id, google_id, google_account_id, name, color_id, is_primary, is_visible, created_at, updated_at)
-				 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
-				localCalendarID, userID, cal.GoogleID, accountID, cal.Name, cal.ColorID, cal.IsPrimary, cal.IsVisible, now, now,
+				`INSERT INTO calendars (id, user_id, google_id, google_account_id, name, kind, color_id, is_primary, is_visible, is_readonly, is_special, created_at, updated_at)
+				 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`,
+				localCalendarID, userID, cal.GoogleID, accountID, cal.Name, cal.Kind, cal.ColorID, cal.IsPrimary, cal.IsVisible, cal.IsReadOnly, cal.IsSpecial, now, now,
 			)
 			if err != nil {
 				return fmt.Errorf("insert calendar: %w", err)
@@ -107,8 +110,8 @@ func (s *googleAccountSyncer) syncCalendarsAndEvents(
 		localCalendarIDByGoogleID[cal.GoogleID] = localCalendarID
 	}
 
-	start := now.AddDate(0, 0, -90)
-	end := now.AddDate(0, 0, 365)
+	start := now.AddDate(-1, 0, 0)
+	end := now.AddDate(2, 0, 0)
 	for googleCalendarID, localCalendarID := range localCalendarIDByGoogleID {
 		var syncToken *string
 		_ = s.db.QueryRow(
@@ -148,49 +151,8 @@ func (s *googleAccountSyncer) syncCalendarsAndEvents(
 			}
 
 			for _, event := range page.Events {
-				if event.Status == "cancelled" || event.StartTime == nil || event.EndTime == nil {
-					_, _ = s.db.Exec(ctx,
-						`UPDATE events
-						 SET deleted_at = $4, updated_at = $4
-						 WHERE user_id = $1 AND calendar_id = $2 AND google_id = $3`,
-						userID,
-						localCalendarID,
-						event.GoogleID,
-						now,
-					)
-					continue
-				}
-
-				tag, err := s.db.Exec(ctx,
-					`UPDATE events
-					 SET title = $4, description = $5, location = $6, start_time = $7, end_time = $8,
-					     timezone = $9, is_all_day = $10, color_id = $11, recurrence_rule = $12, etag = $13,
-					     deleted_at = NULL, updated_at = $14
-					 WHERE user_id = $1 AND calendar_id = $2 AND google_id = $3`,
-					userID, localCalendarID, event.GoogleID, event.Title, event.Description, event.Location,
-					*event.StartTime, *event.EndTime, event.Timezone, event.IsAllDay,
-					event.ColorID, event.RecurrenceRule, event.ETag, now,
-				)
-				if err != nil {
-					return fmt.Errorf("update event: %w", err)
-				}
-				if tag.RowsAffected() > 0 {
-					continue
-				}
-
-				_, err = s.db.Exec(ctx,
-					`INSERT INTO events (
-					   id, calendar_id, user_id, google_id, title, description, location,
-					   start_time, end_time, timezone, is_all_day, color_id, recurrence_rule, etag, created_at, updated_at
-					 ) VALUES (
-					   $1, $2, $3, $4, $5, $6, $7,
-					   $8, $9, $10, $11, $12, $13, $14, $15, $16
-					 )`,
-					uuid.New().String(), localCalendarID, userID, event.GoogleID, event.Title, event.Description, event.Location,
-					*event.StartTime, *event.EndTime, event.Timezone, event.IsAllDay, event.ColorID, event.RecurrenceRule, event.ETag, now, now,
-				)
-				if err != nil {
-					return fmt.Errorf("insert event: %w", err)
+				if _, _, err := s.applyOAuthEvent(ctx, userID, localCalendarID, event, now); err != nil {
+					return err
 				}
 			}
 
@@ -212,8 +174,246 @@ func (s *googleAccountSyncer) syncCalendarsAndEvents(
 				now,
 			)
 		}
+		_ = s.expandCalendarCoverage(ctx, userID, localCalendarID, start, end, now)
 	}
 
+	return nil
+}
+
+func (s *googleAccountSyncer) BackfillEvents(
+	ctx context.Context,
+	userID string,
+	start, end time.Time,
+	calendarIDs []string,
+) (*calendarportout.CalendarBackfillResult, error) {
+	if end.Before(start) || end.Equal(start) {
+		return nil, fmt.Errorf("invalid backfill range")
+	}
+
+	type rowData struct {
+		localCalendarID  string
+		googleCalendarID string
+		accountID        string
+		accessToken      string
+		refreshToken     string
+		tokenExpiresAt   *time.Time
+	}
+	args := []any{userID}
+	query := `SELECT c.id, c.google_id, c.google_account_id, a.access_token, a.refresh_token, a.token_expires_at
+	          FROM calendars c
+	          JOIN user_google_accounts a ON a.id::text = c.google_account_id AND a.user_id::text = c.user_id
+	         WHERE c.user_id = $1
+	           AND c.google_id IS NOT NULL
+	           AND c.google_account_id IS NOT NULL
+	           AND a.status = 'active'`
+	if len(calendarIDs) > 0 {
+		placeholders := make([]string, 0, len(calendarIDs))
+		for _, calendarID := range calendarIDs {
+			if strings.TrimSpace(calendarID) == "" {
+				continue
+			}
+			args = append(args, calendarID)
+			placeholders = append(placeholders, fmt.Sprintf("$%d", len(args)))
+		}
+		if len(placeholders) > 0 {
+			query += " AND c.id IN (" + strings.Join(placeholders, ",") + ")"
+		}
+	}
+	rows, err := s.db.Query(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	calsByAccount := map[string][]rowData{}
+	for rows.Next() {
+		var row rowData
+		if err := rows.Scan(
+			&row.localCalendarID,
+			&row.googleCalendarID,
+			&row.accountID,
+			&row.accessToken,
+			&row.refreshToken,
+			&row.tokenExpiresAt,
+		); err != nil {
+			return nil, err
+		}
+		calsByAccount[row.accountID] = append(calsByAccount[row.accountID], row)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	result := &calendarportout.CalendarBackfillResult{
+		CoveredStart: start,
+		CoveredEnd:   end,
+	}
+	now := time.Now()
+	for accountID, calendars := range calsByAccount {
+		lockKey := advisoryLockKey(fmt.Sprintf("%s:%d:%d", accountID, start.Unix(), end.Unix()))
+		var locked bool
+		if err := s.db.QueryRow(ctx, `SELECT pg_try_advisory_lock($1)`, lockKey).Scan(&locked); err != nil {
+			return nil, err
+		}
+		if !locked {
+			continue
+		}
+
+		func() {
+			defer s.db.Exec(context.Background(), `SELECT pg_advisory_unlock($1)`, lockKey)
+
+			token := portout.OAuthToken{
+				AccessToken:  calendars[0].accessToken,
+				RefreshToken: calendars[0].refreshToken,
+			}
+			if calendars[0].tokenExpiresAt != nil {
+				token.Expiry = *calendars[0].tokenExpiresAt
+			}
+
+			for _, cal := range calendars {
+				pageToken := ""
+				for {
+					page, listErr := s.googleAuth.ListCalendarEvents(
+						ctx,
+						token,
+						cal.googleCalendarID,
+						pageToken,
+						"",
+						&start,
+						&end,
+					)
+					if listErr != nil {
+						err = fmt.Errorf("list google events: %w", listErr)
+						return
+					}
+					for _, event := range page.Events {
+						result.FetchedEvents++
+						updated, deleted, applyErr := s.applyOAuthEvent(ctx, userID, cal.localCalendarID, event, now)
+						if applyErr != nil {
+							err = applyErr
+							return
+						}
+						if updated {
+							result.UpdatedEvents++
+						}
+						if deleted {
+							result.DeletedEvents++
+						}
+					}
+					if page.NextPageToken == "" {
+						break
+					}
+					pageToken = page.NextPageToken
+				}
+				_ = s.expandCalendarCoverage(ctx, userID, cal.localCalendarID, start, end, now)
+			}
+		}()
+		if err != nil {
+			return nil, err
+		}
+	}
+	return result, nil
+}
+
+func (s *googleAccountSyncer) applyOAuthEvent(
+	ctx context.Context,
+	userID, localCalendarID string,
+	event portout.OAuthCalendarEvent,
+	now time.Time,
+) (updated bool, deleted bool, err error) {
+	if event.Status == "cancelled" || event.StartTime == nil || event.EndTime == nil {
+		_, _ = s.db.Exec(ctx,
+			`UPDATE events
+			 SET deleted_at = $4, updated_at = $4
+			 WHERE user_id = $1 AND calendar_id = $2 AND google_id = $3`,
+			userID,
+			localCalendarID,
+			event.GoogleID,
+			now,
+		)
+		return false, true, nil
+	}
+
+	tag, err := s.db.Exec(ctx,
+		`UPDATE events
+		 SET title = $4, description = $5, location = $6, start_time = $7, end_time = $8,
+		     timezone = $9, is_all_day = $10, color_id = $11, recurrence_rule = $12, etag = $13,
+		     deleted_at = NULL, updated_at = $14
+		 WHERE user_id = $1 AND calendar_id = $2 AND google_id = $3`,
+		userID, localCalendarID, event.GoogleID, event.Title, event.Description, event.Location,
+		*event.StartTime, *event.EndTime, event.Timezone, event.IsAllDay,
+		event.ColorID, event.RecurrenceRule, event.ETag, now,
+	)
+	if err != nil {
+		return false, false, fmt.Errorf("update event: %w", err)
+	}
+	if tag.RowsAffected() > 0 {
+		return true, false, nil
+	}
+
+	_, err = s.db.Exec(ctx,
+		`INSERT INTO events (
+		   id, calendar_id, user_id, google_id, title, description, location,
+		   start_time, end_time, timezone, is_all_day, color_id, recurrence_rule, etag, created_at, updated_at
+		 ) VALUES (
+		   $1, $2, $3, $4, $5, $6, $7,
+		   $8, $9, $10, $11, $12, $13, $14, $15, $16
+		 )`,
+		uuid.New().String(), localCalendarID, userID, event.GoogleID, event.Title, event.Description, event.Location,
+		*event.StartTime, *event.EndTime, event.Timezone, event.IsAllDay, event.ColorID, event.RecurrenceRule, event.ETag, now, now,
+	)
+	if err != nil {
+		return false, false, fmt.Errorf("insert event: %w", err)
+	}
+	return true, false, nil
+}
+
+func (s *googleAccountSyncer) expandCalendarCoverage(
+	ctx context.Context,
+	userID, calendarID string,
+	start, end, now time.Time,
+) error {
+	_, _ = s.db.Exec(ctx,
+		`UPDATE calendars
+		    SET synced_start = CASE
+		                         WHEN synced_start IS NULL THEN $3
+		                         WHEN synced_start > $3 THEN $3
+		                         ELSE synced_start
+		                       END,
+		        synced_end = CASE
+		                       WHEN synced_end IS NULL THEN $4
+		                       WHEN synced_end < $4 THEN $4
+		                       ELSE synced_end
+		                     END,
+		        updated_at = $5
+		  WHERE id = $1 AND user_id = $2`,
+		calendarID,
+		userID,
+		start,
+		end,
+		now,
+	)
+
+	_, _ = s.db.Exec(ctx,
+		`INSERT INTO calendar_backfill_state (user_id, calendar_id, covered_start, covered_end, updated_at)
+		 VALUES ($1, $2, $3, $4, $5)
+		 ON CONFLICT (user_id, calendar_id)
+		 DO UPDATE SET
+		   covered_start = CASE
+		                     WHEN calendar_backfill_state.covered_start > EXCLUDED.covered_start THEN EXCLUDED.covered_start
+		                     ELSE calendar_backfill_state.covered_start
+		                   END,
+		   covered_end = CASE
+		                   WHEN calendar_backfill_state.covered_end < EXCLUDED.covered_end THEN EXCLUDED.covered_end
+		                   ELSE calendar_backfill_state.covered_end
+		                 END,
+		   updated_at = EXCLUDED.updated_at`,
+		userID,
+		calendarID,
+		start,
+		end,
+		now,
+	)
 	return nil
 }
 
