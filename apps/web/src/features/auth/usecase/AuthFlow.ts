@@ -2,6 +2,7 @@ import type {
   AuthApp,
   AuthCallbackInput,
   SyncGoogleAccountInput,
+  TriggerGoogleSyncInput,
   AuthTokenPair,
   AuthUrlResponse,
 } from "@/features/auth/domain/AuthSession";
@@ -44,5 +45,9 @@ export class AuthFlowUseCase {
 
   syncGoogleAccount(accountID: string, input: SyncGoogleAccountInput) {
     return this.repo.syncGoogleAccount(accountID, input);
+  }
+
+  triggerGoogleSync(input: TriggerGoogleSyncInput) {
+    return this.repo.triggerGoogleSync(input);
   }
 }

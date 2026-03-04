@@ -8,6 +8,8 @@ import type {
   AuthUrlResponse,
   GoogleAccountSummary,
   SyncGoogleAccountInput,
+  TriggerGoogleSyncInput,
+  TriggerGoogleSyncResponse,
 } from "@/features/auth/domain/AuthSession";
 
 interface GoogleAccountsResponse {
@@ -56,5 +58,15 @@ export class HttpAuthRepository implements AuthRepository {
       body: input,
       token,
     });
+  }
+
+  async triggerGoogleSync(input: TriggerGoogleSyncInput): Promise<number> {
+    const token = this.getToken();
+    const data = await api<TriggerGoogleSyncResponse>("/auth/google-sync/trigger", {
+      method: "POST",
+      body: input,
+      token,
+    });
+    return data.scheduled_accounts || 0;
   }
 }

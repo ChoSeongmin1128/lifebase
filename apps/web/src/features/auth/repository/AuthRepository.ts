@@ -5,6 +5,7 @@ import type {
   AuthUrlResponse,
   GoogleAccountSummary,
   SyncGoogleAccountInput,
+  TriggerGoogleSyncInput,
 } from "@/features/auth/domain/AuthSession";
 
 export interface AuthRepository {
@@ -13,4 +14,5 @@ export interface AuthRepository {
   listGoogleAccounts(): Promise<GoogleAccountSummary[]>;
   linkGoogleAccount(input: AuthCallbackInput): Promise<void>;
   syncGoogleAccount(accountID: string, input: SyncGoogleAccountInput): Promise<void>;
+  triggerGoogleSync(input: TriggerGoogleSyncInput): Promise<number>;
 }

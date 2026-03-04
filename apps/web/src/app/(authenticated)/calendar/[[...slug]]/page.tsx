@@ -77,6 +77,7 @@ const COLORS = [
 const ACCOUNT_COLORS = ["#2563eb", "#16a34a", "#dc2626", "#9333ea", "#ea580c", "#0891b2", "#ca8a04", "#0f766e"];
 const UNASSIGNED_ACCOUNT_COLOR = "#9ca3af";
 const ACCOUNT_FILTER_SETTING_KEY = "calendar_selected_google_account_ids";
+const PAGE_ACTION_SYNC_COOLDOWN_MS = 15_000;
 
 function getGoogleEventColor(colorId: string | null, calColorId: string | null): string {
   const id = colorId || calColorId;
@@ -280,6 +281,7 @@ export default function CalendarPage() {
 
   const [weekHours, setWeekHours] = useState({ start: 8, end: 22 });
   const [weekStartsOn, setWeekStartsOn] = useState(0);
+  const [settings, setSettings] = useState<Record<string, string>>({});
   const [googleAccounts, setGoogleAccounts] = useState<GoogleAccountSummary[]>([]);
   const [selectedGoogleAccountIDs, setSelectedGoogleAccountIDs] = useState<string[]>([]);
   const [settingsLoaded, setSettingsLoaded] = useState(false);
@@ -291,6 +293,7 @@ export default function CalendarPage() {
   const quickActionHandledRef = useRef(false);
   const accountSelectionInitializedRef = useRef(false);
   const accountSelectionPersistedRef = useRef("");
+  const syncThrottleRef = useRef<Record<string, number>>({});
 
   const [editorOpen, setEditorOpen] = useState(false);
   const [editorMode, setEditorMode] = useState<"create" | "edit">("create");
@@ -301,7 +304,7 @@ export default function CalendarPage() {
 
   const { listCalendars, getSettings, listEvents, createEvent, updateEvent, deleteEvent } = useCalendarActions();
   const { updateSetting } = useSettingsActions();
-  const { listGoogleAccounts } = useAuthFlow();
+  const { listGoogleAccounts, triggerGoogleSync } = useAuthFlow();
 
   const timezone = useMemo(
     () => Intl.DateTimeFormat().resolvedOptions().timeZone || "Asia/Seoul",
@@ -312,21 +315,63 @@ export default function CalendarPage() {
     () => googleAccounts.filter((account) => account.status === "active"),
     [googleAccounts]
   );
-  const activeGoogleAccountIDs = useMemo(
-    () => activeGoogleAccounts.map((account) => account.id),
-    [activeGoogleAccounts]
+
+  const syncEnabledGoogleAccounts = useMemo(
+    () =>
+      activeGoogleAccounts.filter(
+        (account) => settings[`google_account_sync_calendar_${account.id}`] !== "false",
+      ),
+    [activeGoogleAccounts, settings],
+  );
+  const syncEnabledGoogleAccountIDs = useMemo(
+    () => syncEnabledGoogleAccounts.map((account) => account.id),
+    [syncEnabledGoogleAccounts],
+  );
+  const syncEnabledGoogleAccountSet = useMemo(
+    () => new Set(syncEnabledGoogleAccountIDs),
+    [syncEnabledGoogleAccountIDs],
+  );
+
+  const selectableGoogleAccountIDs = useMemo(
+    () => selectedGoogleAccountIDs.filter((accountID) => syncEnabledGoogleAccountSet.has(accountID)),
+    [selectedGoogleAccountIDs, syncEnabledGoogleAccountSet],
   );
   const selectedGoogleAccountSet = useMemo(
-    () => new Set(selectedGoogleAccountIDs),
-    [selectedGoogleAccountIDs]
+    () => new Set(selectableGoogleAccountIDs),
+    [selectableGoogleAccountIDs]
   );
+  const effectiveSelectedGoogleAccountSet = useMemo(
+    () => (selectedGoogleAccountSet.size > 0 ? selectedGoogleAccountSet : syncEnabledGoogleAccountSet),
+    [selectedGoogleAccountSet, syncEnabledGoogleAccountSet],
+  );
+  const selectedSyncEnabledGoogleAccountIDs = useMemo(
+    () => syncEnabledGoogleAccountIDs.filter((id) => effectiveSelectedGoogleAccountSet.has(id)),
+    [syncEnabledGoogleAccountIDs, effectiveSelectedGoogleAccountSet],
+  );
+  const useAccountUnifiedColors = selectedSyncEnabledGoogleAccountIDs.length > 1;
+  const accountColorMap = useMemo(() => {
+    const map = new Map<string, string>();
+    selectedSyncEnabledGoogleAccountIDs.forEach((accountID, index) => {
+      map.set(accountID, ACCOUNT_COLORS[index % ACCOUNT_COLORS.length]);
+    });
+    return map;
+  }, [selectedSyncEnabledGoogleAccountIDs]);
+
+  const allSyncEnabledAccountsSelected =
+    syncEnabledGoogleAccountIDs.length > 0 &&
+    syncEnabledGoogleAccountIDs.every((accountID) => effectiveSelectedGoogleAccountSet.has(accountID));
+
+  const accountFilterLabel = allSyncEnabledAccountsSelected
+    ? "계정: 전체"
+    : `계정: ${selectedSyncEnabledGoogleAccountIDs.length}/${syncEnabledGoogleAccountIDs.length}`;
 
   const isCalendarIncludedByAccountFilter = useCallback(
     (calendar: CalendarData) => {
       if (!calendar.google_account_id) return true;
-      return selectedGoogleAccountSet.has(calendar.google_account_id);
+      if (!syncEnabledGoogleAccountSet.has(calendar.google_account_id)) return false;
+      return effectiveSelectedGoogleAccountSet.has(calendar.google_account_id);
     },
-    [selectedGoogleAccountSet]
+    [effectiveSelectedGoogleAccountSet, syncEnabledGoogleAccountSet]
   );
 
   const filteredCalendars = useMemo(
@@ -342,21 +387,6 @@ export default function CalendarPage() {
     () => filteredCalendars.find((cal) => cal.is_visible)?.id || filteredCalendars[0]?.id || "",
     [filteredCalendars]
   );
-  const selectedActiveGoogleAccountIDs = useMemo(
-    () => activeGoogleAccounts
-      .filter((account) => selectedGoogleAccountSet.has(account.id))
-      .map((account) => account.id),
-    [activeGoogleAccounts, selectedGoogleAccountSet]
-  );
-  const useAccountUnifiedColors = selectedActiveGoogleAccountIDs.length > 1;
-  const accountColorMap = useMemo(() => {
-    const map = new Map<string, string>();
-    selectedActiveGoogleAccountIDs.forEach((accountID, index) => {
-      map.set(accountID, ACCOUNT_COLORS[index % ACCOUNT_COLORS.length]);
-    });
-    return map;
-  }, [selectedActiveGoogleAccountIDs]);
-
   useEffect(() => {
     if (!editorForm.calendarId && defaultCalendarID) {
       setEditorForm((prev) => ({ ...prev, calendarId: defaultCalendarID }));
@@ -376,12 +406,14 @@ export default function CalendarPage() {
     try {
       const data = await getSettings();
       const settings = data.settings || {};
+      setSettings(settings);
       setWeekHours(parseWeekHourRange(settings));
       setWeekStartsOn(parseWeekStartsOn(settings));
       const storedAccountIDs = parseStoredAccountIDs(settings[ACCOUNT_FILTER_SETTING_KEY] || "");
       setSelectedGoogleAccountIDs(storedAccountIDs);
       accountSelectionPersistedRef.current = storedAccountIDs.join(",");
     } catch {
+      setSettings({});
       setWeekHours({ start: 8, end: 22 });
       setWeekStartsOn(0);
       setSelectedGoogleAccountIDs([]);
@@ -420,17 +452,40 @@ export default function CalendarPage() {
     }
   }, [calendars.length, currentDate, filteredCalendarIDs, listEvents, view, weekStartsOn]);
 
+  const triggerCalendarSync = useCallback(
+    (reason: "page_enter" | "page_action" | "tab_heartbeat", throttleMs = 0) => {
+      const key = `calendar:${reason}`;
+      const now = Date.now();
+      const last = syncThrottleRef.current[key] || 0;
+      if (throttleMs > 0 && now-last < throttleMs) {
+        return;
+      }
+      syncThrottleRef.current[key] = now;
+      triggerGoogleSync({ area: "calendar", reason }).catch(() => undefined);
+    },
+    [triggerGoogleSync]
+  );
+
   useEffect(() => { loadCalendars(); }, [loadCalendars]);
   useEffect(() => { loadSettings(); }, [loadSettings]);
   useEffect(() => { loadGoogleAccounts(); }, [loadGoogleAccounts]);
   useEffect(() => { loadEvents(); }, [loadEvents]);
   useEffect(() => {
+    triggerCalendarSync("page_enter", 60_000);
+  }, [triggerCalendarSync]);
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      triggerCalendarSync("tab_heartbeat", 9 * 60_000);
+    }, 10 * 60_000);
+    return () => window.clearInterval(timer);
+  }, [triggerCalendarSync]);
+  useEffect(() => {
     if (!settingsLoaded) return;
     if (accountSelectionInitializedRef.current) return;
 
-    const activeSet = new Set(activeGoogleAccountIDs);
+    const activeSet = new Set(syncEnabledGoogleAccountIDs);
     const validStored = selectedGoogleAccountIDs.filter((accountID) => activeSet.has(accountID));
-    const normalized = validStored.length > 0 ? validStored : activeGoogleAccountIDs;
+    const normalized = validStored.length > 0 ? validStored : syncEnabledGoogleAccountIDs;
 
     setSelectedGoogleAccountIDs(normalized);
     accountSelectionInitializedRef.current = true;
@@ -440,7 +495,7 @@ export default function CalendarPage() {
       accountSelectionPersistedRef.current = serialized;
       updateSetting(ACCOUNT_FILTER_SETTING_KEY, serialized).catch(() => undefined);
     }
-  }, [activeGoogleAccountIDs, selectedGoogleAccountIDs, settingsLoaded, updateSetting]);
+  }, [selectedGoogleAccountIDs, settingsLoaded, syncEnabledGoogleAccountIDs, updateSetting]);
 
   useEffect(() => {
     if (!accountSelectionInitializedRef.current) return;
@@ -481,19 +536,15 @@ export default function CalendarPage() {
     updateUrl(newView, currentDate);
   };
 
-  const allActiveAccountsSelected =
-    activeGoogleAccountIDs.length > 0 &&
-    activeGoogleAccountIDs.every((accountID) => selectedGoogleAccountSet.has(accountID));
-
   const handleSelectAllAccounts = () => {
-    setSelectedGoogleAccountIDs(activeGoogleAccountIDs);
+    setSelectedGoogleAccountIDs(syncEnabledGoogleAccountIDs);
   };
 
   const handleToggleAccount = (accountID: string) => {
     setSelectedGoogleAccountIDs((prev) => {
       const exists = prev.includes(accountID);
       if (exists) {
-        if (prev.length <= 1 && activeGoogleAccountIDs.length > 0) {
+        if (prev.length <= 1 && syncEnabledGoogleAccountIDs.length > 0) {
           return prev;
         }
         return prev.filter((id) => id !== accountID);
@@ -589,6 +640,7 @@ export default function CalendarPage() {
       };
       await createEvent(payload);
       await loadEvents();
+      triggerCalendarSync("page_action", PAGE_ACTION_SYNC_COOLDOWN_MS);
       setQuickCreateOpen(false);
     } catch (err) {
       console.error("Create event failed:", err);
@@ -654,6 +706,7 @@ export default function CalendarPage() {
       setEditorOpen(false);
       setSelectedEvent(null);
       await loadEvents();
+      triggerCalendarSync("page_action", PAGE_ACTION_SYNC_COOLDOWN_MS);
     } catch (err) {
       console.error("Save event failed:", err);
     }
@@ -664,6 +717,7 @@ export default function CalendarPage() {
       await deleteEvent(eventID);
       setSelectedEvent(null);
       await loadEvents();
+      triggerCalendarSync("page_action", PAGE_ACTION_SYNC_COOLDOWN_MS);
     } catch (err) {
       console.error("Delete event failed:", err);
     }
@@ -671,9 +725,6 @@ export default function CalendarPage() {
 
   const headerLabel = getHeaderLabel(currentDate, view);
   const calMap = useMemo(() => new Map(calendars.map((cal) => [cal.id, cal])), [calendars]);
-  const accountFilterLabel = allActiveAccountsSelected
-    ? "계정: 전체"
-    : `계정: ${selectedActiveGoogleAccountIDs.length}/${activeGoogleAccountIDs.length}`;
   const getDisplayEventColor = useCallback(
     (eventColorID: string | null, calendarID: string): string => {
       const calendar = calMap.get(calendarID);
@@ -703,7 +754,7 @@ export default function CalendarPage() {
           <h2 className="text-lg font-semibold text-text-strong">{headerLabel}</h2>
         </PageToolbarGroup>
         <PageToolbarGroup className="gap-2">
-          {googleAccounts.length > 0 && (
+          {syncEnabledGoogleAccountIDs.length > 0 && (
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button variant="secondary" size="sm" className="gap-1.5">
@@ -719,11 +770,13 @@ export default function CalendarPage() {
                     handleSelectAllAccounts();
                   }}
                 >
-                  <Checkbox checked={allActiveAccountsSelected} />
+                  <Checkbox checked={allSyncEnabledAccountsSelected} />
                   <span>전체 선택</span>
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
-                {googleAccounts.map((account) => {
+                {googleAccounts
+                  .filter((account) => syncEnabledGoogleAccountSet.has(account.id))
+                  .map((account) => {
                   const checked = selectedGoogleAccountSet.has(account.id);
                   const isActive = account.status === "active";
 
