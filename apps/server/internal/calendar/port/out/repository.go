@@ -46,3 +46,25 @@ type CalendarBackfillResult struct {
 type CalendarBackfillService interface {
 	BackfillEvents(ctx context.Context, userID string, start, end time.Time, calendarIDs []string) (*CalendarBackfillResult, error)
 }
+
+type DaySummaryHoliday struct {
+	Date time.Time
+	Name string
+}
+
+type DaySummaryTodo struct {
+	ID       string
+	ListID   string
+	Title    string
+	Due      *string
+	Priority string
+	IsDone   bool
+}
+
+type DaySummaryHolidayRepository interface {
+	ListByDateRange(ctx context.Context, start, end time.Time) ([]DaySummaryHoliday, error)
+}
+
+type DaySummaryTodoRepository interface {
+	ListByDueDate(ctx context.Context, userID, date string, includeDone bool) ([]DaySummaryTodo, error)
+}

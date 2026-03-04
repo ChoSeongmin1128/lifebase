@@ -4,6 +4,7 @@ import type {
   CalendarData,
   CalendarSettingsResponse,
   CreateEventInput,
+  DaySummaryData,
   EventData,
   EventPayload,
   HolidayData,
@@ -14,6 +15,7 @@ export interface CalendarRepository {
   getSettings(): Promise<CalendarSettingsResponse>;
   listEvents(start: string, end: string, calendarIDs?: string[]): Promise<EventData[]>;
   listHolidays(startDate: string, endDate: string): Promise<HolidayData[]>;
+  getDaySummary(date: string, timezone: string, calendarIDs?: string[], includeDoneTodos?: boolean): Promise<DaySummaryData>;
   backfillEvents(input: BackfillEventsInput): Promise<BackfillEventsResult>;
   createEvent(input: CreateEventInput): Promise<void>;
   updateEvent(eventId: string, payload: EventPayload): Promise<void>;

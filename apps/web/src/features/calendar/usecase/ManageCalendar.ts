@@ -1,6 +1,7 @@
 import type {
   BackfillEventsInput,
   CreateEventInput,
+  DaySummaryData,
   EventPayload,
   HolidayData,
 } from "@/features/calendar/domain/CalendarEntities";
@@ -23,6 +24,15 @@ export class ManageCalendarUseCase {
 
   listHolidays(startDate: string, endDate: string): Promise<HolidayData[]> {
     return this.repo.listHolidays(startDate, endDate);
+  }
+
+  getDaySummary(
+    date: string,
+    timezone: string,
+    calendarIDs?: string[],
+    includeDoneTodos: boolean = false
+  ): Promise<DaySummaryData> {
+    return this.repo.getDaySummary(date, timezone, calendarIDs, includeDoneTodos);
   }
 
   backfillEvents(input: BackfillEventsInput) {

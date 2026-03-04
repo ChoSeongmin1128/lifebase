@@ -54,6 +54,35 @@ type BackfillEventsResult struct {
 	CoveredEnd    time.Time `json:"covered_end"`
 }
 
+type DaySummaryInput struct {
+	Date             string   `json:"date"`
+	Timezone         string   `json:"timezone"`
+	CalendarIDs      []string `json:"calendar_ids"`
+	IncludeDoneTodos bool     `json:"include_done_todos"`
+}
+
+type DaySummaryHoliday struct {
+	Date string `json:"date"`
+	Name string `json:"name"`
+}
+
+type DaySummaryTodo struct {
+	ID       string  `json:"id"`
+	ListID   string  `json:"list_id"`
+	Title    string  `json:"title"`
+	Due      *string `json:"due"`
+	Priority string  `json:"priority"`
+	IsDone   bool    `json:"is_done"`
+}
+
+type DaySummaryResult struct {
+	Date     string              `json:"date"`
+	Timezone string              `json:"timezone"`
+	Holidays []DaySummaryHoliday `json:"holidays"`
+	Events   []*domain.Event     `json:"events"`
+	Todos    []DaySummaryTodo    `json:"todos"`
+}
+
 type CalendarUseCase interface {
 	// Calendars
 	CreateCalendar(ctx context.Context, userID, name string, colorID *string) (*domain.Calendar, error)
@@ -66,6 +95,7 @@ type CalendarUseCase interface {
 	GetEvent(ctx context.Context, userID, eventID string) (*domain.Event, error)
 	ListEvents(ctx context.Context, userID string, calendarIDs []string, start, end string) ([]*domain.Event, error)
 	BackfillEvents(ctx context.Context, userID string, input BackfillEventsInput) (*BackfillEventsResult, error)
+	GetDaySummary(ctx context.Context, userID string, input DaySummaryInput) (*DaySummaryResult, error)
 	UpdateEvent(ctx context.Context, userID, eventID string, input UpdateEventInput) (*domain.Event, error)
 	DeleteEvent(ctx context.Context, userID, eventID string) error
 }

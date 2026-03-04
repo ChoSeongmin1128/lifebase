@@ -20,12 +20,22 @@ interface YearCompactViewProps {
   events: EventData[];
   weekStartsOn: number;
   holidaysByDate: Map<string, string[]>;
+  selectedDateKey?: string | null;
   onMonthClick: (month: number) => void;
+  onDateClick: (date: Date, dateKey: string) => void;
 }
 
 const WEEKDAY_LABELS = ["일", "월", "화", "수", "목", "금", "토"];
 
-export function YearCompactView({ year, events, weekStartsOn, holidaysByDate, onMonthClick }: YearCompactViewProps) {
+export function YearCompactView({
+  year,
+  events,
+  weekStartsOn,
+  holidaysByDate,
+  selectedDateKey,
+  onMonthClick,
+  onDateClick,
+}: YearCompactViewProps) {
   const today = new Date();
   const todayKey = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
   const weekdays = Array.from({ length: 7 }, (_, index) => {
@@ -49,12 +59,15 @@ export function YearCompactView({ year, events, weekStartsOn, holidaysByDate, on
         return (
           <div
             key={m}
-            className="flex min-h-0 cursor-pointer flex-col rounded-lg border border-border p-2 transition-colors hover:bg-surface-accent/50"
-            onClick={() => onMonthClick(m)}
+            className="flex min-h-0 flex-col rounded-lg border border-border p-2"
           >
-            <div className="mb-1 text-sm font-medium text-text-strong">
+            <button
+              type="button"
+              className="mb-1 w-fit rounded px-1 text-sm font-medium text-text-strong transition-colors hover:bg-surface-accent/70"
+              onClick={() => onMonthClick(m)}
+            >
               {m + 1}월
-            </div>
+            </button>
             <div className="grid min-h-0 flex-1 grid-cols-7 grid-rows-[auto_repeat(6,minmax(0,1fr))] gap-px text-[10px] md:text-[11px]">
               {weekdays.map((d) => (
                 <div key={d} className="text-center text-text-muted">{d}</div>
@@ -63,15 +76,19 @@ export function YearCompactView({ year, events, weekStartsOn, holidaysByDate, on
                 const day = cell.day;
                 const dateStr = cell.dateKey;
                 const count = eventsByDate.get(dateStr) || 0;
-                const isToday = dateStr === todayKey;
+                const isToday = dateStr === todayKey && cell.inCurrentMonth;
+                const isSelected = selectedDateKey === dateStr;
                 const holidayLabel = holidaysByDate.get(dateStr)?.[0] || "";
 
                 return (
-                  <div
+                  <button
                     key={i}
+                    type="button"
+                    onClick={() => onDateClick(cell.date, dateStr)}
                     className={cn(
-                      "relative flex h-full items-center justify-center rounded-sm text-center",
-                      !cell.inCurrentMonth && "bg-surface-accent/20"
+                      "relative flex h-full items-center justify-center rounded-sm text-center transition-colors hover:bg-surface-accent/60",
+                      !cell.inCurrentMonth && "bg-surface-accent/20",
+                      isSelected && "ring-1 ring-inset ring-primary/60"
                     )}
                   >
                     <span
@@ -110,7 +127,7 @@ export function YearCompactView({ year, events, weekStartsOn, holidaysByDate, on
                         )}
                       </div>
                     )}
-                  </div>
+                  </button>
                 );
               })}
             </div>

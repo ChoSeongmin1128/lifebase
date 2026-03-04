@@ -409,8 +409,8 @@ export default function SettingsPage() {
                       <SelectItem value="week">주간</SelectItem>
                       <SelectItem value="3day">3일</SelectItem>
                       <SelectItem value="agenda">일정</SelectItem>
-                      <SelectItem value="year-compact">연간 컴팩트</SelectItem>
-                      <SelectItem value="year-timeline">연간 타임라인</SelectItem>
+                      <SelectItem value="year-compact">연간</SelectItem>
+                      <SelectItem value="year-timeline">타임라인</SelectItem>
                     </SelectContent>
                   </Select>
                 </SettingRow>

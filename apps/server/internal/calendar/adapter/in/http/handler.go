@@ -147,6 +147,50 @@ func (h *CalendarHandler) ListEvents(w http.ResponseWriter, r *http.Request) {
 	response.JSON(w, http.StatusOK, map[string]any{"events": events})
 }
 
+func (h *CalendarHandler) GetDaySummary(w http.ResponseWriter, r *http.Request) {
+	userID := middleware.GetUserID(r.Context())
+	date := strings.TrimSpace(r.URL.Query().Get("date"))
+	if date == "" {
+		response.Error(w, http.StatusBadRequest, "INVALID_REQUEST", "date is required")
+		return
+	}
+
+	tz := strings.TrimSpace(r.URL.Query().Get("tz"))
+	calIDsRaw := strings.TrimSpace(r.URL.Query().Get("calendar_ids"))
+	calendarIDs := make([]string, 0)
+	if calIDsRaw != "" {
+		for _, item := range strings.Split(calIDsRaw, ",") {
+			trimmed := strings.TrimSpace(item)
+			if trimmed != "" {
+				calendarIDs = append(calendarIDs, trimmed)
+			}
+		}
+	}
+
+	includeDoneTodos := false
+	includeDoneRaw := strings.TrimSpace(r.URL.Query().Get("include_done_todos"))
+	if includeDoneRaw != "" {
+		if includeDoneRaw == "true" {
+			includeDoneTodos = true
+		} else if includeDoneRaw != "false" {
+			response.Error(w, http.StatusBadRequest, "INVALID_REQUEST", "include_done_todos must be true or false")
+			return
+		}
+	}
+
+	result, err := h.cal.GetDaySummary(r.Context(), userID, portin.DaySummaryInput{
+		Date:             date,
+		Timezone:         tz,
+		CalendarIDs:      calendarIDs,
+		IncludeDoneTodos: includeDoneTodos,
+	})
+	if err != nil {
+		response.Error(w, http.StatusBadRequest, "SUMMARY_FAILED", err.Error())
+		return
+	}
+	response.JSON(w, http.StatusOK, result)
+}
+
 func (h *CalendarHandler) BackfillEvents(w http.ResponseWriter, r *http.Request) {
 	userID := middleware.GetUserID(r.Context())
 	var input portin.BackfillEventsInput

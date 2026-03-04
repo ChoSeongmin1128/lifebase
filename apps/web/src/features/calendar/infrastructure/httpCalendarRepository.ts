@@ -6,6 +6,7 @@ import type {
   CalendarData,
   CalendarSettingsResponse,
   CreateEventInput,
+  DaySummaryData,
   EventData,
   EventPayload,
   HolidayData,
@@ -23,6 +24,8 @@ interface EventsResponse {
 interface HolidaysResponse {
   holidays?: HolidayData[];
 }
+
+type DaySummaryResponse = DaySummaryData;
 
 export class HttpCalendarRepository implements CalendarRepository {
   private getToken(): string {
@@ -65,6 +68,24 @@ export class HttpCalendarRepository implements CalendarRepository {
     });
     const data = await api<HolidaysResponse>(`/holidays?${params.toString()}`, { token });
     return data.holidays || [];
+  }
+
+  getDaySummary(
+    date: string,
+    timezone: string,
+    calendarIDs?: string[],
+    includeDoneTodos: boolean = false
+  ): Promise<DaySummaryData> {
+    const token = this.getToken();
+    const params = new URLSearchParams({ date });
+    if (timezone) {
+      params.set("tz", timezone);
+    }
+    if (calendarIDs && calendarIDs.length > 0) {
+      params.set("calendar_ids", calendarIDs.join(","));
+    }
+    params.set("include_done_todos", includeDoneTodos ? "true" : "false");
+    return api<DaySummaryResponse>(`/events/day-summary?${params.toString()}`, { token });
   }
 
   backfillEvents(input: BackfillEventsInput): Promise<BackfillEventsResult> {

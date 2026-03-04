@@ -9,6 +9,7 @@ import type { GoogleAccountSummary } from "@/features/auth/domain/AuthSession";
 import type {
   CalendarData,
   CreateEventInput,
+  DaySummaryData,
   EventData,
   EventPayload,
   HolidayData,
@@ -184,6 +185,12 @@ function toDateStr(date: Date): string {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
 }
 
+function isValidDateKey(value: string | null | undefined): value is string {
+  if (!value || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const date = new Date(`${value}T00:00:00`);
+  return !Number.isNaN(date.getTime()) && toDateStr(date) === value;
+}
+
 function toDateOnlyFromISO(value: string): string {
   if (!value) return "";
   return toDateStr(new Date(value));
@@ -314,11 +321,24 @@ export default function CalendarPage() {
   const [editorOpen, setEditorOpen] = useState(false);
   const [editorMode, setEditorMode] = useState<"create" | "edit">("create");
   const [editingEventID, setEditingEventID] = useState<string | null>(null);
+  const [daySummary, setDaySummary] = useState<DaySummaryData | null>(null);
+  const [daySummaryLoading, setDaySummaryLoading] = useState(false);
+  const [daySummaryError, setDaySummaryError] = useState("");
   const [editorForm, setEditorForm] = useState<EventEditorForm>(
     makeDefaultEditorForm(new Date(), new Date(Date.now() + 60 * 60 * 1000), "")
   );
 
-  const { listCalendars, getSettings, listEvents, listHolidays, backfillEvents, createEvent, updateEvent, deleteEvent } = useCalendarActions();
+  const {
+    listCalendars,
+    getSettings,
+    listEvents,
+    listHolidays,
+    getDaySummary,
+    backfillEvents,
+    createEvent,
+    updateEvent,
+    deleteEvent,
+  } = useCalendarActions();
   const { updateSetting } = useSettingsActions();
   const { listGoogleAccounts, triggerGoogleSync } = useAuthFlow();
 
@@ -382,6 +402,21 @@ export default function CalendarPage() {
     ? "계정: 전체"
     : `계정: ${selectedSyncEnabledGoogleAccountIDs.length}/${syncEnabledGoogleAccountIDs.length}`;
   const showPublicHolidays = settings[CALENDAR_SHOW_PUBLIC_HOLIDAYS_SETTING_KEY] !== "false";
+  const yearViewFocusDate = useMemo(() => {
+    if (view !== "year-compact" && view !== "year-timeline") return null;
+    const candidate = searchParams.get("focusDate");
+    if (isValidDateKey(candidate)) {
+      const focusYear = Number.parseInt(candidate.slice(0, 4), 10);
+      if (focusYear === currentDate.getFullYear()) {
+        return candidate;
+      }
+    }
+    const today = new Date();
+    if (today.getFullYear() === currentDate.getFullYear()) {
+      return toDateStr(today);
+    }
+    return `${currentDate.getFullYear()}-01-01`;
+  }, [currentDate, searchParams, view]);
 
   const accountDisplayNameByID = useMemo(
     () =>
@@ -551,6 +586,44 @@ export default function CalendarPage() {
     }
   }, [currentDate, listHolidays, showPublicHolidays, view, weekStartsOn]);
 
+  const loadDaySummary = useCallback(async () => {
+    if ((view !== "year-compact" && view !== "year-timeline") || !yearViewFocusDate) {
+      setDaySummary(null);
+      setDaySummaryError("");
+      setDaySummaryLoading(false);
+      return;
+    }
+
+    setDaySummaryLoading(true);
+    setDaySummaryError("");
+    try {
+      const summary = await getDaySummary(
+        yearViewFocusDate,
+        timezone,
+        filteredCalendarIDs.length > 0 ? filteredCalendarIDs : undefined,
+        false
+      );
+      const allowedCalendarIDs = new Set(filteredCalendarIDs);
+      const visibleEvents =
+        calendars.length > 0
+          ? (summary.events || []).filter((event) => allowedCalendarIDs.has(event.calendar_id))
+          : summary.events || [];
+      setDaySummary({ ...summary, events: visibleEvents });
+    } catch {
+      setDaySummary(null);
+      setDaySummaryError("일정 정보를 불러오지 못했습니다.");
+    } finally {
+      setDaySummaryLoading(false);
+    }
+  }, [
+    calendars.length,
+    filteredCalendarIDs,
+    getDaySummary,
+    timezone,
+    view,
+    yearViewFocusDate,
+  ]);
+
   const triggerCalendarSync = useCallback(
     async (reason: "page_enter" | "page_action" | "tab_heartbeat" | "manual", throttleMs = 0) => {
       const key = `calendar:${reason}`;
@@ -576,6 +649,7 @@ export default function CalendarPage() {
   useEffect(() => { loadGoogleAccounts(); }, [loadGoogleAccounts]);
   useEffect(() => { loadEvents(); }, [loadEvents]);
   useEffect(() => { loadHolidays(); }, [loadHolidays]);
+  useEffect(() => { loadDaySummary(); }, [loadDaySummary]);
   useEffect(() => {
     void triggerCalendarSync("page_enter", 60_000);
   }, [triggerCalendarSync]);
@@ -637,6 +711,25 @@ export default function CalendarPage() {
     router.replace(buildCalendarUrl(newView, date), { scroll: false });
   }, [router]);
 
+  const setYearViewPanelDate = useCallback(
+    (dateKey: string, baseDate?: Date, yearView: "year-compact" | "year-timeline" = "year-compact") => {
+      const base = buildCalendarUrl(yearView, baseDate || currentDate);
+      const params = new URLSearchParams(searchParams.toString());
+      params.set("panel", "day");
+      params.set("focusDate", dateKey);
+      router.replace(`${base}?${params.toString()}`, { scroll: false });
+    },
+    [currentDate, router, searchParams]
+  );
+
+  useEffect(() => {
+    if ((view !== "year-compact" && view !== "year-timeline") || !yearViewFocusDate) return;
+    const currentFocusDate = searchParams.get("focusDate");
+    const currentPanel = searchParams.get("panel");
+    if (currentFocusDate === yearViewFocusDate && currentPanel === "day") return;
+    setYearViewPanelDate(yearViewFocusDate, undefined, view);
+  }, [searchParams, setYearViewPanelDate, view, yearViewFocusDate]);
+
   const handleViewChange = (newView: CalendarViewMode) => {
     setView(newView);
     updateUrl(newView, currentDate);
@@ -687,7 +780,12 @@ export default function CalendarPage() {
   const goToday = () => {
     const today = new Date();
     setCurrentDate(today);
-    setSelectedDateKey(toDateStr(today));
+    const todayKey = toDateStr(today);
+    setSelectedDateKey(todayKey);
+    if (view === "year-compact" || view === "year-timeline") {
+      setYearViewPanelDate(todayKey, today, view);
+      return;
+    }
     updateUrl(view, today);
   };
 
@@ -997,35 +1095,73 @@ export default function CalendarPage() {
         {loading && events.length === 0 ? (
           <div className="flex items-center justify-center py-20 text-text-muted">불러오는 중...</div>
         ) : view === "year-compact" ? (
-          <YearCompactView
-            year={currentDate.getFullYear()}
-            events={displayEvents}
-            weekStartsOn={weekStartsOn}
-            holidaysByDate={holidaysByDate}
-            onMonthClick={(month) => {
-              const date = new Date(currentDate.getFullYear(), month, 1);
-              setView("month");
-              setCurrentDate(date);
-              updateUrl("month", date);
-            }}
-          />
+          <div className="flex h-full min-h-0 flex-col lg:flex-row">
+            <div className="min-h-0 flex-1">
+              <YearCompactView
+                year={currentDate.getFullYear()}
+                events={displayEvents}
+                weekStartsOn={weekStartsOn}
+                holidaysByDate={holidaysByDate}
+                selectedDateKey={yearViewFocusDate}
+                onMonthClick={(month) => {
+                  const date = new Date(currentDate.getFullYear(), month, 1);
+                  setView("month");
+                  setCurrentDate(date);
+                  updateUrl("month", date);
+                }}
+                onDateClick={(_, dateKey) => {
+                  setSelectedDateKey(dateKey);
+                  setYearViewPanelDate(dateKey, undefined, "year-compact");
+                }}
+              />
+            </div>
+            {yearViewFocusDate ? (
+              <YearCompactDayPanel
+                dateKey={yearViewFocusDate}
+                summary={daySummary}
+                loading={daySummaryLoading}
+                error={daySummaryError}
+                onEventClick={setSelectedEvent}
+                getEventColorByCalendar={getDisplayEventColor}
+              />
+            ) : null}
+          </div>
         ) : view === "year-timeline" ? (
-          <YearTimelineView
-            year={currentDate.getFullYear()}
-            events={displayEvents}
-            holidaysByDate={holidaysByDate}
-            getEventColor={(colorID, calendar) => {
-              if (useAccountUnifiedColors) {
-                const accountID = calendar?.google_account_id || "";
-                if (accountID && accountColorMap.has(accountID)) {
-                  return accountColorMap.get(accountID) || UNASSIGNED_ACCOUNT_COLOR;
-                }
-                return UNASSIGNED_ACCOUNT_COLOR;
-              }
-              return getGoogleEventColor(colorID, calendar?.color_id ?? null);
-            }}
-            calendars={filteredCalendars}
-          />
+          <div className="flex h-full min-h-0 flex-col lg:flex-row">
+            <div className="min-h-0 flex-1">
+              <YearTimelineView
+                year={currentDate.getFullYear()}
+                events={displayEvents}
+                holidaysByDate={holidaysByDate}
+                selectedDateKey={yearViewFocusDate}
+                onDateClick={(_, dateKey) => {
+                  setSelectedDateKey(dateKey);
+                  setYearViewPanelDate(dateKey, undefined, "year-timeline");
+                }}
+                getEventColor={(colorID, calendar) => {
+                  if (useAccountUnifiedColors) {
+                    const accountID = calendar?.google_account_id || "";
+                    if (accountID && accountColorMap.has(accountID)) {
+                      return accountColorMap.get(accountID) || UNASSIGNED_ACCOUNT_COLOR;
+                    }
+                    return UNASSIGNED_ACCOUNT_COLOR;
+                  }
+                  return getGoogleEventColor(colorID, calendar?.color_id ?? null);
+                }}
+                calendars={filteredCalendars}
+              />
+            </div>
+            {yearViewFocusDate ? (
+              <YearCompactDayPanel
+                dateKey={yearViewFocusDate}
+                summary={daySummary}
+                loading={daySummaryLoading}
+                error={daySummaryError}
+                onEventClick={setSelectedEvent}
+                getEventColorByCalendar={getDisplayEventColor}
+              />
+            ) : null}
+          </div>
         ) : view === "month" ? (
           <MonthView
             currentDate={currentDate}
@@ -1195,6 +1331,118 @@ export default function CalendarPage() {
         </DialogContent>
       </Dialog>
     </div>
+  );
+}
+
+function YearCompactDayPanel({
+  dateKey,
+  summary,
+  loading,
+  error,
+  onEventClick,
+  getEventColorByCalendar,
+}: {
+  dateKey: string;
+  summary: DaySummaryData | null;
+  loading: boolean;
+  error: string;
+  onEventClick: (event: EventData) => void;
+  getEventColorByCalendar: (eventColorID: string | null, calendarID: string) => string;
+}) {
+  const date = new Date(`${dateKey}T00:00:00`);
+  const title = Number.isNaN(date.getTime())
+    ? dateKey
+    : date.toLocaleDateString("ko-KR", {
+        year: "numeric",
+        month: "long",
+        day: "numeric",
+        weekday: "short",
+      });
+
+  return (
+    <aside className="w-full shrink-0 border-t border-border bg-background lg:h-full lg:w-[340px] lg:border-l lg:border-t-0">
+      <div className="flex h-full flex-col">
+        <div className="flex items-center justify-between border-b border-border px-4 py-3">
+          <div>
+            <p className="text-xs text-text-muted">선택 날짜</p>
+            <h3 className="text-sm font-semibold text-text-strong">{title}</h3>
+          </div>
+        </div>
+        <div className="flex-1 overflow-auto p-4">
+          {loading ? (
+            <p className="text-sm text-text-muted">일정을 불러오는 중...</p>
+          ) : error ? (
+            <p className="text-sm text-error">{error}</p>
+          ) : !summary ? (
+            <p className="text-sm text-text-muted">표시할 데이터가 없습니다.</p>
+          ) : (
+            <div className="space-y-5">
+              <section>
+                <p className="mb-2 text-xs font-medium text-text-muted">공휴일</p>
+                {summary.holidays.length === 0 ? (
+                  <p className="text-sm text-text-muted">없음</p>
+                ) : (
+                  <div className="space-y-1">
+                    {summary.holidays.map((holiday) => (
+                      <p key={`${holiday.date}-${holiday.name}`} className="text-sm font-medium text-error">
+                        {holiday.name}
+                      </p>
+                    ))}
+                  </div>
+                )}
+              </section>
+
+              <section>
+                <p className="mb-2 text-xs font-medium text-text-muted">일정</p>
+                {summary.events.length === 0 ? (
+                  <p className="text-sm text-text-muted">없음</p>
+                ) : (
+                  <div className="space-y-1.5">
+                    {summary.events.map((event) => (
+                      <button
+                        key={event.id}
+                        type="button"
+                        className="flex w-full items-start gap-2 rounded-md px-2 py-1.5 text-left transition-colors hover:bg-surface-accent/60"
+                        onClick={() => onEventClick(event)}
+                      >
+                        <span
+                          className="mt-1.5 h-2 w-2 shrink-0 rounded-full"
+                          style={{ backgroundColor: getEventColorByCalendar(event.color_id, event.calendar_id) }}
+                        />
+                        <span className="min-w-0 flex-1">
+                          <span className="block truncate text-sm text-text-primary">{event.title || "(제목 없음)"}</span>
+                          <span className="block text-xs text-text-muted">{formatEventTime(event)}</span>
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </section>
+
+              <section>
+                <p className="mb-2 text-xs font-medium text-text-muted">Todo</p>
+                {summary.todos.length === 0 ? (
+                  <p className="text-sm text-text-muted">없음</p>
+                ) : (
+                  <div className="space-y-1.5">
+                    {summary.todos.map((todo) => (
+                      <div key={todo.id} className="rounded-md border border-border/70 px-2 py-1.5">
+                        <p className={cn("text-sm", todo.is_done ? "text-text-muted line-through" : "text-text-primary")}>
+                          {todo.title}
+                        </p>
+                        <p className="text-[11px] text-text-muted">
+                          우선순위: {todo.priority}{todo.is_done ? " · 완료" : ""}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </section>
+            </div>
+          )}
+        </div>
+      </div>
+    </aside>
   );
 }
 

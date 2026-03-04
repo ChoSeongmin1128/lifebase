@@ -1,6 +1,6 @@
 import { api } from "../../shared/infrastructure/http-api";
 import { getAccessToken } from "../../auth/infrastructure/token-auth";
-import type { BackfillEventsResult, CalendarData, CalendarEvent, SettingsResponse } from "../domain/CalendarEntities";
+import type { BackfillEventsResult, CalendarData, CalendarEvent, DaySummaryData, SettingsResponse } from "../domain/CalendarEntities";
 import type { CalendarRepository } from "../repository/CalendarRepository";
 
 interface EventListResponse {
@@ -10,6 +10,8 @@ interface EventListResponse {
 interface CalendarListResponse {
   calendars?: CalendarData[];
 }
+
+type DaySummaryResponse = DaySummaryData;
 
 export class HttpCalendarRepository implements CalendarRepository {
   private async getToken(): Promise<string> {
@@ -51,6 +53,24 @@ export class HttpCalendarRepository implements CalendarRepository {
     }
     const data = await api<EventListResponse>(`/events?${params.toString()}`, { token });
     return data.events || [];
+  }
+
+  async getDaySummary(
+    date: string,
+    timezone: string,
+    calendarIDs?: string[],
+    includeDoneTodos: boolean = false
+  ): Promise<DaySummaryData> {
+    const token = await this.getToken();
+    const params = new URLSearchParams({ date });
+    if (timezone) {
+      params.set("tz", timezone);
+    }
+    if (calendarIDs && calendarIDs.length > 0) {
+      params.set("calendar_ids", calendarIDs.join(","));
+    }
+    params.set("include_done_todos", includeDoneTodos ? "true" : "false");
+    return api<DaySummaryResponse>(`/events/day-summary?${params.toString()}`, { token });
   }
 
   async backfillEvents(start: string, end: string, calendarIDs?: string[]): Promise<BackfillEventsResult> {

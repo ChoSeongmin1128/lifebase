@@ -63,3 +63,25 @@ export interface HolidayData {
   date: string;
   name: string;
 }
+
+export interface DaySummaryHoliday {
+  date: string;
+  name: string;
+}
+
+export interface DaySummaryTodo {
+  id: string;
+  list_id: string;
+  title: string;
+  due: string | null;
+  priority: string;
+  is_done: boolean;
+}
+
+export interface DaySummaryData {
+  date: string;
+  timezone: string;
+  holidays: DaySummaryHoliday[];
+  events: EventData[];
+  todos: DaySummaryTodo[];
+}

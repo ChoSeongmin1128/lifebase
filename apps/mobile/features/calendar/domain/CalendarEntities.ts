@@ -36,3 +36,25 @@ export type BackfillEventsResult = {
   covered_start: string;
   covered_end: string;
 };
+
+export type DaySummaryHoliday = {
+  date: string;
+  name: string;
+};
+
+export type DaySummaryTodo = {
+  id: string;
+  list_id: string;
+  title: string;
+  due: string | null;
+  priority: string;
+  is_done: boolean;
+};
+
+export type DaySummaryData = {
+  date: string;
+  timezone: string;
+  holidays: DaySummaryHoliday[];
+  events: CalendarEvent[];
+  todos: DaySummaryTodo[];
+};

@@ -3,6 +3,7 @@ package usecase
 import (
 	"context"
 	"fmt"
+	"sort"
 	"time"
 
 	"github.com/google/uuid"
@@ -18,6 +19,8 @@ type calendarUseCase struct {
 	reminders portout.ReminderRepository
 	outbox    portout.EventPushOutbox
 	backfill  portout.CalendarBackfillService
+	holidays  portout.DaySummaryHolidayRepository
+	todos     portout.DaySummaryTodoRepository
 }
 
 func NewCalendarUseCase(
@@ -26,6 +29,8 @@ func NewCalendarUseCase(
 	reminders portout.ReminderRepository,
 	outbox portout.EventPushOutbox,
 	backfill portout.CalendarBackfillService,
+	holidays portout.DaySummaryHolidayRepository,
+	todos portout.DaySummaryTodoRepository,
 ) portin.CalendarUseCase {
 	return &calendarUseCase{
 		calendars: calendars,
@@ -33,6 +38,8 @@ func NewCalendarUseCase(
 		reminders: reminders,
 		outbox:    outbox,
 		backfill:  backfill,
+		holidays:  holidays,
+		todos:     todos,
 	}
 }
 
@@ -217,6 +224,94 @@ func (uc *calendarUseCase) BackfillEvents(ctx context.Context, userID string, in
 		DeletedEvents: result.DeletedEvents,
 		CoveredStart:  result.CoveredStart,
 		CoveredEnd:    result.CoveredEnd,
+	}, nil
+}
+
+func (uc *calendarUseCase) GetDaySummary(
+	ctx context.Context,
+	userID string,
+	input portin.DaySummaryInput,
+) (*portin.DaySummaryResult, error) {
+	day, err := time.Parse("2006-01-02", input.Date)
+	if err != nil {
+		return nil, fmt.Errorf("invalid date format")
+	}
+
+	tz := input.Timezone
+	if tz == "" {
+		tz = "Asia/Seoul"
+	}
+	location, err := time.LoadLocation(tz)
+	if err != nil {
+		return nil, fmt.Errorf("invalid timezone")
+	}
+
+	startLocal := time.Date(day.Year(), day.Month(), day.Day(), 0, 0, 0, 0, location)
+	endLocal := startLocal.AddDate(0, 0, 1)
+
+	events, err := uc.events.ListByRange(
+		ctx,
+		userID,
+		input.CalendarIDs,
+		startLocal.UTC().Format(time.RFC3339),
+		endLocal.UTC().Format(time.RFC3339),
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	holidayItems := make([]portin.DaySummaryHoliday, 0)
+	if uc.holidays != nil {
+		holidayRows, err := uc.holidays.ListByDateRange(ctx, day, day)
+		if err != nil {
+			return nil, err
+		}
+		seenHoliday := make(map[string]struct{}, len(holidayRows))
+		for _, item := range holidayRows {
+			dateKey := item.Date.Format("2006-01-02")
+			key := dateKey + "|" + item.Name
+			if _, exists := seenHoliday[key]; exists {
+				continue
+			}
+			seenHoliday[key] = struct{}{}
+			holidayItems = append(holidayItems, portin.DaySummaryHoliday{
+				Date: dateKey,
+				Name: item.Name,
+			})
+		}
+		sort.SliceStable(holidayItems, func(i, j int) bool {
+			if holidayItems[i].Date == holidayItems[j].Date {
+				return holidayItems[i].Name < holidayItems[j].Name
+			}
+			return holidayItems[i].Date < holidayItems[j].Date
+		})
+	}
+
+	todoItems := make([]portin.DaySummaryTodo, 0)
+	if uc.todos != nil {
+		rows, err := uc.todos.ListByDueDate(ctx, userID, input.Date, input.IncludeDoneTodos)
+		if err != nil {
+			return nil, err
+		}
+		todoItems = make([]portin.DaySummaryTodo, 0, len(rows))
+		for _, row := range rows {
+			todoItems = append(todoItems, portin.DaySummaryTodo{
+				ID:       row.ID,
+				ListID:   row.ListID,
+				Title:    row.Title,
+				Due:      row.Due,
+				Priority: row.Priority,
+				IsDone:   row.IsDone,
+			})
+		}
+	}
+
+	return &portin.DaySummaryResult{
+		Date:     input.Date,
+		Timezone: tz,
+		Holidays: holidayItems,
+		Events:   events,
+		Todos:    todoItems,
 	}, nil
 }
 

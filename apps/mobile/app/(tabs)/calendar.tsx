@@ -12,7 +12,7 @@ import {
   buildFixedMonthGridWithWeekStart,
   getFixedMonthFetchRangeWithWeekStart,
 } from "../../lib/calendar/month-grid";
-import type { CalendarData, CalendarEvent } from "../../features/calendar/domain/CalendarEntities";
+import type { CalendarData, CalendarEvent, DaySummaryData } from "../../features/calendar/domain/CalendarEntities";
 
 const SHOW_SPECIAL_CALENDARS_SETTING_KEY = "calendar_show_special_calendars";
 const SPECIAL_ACCOUNT_SELECTION_SETTING_KEY = "calendar_selected_special_account_ids";
@@ -37,6 +37,31 @@ function normalizeHolidayTitle(title: string): string {
   return title.trim().replace(/\s+/g, " ").toLowerCase();
 }
 
+function formatTimeLabel(value: string): string {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  return date.toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" });
+}
+
+function formatSummaryEventTime(event: CalendarEvent): string {
+  if (event.is_all_day) return "종일";
+  const start = formatTimeLabel(event.start_time);
+  const end = formatTimeLabel(event.end_time);
+  if (start && end) return `${start} - ${end}`;
+  return start || end || "";
+}
+
+function formatDateLabel(dateKey: string): string {
+  const date = new Date(`${dateKey}T00:00:00`);
+  if (Number.isNaN(date.getTime())) return dateKey;
+  return date.toLocaleDateString("ko-KR", {
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+    weekday: "short",
+  });
+}
+
 function parseWeekStartsOn(settings: Record<string, string>): number {
   const raw = Number.parseInt(settings.calendar_week_start || "0", 10);
   if (Number.isNaN(raw)) return 0;
@@ -48,14 +73,21 @@ export default function CalendarScreen() {
   const [calendars, setCalendars] = useState<CalendarData[]>([]);
   const [events, setEvents] = useState<CalendarEvent[]>([]);
   const [currentDate, setCurrentDate] = useState(new Date());
-  const [selectedDateKey, setSelectedDateKey] = useState<string | null>(null);
+  const [selectedDateKey, setSelectedDateKey] = useState<string | null>(toDateKey(new Date()));
+  const [daySummary, setDaySummary] = useState<DaySummaryData | null>(null);
+  const [daySummaryLoading, setDaySummaryLoading] = useState(false);
+  const [daySummaryError, setDaySummaryError] = useState("");
   const [weekStartsOn, setWeekStartsOn] = useState(0);
   const [selectedSpecialAccountIDs, setSelectedSpecialAccountIDs] = useState<string[]>([]);
   const [selectedSpecialCalendarIDs, setSelectedSpecialCalendarIDs] = useState<string[]>([]);
   const [googleAccountEmails, setGoogleAccountEmails] = useState<Map<string, string>>(new Map());
   const pendingSelectAllSpecialRef = useRef(false);
-  const { listCalendars, getSettings, updateSettings, listEvents, backfillEvents } = useCalendarActions();
+  const { listCalendars, getSettings, updateSettings, listEvents, getDaySummary, backfillEvents } = useCalendarActions();
   const { listGoogleAccounts } = useAuthFlow();
+  const timezone = useMemo(
+    () => Intl.DateTimeFormat().resolvedOptions().timeZone || "Asia/Seoul",
+    []
+  );
 
   const loadSettings = useCallback(async () => {
     try {
@@ -119,6 +151,23 @@ export default function CalendarScreen() {
     () => new Set(selectedSpecialCalendarIDs),
     [selectedSpecialCalendarIDs]
   );
+  const visibleCalendars = useMemo(
+    () =>
+      calendars.filter((calendar) => {
+        if (calendar.is_special) {
+          if (calendar.google_account_id && !selectedSpecialAccountSet.has(calendar.google_account_id)) {
+            return false;
+          }
+          if (!selectedSpecialCalendarSet.has(calendar.id)) return false;
+        }
+        return true;
+      }),
+    [calendars, selectedSpecialAccountSet, selectedSpecialCalendarSet]
+  );
+  const visibleCalendarIDs = useMemo(
+    () => visibleCalendars.map((calendar) => calendar.id),
+    [visibleCalendars]
+  );
 
   const specialAccountLabel = useCallback((accountID: string) => {
     if (googleAccountEmails.has(accountID)) return googleAccountEmails.get(accountID) || accountID;
@@ -127,16 +176,6 @@ export default function CalendarScreen() {
 
   const load = useCallback(async () => {
     const { start, end } = getFixedMonthFetchRangeWithWeekStart(currentDate, weekStartsOn);
-    const visibleCalendars = calendars.filter((calendar) => {
-      if (calendar.is_special) {
-        if (calendar.google_account_id && !selectedSpecialAccountSet.has(calendar.google_account_id)) {
-          return false;
-        }
-        if (!selectedSpecialCalendarSet.has(calendar.id)) return false;
-      }
-      return true;
-    });
-    const visibleCalendarIDs = visibleCalendars.map((calendar) => calendar.id);
 
     try {
       if (calendars.length > 0 && visibleCalendarIDs.length === 0) {
@@ -177,7 +216,7 @@ export default function CalendarScreen() {
     } catch {
       setEvents([]);
     }
-  }, [backfillEvents, calendars, currentDate, listEvents, selectedSpecialAccountSet, selectedSpecialCalendarSet, weekStartsOn]);
+  }, [backfillEvents, calendars.length, currentDate, listEvents, visibleCalendarIDs, visibleCalendars, weekStartsOn]);
 
   useEffect(() => {
     loadSettings();
@@ -216,6 +255,42 @@ export default function CalendarScreen() {
   useEffect(() => {
     load();
   }, [load]);
+
+  useEffect(() => {
+    if (!selectedDateKey) {
+      setDaySummary(null);
+      setDaySummaryError("");
+      setDaySummaryLoading(false);
+      return;
+    }
+
+    let cancelled = false;
+    setDaySummaryLoading(true);
+    setDaySummaryError("");
+    getDaySummary(selectedDateKey, timezone, visibleCalendarIDs, false)
+      .then((summary) => {
+        if (cancelled) return;
+        const allowedCalendarIDs = new Set(visibleCalendarIDs);
+        const nextEvents =
+          calendars.length > 0
+            ? (summary.events || []).filter((event) => allowedCalendarIDs.has(event.calendar_id))
+            : summary.events || [];
+        setDaySummary({ ...summary, events: nextEvents });
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setDaySummary(null);
+        setDaySummaryError("날짜 요약을 불러오지 못했습니다.");
+      })
+      .finally(() => {
+        if (cancelled) return;
+        setDaySummaryLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [calendars.length, getDaySummary, selectedDateKey, timezone, visibleCalendarIDs]);
 
   const prevMonth = () => {
     setCurrentDate(
@@ -432,6 +507,77 @@ export default function CalendarScreen() {
             })}
           </View>
         ))}
+        {selectedDateKey ? (
+          <View style={styles.summaryPanel}>
+            <Text style={styles.summaryTitle}>{formatDateLabel(selectedDateKey)}</Text>
+            {daySummaryLoading ? (
+              <Text style={styles.summaryEmpty}>일정 정보를 불러오는 중...</Text>
+            ) : daySummaryError ? (
+              <Text style={styles.summaryError}>{daySummaryError}</Text>
+            ) : !daySummary ? (
+              <Text style={styles.summaryEmpty}>표시할 데이터가 없습니다.</Text>
+            ) : (
+              <>
+                <View style={styles.summarySection}>
+                  <Text style={styles.summarySectionTitle}>공휴일</Text>
+                  {daySummary.holidays.length === 0 ? (
+                    <Text style={styles.summaryEmpty}>없음</Text>
+                  ) : (
+                    daySummary.holidays.map((holiday) => (
+                      <Text key={`${holiday.date}-${holiday.name}`} style={styles.summaryHolidayText}>
+                        {holiday.name}
+                      </Text>
+                    ))
+                  )}
+                </View>
+
+                <View style={styles.summarySection}>
+                  <Text style={styles.summarySectionTitle}>일정</Text>
+                  {daySummary.events.length === 0 ? (
+                    <Text style={styles.summaryEmpty}>없음</Text>
+                  ) : (
+                    daySummary.events.map((event) => (
+                      <View key={event.id} style={styles.summaryEventRow}>
+                        <View style={styles.summaryEventHead}>
+                          <View style={styles.summaryEventDot} />
+                          <Text style={styles.summaryEventTitle} numberOfLines={1}>
+                            {event.title || "(제목 없음)"}
+                          </Text>
+                        </View>
+                        <Text style={styles.summaryMetaText}>{formatSummaryEventTime(event)}</Text>
+                      </View>
+                    ))
+                  )}
+                </View>
+
+                <View style={styles.summarySection}>
+                  <Text style={styles.summarySectionTitle}>Todo</Text>
+                  {daySummary.todos.length === 0 ? (
+                    <Text style={styles.summaryEmpty}>없음</Text>
+                  ) : (
+                    daySummary.todos.map((todo) => (
+                      <View key={todo.id} style={styles.summaryTodoRow}>
+                        <Text
+                          style={[
+                            styles.summaryTodoText,
+                            todo.is_done && styles.summaryTodoDoneText,
+                          ]}
+                          numberOfLines={2}
+                        >
+                          {todo.title}
+                        </Text>
+                        <Text style={styles.summaryMetaText}>
+                          우선순위 {todo.priority}
+                          {todo.is_done ? " · 완료" : ""}
+                        </Text>
+                      </View>
+                    ))
+                  )}
+                </View>
+              </>
+            )}
+          </View>
+        ) : null}
       </ScrollView>
     </View>
   );
@@ -550,4 +696,83 @@ const styles = StyleSheet.create({
     color: "#f1f5f9",
   },
   moreText: { fontSize: 9, color: "#999", textAlign: "center", marginTop: 1 },
+  summaryPanel: {
+    borderTopWidth: 1,
+    borderTopColor: "#e5e7eb",
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    marginTop: 8,
+    gap: 10,
+  },
+  summaryTitle: {
+    fontSize: 15,
+    fontWeight: "600",
+    color: "#111827",
+  },
+  summarySection: {
+    gap: 6,
+  },
+  summarySectionTitle: {
+    fontSize: 11,
+    color: "#6b7280",
+    fontWeight: "600",
+  },
+  summaryHolidayText: {
+    fontSize: 13,
+    color: "#b91c1c",
+    fontWeight: "600",
+  },
+  summaryEventRow: {
+    borderWidth: 1,
+    borderColor: "#e5e7eb",
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    gap: 2,
+  },
+  summaryEventHead: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+  },
+  summaryEventDot: {
+    width: 7,
+    height: 7,
+    borderRadius: 999,
+    backgroundColor: "#2563eb",
+  },
+  summaryEventTitle: {
+    flex: 1,
+    fontSize: 13,
+    color: "#111827",
+    fontWeight: "500",
+  },
+  summaryTodoRow: {
+    borderWidth: 1,
+    borderColor: "#e5e7eb",
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    gap: 2,
+  },
+  summaryTodoText: {
+    fontSize: 13,
+    color: "#111827",
+  },
+  summaryTodoDoneText: {
+    color: "#6b7280",
+    textDecorationLine: "line-through",
+  },
+  summaryMetaText: {
+    fontSize: 11,
+    color: "#6b7280",
+  },
+  summaryEmpty: {
+    fontSize: 12,
+    color: "#9ca3af",
+  },
+  summaryError: {
+    fontSize: 12,
+    color: "#b91c1c",
+  },
 });

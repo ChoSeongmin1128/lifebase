@@ -19,6 +19,10 @@ export class BrowseCalendarUseCase {
     return this.repo.listEvents(start, end, calendarIDs);
   }
 
+  getDaySummary(date: string, timezone: string, calendarIDs?: string[], includeDoneTodos: boolean = false) {
+    return this.repo.getDaySummary(date, timezone, calendarIDs, includeDoneTodos);
+  }
+
   backfillEvents(start: string, end: string, calendarIDs?: string[]) {
     return this.repo.backfillEvents(start, end, calendarIDs);
   }

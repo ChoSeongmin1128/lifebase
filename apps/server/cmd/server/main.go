@@ -110,6 +110,8 @@ func main() {
 	calendarRepo := calendarpg.NewCalendarRepo(dbpool)
 	eventRepo := calendarpg.NewEventRepo(dbpool)
 	reminderRepo := calendarpg.NewReminderRepo(dbpool)
+	calendarDayHolidayRepo := calendarpg.NewDaySummaryHolidayRepo(dbpool)
+	calendarDayTodoRepo := calendarpg.NewDaySummaryTodoRepo(dbpool)
 
 	// Todo repos
 	todoListRepo := todopg.NewListRepo(dbpool)
@@ -155,7 +157,15 @@ func main() {
 	thumbnailQueue := cloudasynq.NewThumbnailQueue(asynqClient)
 	cloudUC := cloudusecase.NewCloudUseCase(folderRepo, fileRepo, cloudSharedRepo, starRepo, storage, thumbnailQueue)
 	galleryUC := galleryusecase.NewGalleryUseCase(mediaRepo)
-	calendarUC := calendarusecase.NewCalendarUseCase(calendarRepo, eventRepo, reminderRepo, eventOutboxRepo, googleAccountSyncer)
+	calendarUC := calendarusecase.NewCalendarUseCase(
+		calendarRepo,
+		eventRepo,
+		reminderRepo,
+		eventOutboxRepo,
+		googleAccountSyncer,
+		calendarDayHolidayRepo,
+		calendarDayTodoRepo,
+	)
 	todoUC := todousecase.NewTodoUseCase(todoListRepo, todoItemRepo, todoOutboxRepo, todousecase.TodoExternalDeps{
 		GoogleAccounts: googleAccountRepo,
 		GoogleClient:   authOAuthClient,
@@ -302,6 +312,7 @@ func main() {
 				r.Post("/backfill", calendarHandler.BackfillEvents)
 				r.Post("/", calendarHandler.CreateEvent)
 				r.Get("/", calendarHandler.ListEvents)
+				r.Get("/day-summary", calendarHandler.GetDaySummary)
 				r.Get("/{eventID}", calendarHandler.GetEvent)
 				r.Patch("/{eventID}", calendarHandler.UpdateEvent)
 				r.Delete("/{eventID}", calendarHandler.DeleteEvent)

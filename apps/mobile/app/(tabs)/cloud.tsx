@@ -57,6 +57,22 @@ export default function CloudScreen() {
     return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
   };
 
+  const getIcon = (item: FolderItem): { label: string; color: string; background: string } => {
+    if (item.type === "folder") {
+      return { label: "FD", color: "#92400e", background: "#fef3c7" };
+    }
+
+    const mime = (item.mime_type || "").toLowerCase();
+    if (mime.startsWith("image/")) return { label: "IMG", color: "#065f46", background: "#d1fae5" };
+    if (mime.startsWith("video/")) return { label: "VID", color: "#991b1b", background: "#fee2e2" };
+    if (mime.startsWith("audio/")) return { label: "AUD", color: "#5b21b6", background: "#ede9fe" };
+    if (mime.includes("pdf")) return { label: "PDF", color: "#991b1b", background: "#fee2e2" };
+    if (mime.includes("javascript") || mime.includes("typescript") || mime.includes("json") || mime.includes("html") || mime.includes("css")) {
+      return { label: "</>", color: "#0c4a6e", background: "#e0f2fe" };
+    }
+    return { label: "DOC", color: "#334155", background: "#e2e8f0" };
+  };
+
   return (
     <View style={styles.container}>
       {path.length > 1 && (
@@ -76,24 +92,29 @@ export default function CloudScreen() {
           <Text style={styles.empty}>파일이 없습니다</Text>
         }
         renderItem={({ item }) => (
-          <TouchableOpacity
-            style={styles.row}
-            onPress={() => {
-              if (item.type === "folder") openFolder(item.id, item.name);
-            }}
-          >
-            <Text style={styles.icon}>
-              {item.type === "folder" ? "📁" : "📄"}
-            </Text>
-            <View style={styles.info}>
-              <Text style={styles.name} numberOfLines={1}>
-                {item.name}
-              </Text>
-              <Text style={styles.meta}>
-                {item.type === "file" ? formatSize(item.size_bytes) : "폴더"}
-              </Text>
-            </View>
-          </TouchableOpacity>
+          (() => {
+            const icon = getIcon(item);
+            return (
+              <TouchableOpacity
+                style={styles.row}
+                onPress={() => {
+                  if (item.type === "folder") openFolder(item.id, item.name);
+                }}
+              >
+                <View style={[styles.iconWrap, { backgroundColor: icon.background }]}>
+                  <Text style={[styles.iconLabel, { color: icon.color }]}>{icon.label}</Text>
+                </View>
+                <View style={styles.info}>
+                  <Text style={styles.name} numberOfLines={1}>
+                    {item.name}
+                  </Text>
+                  <Text style={styles.meta}>
+                    {item.type === "file" ? formatSize(item.size_bytes) : "폴더"}
+                  </Text>
+                </View>
+              </TouchableOpacity>
+            );
+          })()
         )}
       />
     </View>
@@ -111,7 +132,15 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: "#f0f0f0",
   },
-  icon: { fontSize: 24, marginRight: 12 },
+  iconWrap: {
+    width: 28,
+    height: 28,
+    borderRadius: 8,
+    alignItems: "center",
+    justifyContent: "center",
+    marginRight: 12,
+  },
+  iconLabel: { fontSize: 10, fontWeight: "700" },
   info: { flex: 1 },
   name: { fontSize: 15, fontWeight: "500" },
   meta: { fontSize: 12, color: "#999", marginTop: 2 },
