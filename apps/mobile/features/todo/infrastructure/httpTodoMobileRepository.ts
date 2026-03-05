@@ -8,7 +8,35 @@ interface TodoListResponse {
 }
 
 interface TodoResponse {
-  todos?: MobileTodoItem[];
+  todos?: ApiTodoItemResponse[];
+}
+
+interface ApiTodoItemResponse {
+  id: string;
+  list_id?: string;
+  title: string;
+  due?: string | null;
+  due_date?: string | null;
+  priority: string;
+  is_done?: boolean;
+  done?: boolean;
+  is_pinned: boolean;
+}
+
+function toMobileTodoItem(item: ApiTodoItemResponse): MobileTodoItem {
+  const done = item.done ?? item.is_done ?? false;
+  const due = item.due ?? item.due_date ?? null;
+  return {
+    id: item.id,
+    list_id: item.list_id,
+    title: item.title,
+    done,
+    is_done: done,
+    priority: item.priority || "normal",
+    due,
+    due_date: due || undefined,
+    is_pinned: item.is_pinned,
+  };
 }
 
 export class HttpTodoMobileRepository implements TodoMobileRepository {
@@ -42,7 +70,7 @@ export class HttpTodoMobileRepository implements TodoMobileRepository {
   async listTodos(listId: string): Promise<MobileTodoItem[]> {
     const token = await this.getToken();
     const data = await api<TodoResponse>(`/todo?list_id=${encodeURIComponent(listId)}`, { token });
-    return data.todos || [];
+    return (data.todos || []).map(toMobileTodoItem);
   }
 
   async updateDone(todoId: string, done: boolean): Promise<void> {

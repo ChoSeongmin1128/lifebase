@@ -8,11 +8,13 @@ import {
 } from "react-native";
 import { useCalendarActions } from "../../features/calendar/ui/hooks/useCalendarActions";
 import { useAuthFlow } from "../../features/auth/ui/hooks/useAuthFlow";
+import { useTodoActions } from "../../features/todo/ui/hooks/useTodoActions";
 import {
   buildFixedMonthGridWithWeekStart,
   getFixedMonthFetchRangeWithWeekStart,
 } from "../../lib/calendar/month-grid";
 import type { CalendarData, CalendarEvent, DaySummaryData } from "../../features/calendar/domain/CalendarEntities";
+import { formatDueYYMMDD } from "../../features/todo/lib/formatDueDate";
 
 const SHOW_SPECIAL_CALENDARS_SETTING_KEY = "calendar_show_special_calendars";
 const SPECIAL_ACCOUNT_SELECTION_SETTING_KEY = "calendar_selected_special_account_ids";
@@ -62,6 +64,14 @@ function formatDateLabel(dateKey: string): string {
   });
 }
 
+function getTodoPriorityRank(priority: string): number {
+  if (priority === "urgent") return 0;
+  if (priority === "high") return 1;
+  if (priority === "normal") return 2;
+  if (priority === "low") return 3;
+  return 4;
+}
+
 function parseWeekStartsOn(settings: Record<string, string>): number {
   const raw = Number.parseInt(settings.calendar_week_start || "0", 10);
   if (Number.isNaN(raw)) return 0;
@@ -83,6 +93,7 @@ export default function CalendarScreen() {
   const [googleAccountEmails, setGoogleAccountEmails] = useState<Map<string, string>>(new Map());
   const pendingSelectAllSpecialRef = useRef(false);
   const { listCalendars, getSettings, updateSettings, listEvents, getDaySummary, backfillEvents } = useCalendarActions();
+  const { listLists: listTodoLists, listTodos: listTodoItems } = useTodoActions();
   const { listGoogleAccounts } = useAuthFlow();
   const timezone = useMemo(
     () => Intl.DateTimeFormat().resolvedOptions().timeZone || "Asia/Seoul",
@@ -256,6 +267,42 @@ export default function CalendarScreen() {
     load();
   }, [load]);
 
+  const loadTodosForDate = useCallback(async (dateKey: string): Promise<DaySummaryData["todos"]> => {
+    const lists = await listTodoLists();
+    if (!lists || lists.length === 0) return [];
+
+    const grouped = await Promise.all(
+      lists.map(async (list) => {
+        try {
+          const items = await listTodoItems(list.id);
+          return items.map((todo) => ({ listID: list.id, todo }));
+        } catch {
+          return [];
+        }
+      }),
+    );
+
+    return grouped
+      .flat()
+      .filter(({ todo }) => {
+        const dueKey = (todo.due || todo.due_date || "").slice(0, 10);
+        return dueKey === dateKey;
+      })
+      .map(({ listID, todo }) => ({
+        id: todo.id,
+        list_id: todo.list_id || listID,
+        title: todo.title || "(제목 없음)",
+        due: todo.due || todo.due_date || null,
+        priority: todo.priority || "normal",
+        is_done: todo.done ?? todo.is_done ?? false,
+      }))
+      .sort((a, b) => {
+        const rankDiff = getTodoPriorityRank(a.priority) - getTodoPriorityRank(b.priority);
+        if (rankDiff !== 0) return rankDiff;
+        return (a.title || "").localeCompare(b.title || "");
+      });
+  }, [listTodoItems, listTodoLists]);
+
   useEffect(() => {
     if (!selectedDateKey) {
       setDaySummary(null);
@@ -275,9 +322,16 @@ export default function CalendarScreen() {
           calendars.length > 0
             ? (summary.events || []).filter((event) => allowedCalendarIDs.has(event.calendar_id))
             : summary.events || [];
-        setDaySummary({ ...summary, events: nextEvents });
+        const nextTodosPromise =
+          (summary.todos || []).length > 0
+            ? Promise.resolve(summary.todos || [])
+            : loadTodosForDate(selectedDateKey).catch(() => []);
+        return nextTodosPromise.then((nextTodos) => {
+          if (cancelled) return;
+          setDaySummary({ ...summary, events: nextEvents, todos: nextTodos });
+        });
       })
-      .catch(() => {
+      .catch(async () => {
         if (cancelled) return;
         const allowedCalendarIDs = new Set(visibleCalendarIDs);
         const calendarKindByID = new Map(calendars.map((calendar) => [calendar.id, calendar.kind]));
@@ -300,12 +354,13 @@ export default function CalendarScreen() {
           const kind = calendarKindByID.get(event.calendar_id);
           return !(kind === "holiday" && event.is_all_day);
         });
+        const fallbackTodos = await loadTodosForDate(selectedDateKey).catch(() => []);
         setDaySummary({
           date: selectedDateKey,
           timezone,
           holidays: mergedHolidays,
           events: mergedEvents,
-          todos: [],
+          todos: fallbackTodos,
         });
         setDaySummaryError("");
       })
@@ -317,7 +372,7 @@ export default function CalendarScreen() {
     return () => {
       cancelled = true;
     };
-  }, [calendars, events, getDaySummary, selectedDateKey, timezone, visibleCalendarIDs]);
+  }, [calendars, events, getDaySummary, loadTodosForDate, selectedDateKey, timezone, visibleCalendarIDs]);
 
   const prevMonth = () => {
     setCurrentDate(
@@ -595,6 +650,7 @@ export default function CalendarScreen() {
                         </Text>
                         <Text style={styles.summaryMetaText}>
                           우선순위 {todo.priority}
+                          {todo.due ? ` · 기한 ${formatDueYYMMDD(todo.due)}` : ""}
                           {todo.is_done ? " · 완료" : ""}
                         </Text>
                       </View>

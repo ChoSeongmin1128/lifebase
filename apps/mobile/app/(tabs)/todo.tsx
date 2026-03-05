@@ -13,6 +13,7 @@ import { useTodoActions } from "../../features/todo/ui/hooks/useTodoActions";
 import type { MobileTodoItem as TodoItem, MobileTodoList as TodoList } from "../../features/todo/domain/TodoEntities";
 import { useAuthFlow } from "../../features/auth/ui/hooks/useAuthFlow";
 import type { GoogleAccountSummary } from "../../features/auth/domain/AuthSession";
+import { formatDueYYMMDD } from "../../features/todo/lib/formatDueDate";
 
 export default function TodoScreen() {
   const [lists, setLists] = useState<TodoList[]>([]);
@@ -289,7 +290,7 @@ export default function TodoScreen() {
                 {item.title}
               </Text>
               {item.due_date && (
-                <Text style={styles.dueDate}>{item.due_date}</Text>
+                <Text style={styles.dueDate}>{formatDueYYMMDD(item.due_date)}</Text>
               )}
             </View>
             <View

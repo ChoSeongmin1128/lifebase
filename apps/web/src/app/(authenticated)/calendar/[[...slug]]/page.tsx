@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useMemo, useRef, type MouseEvent as ReactMouseEvent } from "react";
 import { useRouter, useParams, useSearchParams } from "next/navigation";
 import { useCalendarActions } from "@/features/calendar/ui/hooks/useCalendarActions";
+import { useTodoActions } from "@/features/todo/ui/hooks/useTodoActions";
 import { useSettingsActions } from "@/features/settings/ui/hooks/useSettingsActions";
 import { useAuthFlow } from "@/features/auth/ui/hooks/useAuthFlow";
 import type { GoogleAccountSummary } from "@/features/auth/domain/AuthSession";
@@ -59,6 +60,7 @@ import {
   getGoogleAccountDisplayName,
 } from "@/lib/google-account-preferences";
 import { getEventEndDateKey, getEventStartDateKey } from "@/lib/calendar/event-date";
+import { formatDueYYMMDD } from "@/features/todo/lib/formatDueDate";
 
 interface EventEditorForm {
   title: string;
@@ -220,6 +222,14 @@ function formatTimeRangeLabel(startISO: string, endISO: string): string {
   return `${formatTimeLabel(startISO)} - ${formatTimeLabel(endISO)}`;
 }
 
+function getTodoPriorityRank(priority: string): number {
+  if (priority === "urgent") return 0;
+  if (priority === "high") return 1;
+  if (priority === "normal") return 2;
+  if (priority === "low") return 3;
+  return 4;
+}
+
 function parseWeekHourRange(settings: Record<string, string>): { start: number; end: number } {
   const rawStart = Number.parseInt(settings.week_start_hour || "8", 10);
   const rawEnd = Number.parseInt(settings.week_end_hour || "22", 10);
@@ -339,6 +349,7 @@ export default function CalendarPage() {
     updateEvent,
     deleteEvent,
   } = useCalendarActions();
+  const { listLists: listTodoLists, listTodos } = useTodoActions();
   const { updateSetting } = useSettingsActions();
   const { listGoogleAccounts, triggerGoogleSync } = useAuthFlow();
 
@@ -586,6 +597,43 @@ export default function CalendarPage() {
     }
   }, [currentDate, listHolidays, showPublicHolidays, view, weekStartsOn]);
 
+  const loadTodosForDate = useCallback(async (dateKey: string): Promise<DaySummaryData["todos"]> => {
+    const lists = await listTodoLists();
+    if (!lists || lists.length === 0) {
+      return [];
+    }
+
+    const grouped = await Promise.all(
+      lists.map(async (list) => {
+        try {
+          const items = await listTodos(list.id, false);
+          return items.map((todo) => ({ listID: list.id, todo }));
+        } catch {
+          return [];
+        }
+      }),
+    );
+
+    const flattened = grouped.flat();
+    const filtered = flattened
+      .filter(({ todo }) => (todo.due || "").slice(0, 10) === dateKey)
+      .map(({ listID, todo }) => ({
+        id: todo.id,
+        list_id: todo.list_id || listID,
+        title: todo.title || "(제목 없음)",
+        due: todo.due || null,
+        priority: todo.priority || "normal",
+        is_done: todo.is_done,
+      }))
+      .sort((a, b) => {
+        const rankDiff = getTodoPriorityRank(a.priority) - getTodoPriorityRank(b.priority);
+        if (rankDiff !== 0) return rankDiff;
+        return (a.title || "").localeCompare(b.title || "");
+      });
+
+    return filtered;
+  }, [listTodoLists, listTodos]);
+
   const loadDaySummary = useCallback(async () => {
     if ((view !== "year-compact" && view !== "year-timeline") || !yearViewFocusDate) {
       setDaySummary(null);
@@ -608,7 +656,11 @@ export default function CalendarPage() {
         calendars.length > 0
           ? (summary.events || []).filter((event) => allowedCalendarIDs.has(event.calendar_id))
           : summary.events || [];
-      setDaySummary({ ...summary, events: visibleEvents });
+      const visibleTodos =
+        (summary.todos || []).length > 0
+          ? summary.todos || []
+          : await loadTodosForDate(yearViewFocusDate).catch(() => []);
+      setDaySummary({ ...summary, events: visibleEvents, todos: visibleTodos });
     } catch {
       const allowedCalendarIDs = new Set(filteredCalendarIDs);
       const fallbackEvents = (events || []).filter((event) => {
@@ -621,12 +673,13 @@ export default function CalendarPage() {
         date: yearViewFocusDate,
         name,
       }));
+      const fallbackTodos = await loadTodosForDate(yearViewFocusDate).catch(() => []);
       setDaySummary({
         date: yearViewFocusDate,
         timezone,
         holidays: fallbackHolidays,
         events: fallbackEvents,
-        todos: [],
+        todos: fallbackTodos,
       });
       setDaySummaryError("");
     } finally {
@@ -638,6 +691,7 @@ export default function CalendarPage() {
     filteredCalendarIDs,
     getDaySummary,
     holidaysByDate,
+    loadTodosForDate,
     timezone,
     view,
     yearViewFocusDate,
@@ -1395,69 +1449,77 @@ function YearCompactDayPanel({
           ) : !summary ? (
             <p className="text-sm text-text-muted">표시할 데이터가 없습니다.</p>
           ) : (
-            <div className="space-y-5">
-              <section>
-                <p className="mb-2 text-xs font-medium text-text-muted">공휴일</p>
-                {summary.holidays.length === 0 ? (
-                  <p className="text-sm text-text-muted">없음</p>
-                ) : (
-                  <div className="space-y-1">
-                    {summary.holidays.map((holiday) => (
-                      <p key={`${holiday.date}-${holiday.name}`} className="text-sm font-medium text-error">
-                        {holiday.name}
-                      </p>
-                    ))}
-                  </div>
-                )}
-              </section>
-
-              <section>
-                <p className="mb-2 text-xs font-medium text-text-muted">일정</p>
-                {summary.events.length === 0 ? (
-                  <p className="text-sm text-text-muted">없음</p>
-                ) : (
-                  <div className="space-y-1.5">
-                    {summary.events.map((event) => (
-                      <button
-                        key={event.id}
-                        type="button"
-                        className="flex w-full items-start gap-2 rounded-md px-2 py-1.5 text-left transition-colors hover:bg-surface-accent/60"
-                        onClick={() => onEventClick(event)}
-                      >
-                        <span
-                          className="mt-1.5 h-2 w-2 shrink-0 rounded-full"
-                          style={{ backgroundColor: getEventColorByCalendar(event.color_id, event.calendar_id) }}
-                        />
-                        <span className="min-w-0 flex-1">
-                          <span className="block truncate text-sm text-text-primary">{event.title || "(제목 없음)"}</span>
-                          <span className="block text-xs text-text-muted">{formatEventTime(event)}</span>
-                        </span>
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </section>
-
-              <section>
-                <p className="mb-2 text-xs font-medium text-text-muted">Todo</p>
-                {summary.todos.length === 0 ? (
-                  <p className="text-sm text-text-muted">없음</p>
-                ) : (
-                  <div className="space-y-1.5">
-                    {summary.todos.map((todo) => (
-                      <div key={todo.id} className="rounded-md border border-border/70 px-2 py-1.5">
-                        <p className={cn("text-sm", todo.is_done ? "text-text-muted line-through" : "text-text-primary")}>
-                          {todo.title}
-                        </p>
-                        <p className="text-[11px] text-text-muted">
-                          우선순위: {todo.priority}{todo.is_done ? " · 완료" : ""}
-                        </p>
+            <>
+              {summary.holidays.length === 0 && summary.events.length === 0 && summary.todos.length === 0 ? (
+                <p className="text-sm text-text-muted">표시할 데이터가 없습니다.</p>
+              ) : (
+                <div className="space-y-5">
+                  {summary.holidays.length > 0 ? (
+                    <section>
+                      <p className="mb-2 text-xs font-medium text-text-muted">공휴일</p>
+                      <div className="space-y-1">
+                        {summary.holidays.map((holiday) => (
+                          <p key={`${holiday.date}-${holiday.name}`} className="text-sm font-medium text-error">
+                            {holiday.name}
+                          </p>
+                        ))}
                       </div>
-                    ))}
-                  </div>
-                )}
-              </section>
-            </div>
+                    </section>
+                  ) : null}
+
+                  <section>
+                    <p className="mb-2 text-xs font-medium text-text-muted">일정</p>
+                    {summary.events.length === 0 ? (
+                      <p className="text-sm text-text-muted">없음</p>
+                    ) : (
+                      <div className="space-y-1.5">
+                        {summary.events.map((event) => (
+                          <button
+                            key={event.id}
+                            type="button"
+                            className="flex w-full items-start gap-2 rounded-md px-2 py-1.5 text-left transition-colors hover:bg-surface-accent/60"
+                            onClick={() => onEventClick(event)}
+                          >
+                            <span
+                              className="mt-1.5 h-2 w-2 shrink-0 rounded-full"
+                              style={{ backgroundColor: getEventColorByCalendar(event.color_id, event.calendar_id) }}
+                            />
+                            <span className="min-w-0 flex-1">
+                              <span className="block truncate text-sm text-text-primary">{event.title || "(제목 없음)"}</span>
+                              <span className="block text-xs text-text-muted">{formatEventTime(event)}</span>
+                            </span>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </section>
+
+                  <section>
+                    <p className="mb-2 text-xs font-medium text-text-muted">Todo</p>
+                    {summary.todos.length === 0 ? (
+                      <p className="text-sm text-text-muted">없음</p>
+                    ) : (
+                      <div className="space-y-1.5">
+                        {summary.todos.map((todo) => {
+                          const dueLabel = formatDueYYMMDD(todo.due);
+                          return (
+                            <div key={todo.id} className="rounded-md border border-border/70 px-2 py-1.5">
+                              <p className={cn("text-sm", todo.is_done ? "text-text-muted line-through" : "text-text-primary")}>
+                                {todo.title}
+                              </p>
+                              <p className="text-[11px] text-text-muted">
+                                우선순위: {todo.priority}{todo.is_done ? " · 완료" : ""}
+                                {dueLabel ? ` · 기한 ${dueLabel}` : ""}
+                              </p>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </section>
+                </div>
+              )}
+            </>
           )}
         </div>
       </div>

@@ -7,6 +7,7 @@ import { PageToolbar, PageToolbarGroup } from "@/components/layout/PageToolbar";
 import { useHomeActions } from "@/features/home/ui/hooks/useHomeActions";
 import type { HomeSummary, HomeSummaryEvent, HomeSummaryTodo } from "@/features/home/domain/HomeSummary";
 import { CalendarPlus, CheckCircle2, Upload } from "lucide-react";
+import { formatDueYYMMDD } from "@/features/todo/lib/formatDueDate";
 
 const STORAGE_TYPE_META = {
   image: { label: "이미지", color: "#22c55e" },
@@ -50,7 +51,7 @@ function formatEventTime(event: HomeSummaryEvent): string {
 function getTodoBadge(todo: HomeSummaryTodo): string {
   if (todo.priority === "urgent") return "긴급";
   if (todo.priority === "high") return "높음";
-  return todo.due_date ? todo.due_date : "보통";
+  return todo.due_date ? formatDueYYMMDD(todo.due_date) : "보통";
 }
 
 export default function HomePage() {

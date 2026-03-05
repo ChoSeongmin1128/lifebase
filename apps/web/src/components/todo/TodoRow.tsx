@@ -27,6 +27,7 @@ import {
   ArrowRightLeft,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { formatDueYYMMDD } from "@/features/todo/lib/formatDueDate";
 
 interface TodoItem {
   id: string;
@@ -183,7 +184,7 @@ export function TodoRow({
             isOverdue ? "text-error font-medium" : "text-text-muted"
           )}
         >
-          {new Date(todo.due).toLocaleDateString("ko-KR", { month: "numeric", day: "numeric" })}
+          {formatDueYYMMDD(todo.due)}
         </span>
       )}
 
