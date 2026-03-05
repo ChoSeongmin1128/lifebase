@@ -334,6 +334,9 @@ export default function CalendarPage() {
   const [daySummary, setDaySummary] = useState<DaySummaryData | null>(null);
   const [daySummaryLoading, setDaySummaryLoading] = useState(false);
   const [daySummaryError, setDaySummaryError] = useState("");
+  const [yearTimelineTodosByDate, setYearTimelineTodosByDate] = useState<Map<string, DaySummaryData["todos"]>>(new Map());
+  const [yearTimelineTodosLoadedKey, setYearTimelineTodosLoadedKey] = useState("");
+  const [yearTimelineTodosLoadingKey, setYearTimelineTodosLoadingKey] = useState("");
   const [editorForm, setEditorForm] = useState<EventEditorForm>(
     makeDefaultEditorForm(new Date(), new Date(Date.now() + 60 * 60 * 1000), "")
   );
@@ -428,6 +431,10 @@ export default function CalendarPage() {
     }
     return `${currentDate.getFullYear()}-01-01`;
   }, [currentDate, searchParams, view]);
+  const yearTimelineTodoCacheKey = useMemo(
+    () => `${currentDate.getFullYear()}|${Array.from(effectiveSelectedGoogleAccountSet).sort().join(",")}`,
+    [currentDate, effectiveSelectedGoogleAccountSet],
+  );
 
   const accountDisplayNameByID = useMemo(
     () =>
@@ -602,9 +609,16 @@ export default function CalendarPage() {
     if (!lists || lists.length === 0) {
       return [];
     }
+    const filteredLists = lists.filter((list) => {
+      if (!list.google_account_id) return true;
+      return effectiveSelectedGoogleAccountSet.has(list.google_account_id);
+    });
+    if (filteredLists.length === 0) {
+      return [];
+    }
 
     const grouped = await Promise.all(
-      lists.map(async (list) => {
+      filteredLists.map(async (list) => {
         try {
           const items = await listTodos(list.id, false);
           return items.map((todo) => ({ listID: list.id, todo }));
@@ -632,7 +646,110 @@ export default function CalendarPage() {
       });
 
     return filtered;
-  }, [listTodoLists, listTodos]);
+  }, [effectiveSelectedGoogleAccountSet, listTodoLists, listTodos]);
+
+  useEffect(() => {
+    if (view !== "year-timeline") return;
+    if (yearTimelineTodosLoadedKey === yearTimelineTodoCacheKey) return;
+    if (yearTimelineTodosLoadingKey === yearTimelineTodoCacheKey) return;
+
+    let cancelled = false;
+    const year = currentDate.getFullYear();
+    const startKey = `${year}-01-01`;
+    const endKey = `${year}-12-31`;
+
+    const loadYearTimelineTodos = async () => {
+      setYearTimelineTodosLoadingKey(yearTimelineTodoCacheKey);
+      setYearTimelineTodosByDate(new Map());
+      try {
+        const lists = await listTodoLists();
+        if (!lists || lists.length === 0) {
+          if (!cancelled) {
+            setYearTimelineTodosByDate(new Map());
+            setYearTimelineTodosLoadedKey(yearTimelineTodoCacheKey);
+          }
+          return;
+        }
+
+        const filteredLists = lists.filter((list) => {
+          if (!list.google_account_id) return true;
+          return effectiveSelectedGoogleAccountSet.has(list.google_account_id);
+        });
+        if (filteredLists.length === 0) {
+          if (!cancelled) {
+            setYearTimelineTodosByDate(new Map());
+            setYearTimelineTodosLoadedKey(yearTimelineTodoCacheKey);
+          }
+          return;
+        }
+
+        const grouped = await Promise.all(
+          filteredLists.map(async (list) => {
+            try {
+              const items = await listTodos(list.id, false);
+              return items.map((todo) => ({ listID: list.id, todo }));
+            } catch {
+              return [];
+            }
+          }),
+        );
+
+        if (cancelled) return;
+
+        const byDate = new Map<string, DaySummaryData["todos"]>();
+        grouped.flat().forEach(({ listID, todo }) => {
+          const dueDate = (todo.due || "").slice(0, 10);
+          if (!isValidDateKey(dueDate)) return;
+          if (dueDate < startKey || dueDate > endKey) return;
+
+          const prev = byDate.get(dueDate) || [];
+          prev.push({
+            id: todo.id,
+            list_id: todo.list_id || listID,
+            title: todo.title || "(제목 없음)",
+            due: todo.due || null,
+            priority: todo.priority || "normal",
+            is_done: todo.is_done,
+          });
+          byDate.set(dueDate, prev);
+        });
+
+        for (const [dateKey, items] of byDate.entries()) {
+          items.sort((a, b) => {
+            const rankDiff = getTodoPriorityRank(a.priority) - getTodoPriorityRank(b.priority);
+            if (rankDiff !== 0) return rankDiff;
+            return (a.title || "").localeCompare(b.title || "");
+          });
+          byDate.set(dateKey, items);
+        }
+
+        setYearTimelineTodosByDate(byDate);
+        setYearTimelineTodosLoadedKey(yearTimelineTodoCacheKey);
+      } catch {
+        if (!cancelled) {
+          setYearTimelineTodosByDate(new Map());
+          setYearTimelineTodosLoadedKey(yearTimelineTodoCacheKey);
+        }
+      } finally {
+        setYearTimelineTodosLoadingKey((prev) => (prev === yearTimelineTodoCacheKey ? "" : prev));
+      }
+    };
+
+    void loadYearTimelineTodos();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    currentDate,
+    effectiveSelectedGoogleAccountSet,
+    listTodoLists,
+    listTodos,
+    view,
+    yearTimelineTodoCacheKey,
+    yearTimelineTodosLoadedKey,
+    yearTimelineTodosLoadingKey,
+  ]);
 
   const loadDaySummary = useCallback(async () => {
     if ((view !== "year-compact" && view !== "year-timeline") || !yearViewFocusDate) {
@@ -659,7 +776,8 @@ export default function CalendarPage() {
       const visibleTodos =
         (summary.todos || []).length > 0
           ? summary.todos || []
-          : await loadTodosForDate(yearViewFocusDate).catch(() => []);
+          : (view === "year-timeline" ? yearTimelineTodosByDate.get(yearViewFocusDate) : undefined) ||
+            await loadTodosForDate(yearViewFocusDate).catch(() => []);
       setDaySummary({ ...summary, events: visibleEvents, todos: visibleTodos });
     } catch {
       const allowedCalendarIDs = new Set(filteredCalendarIDs);
@@ -673,7 +791,9 @@ export default function CalendarPage() {
         date: yearViewFocusDate,
         name,
       }));
-      const fallbackTodos = await loadTodosForDate(yearViewFocusDate).catch(() => []);
+      const fallbackTodos =
+        (view === "year-timeline" ? yearTimelineTodosByDate.get(yearViewFocusDate) : undefined) ||
+        await loadTodosForDate(yearViewFocusDate).catch(() => []);
       setDaySummary({
         date: yearViewFocusDate,
         timezone,
@@ -694,6 +814,7 @@ export default function CalendarPage() {
     loadTodosForDate,
     timezone,
     view,
+    yearTimelineTodosByDate,
     yearViewFocusDate,
   ]);
 
@@ -1206,6 +1327,7 @@ export default function CalendarPage() {
                 year={currentDate.getFullYear()}
                 events={displayEvents}
                 holidaysByDate={holidaysByDate}
+                todosByDate={yearTimelineTodosByDate}
                 selectedDateKey={yearViewFocusDate}
                 onDateClick={(_, dateKey) => {
                   setSelectedDateKey(dateKey);
@@ -1431,6 +1553,10 @@ function YearCompactDayPanel({
         day: "numeric",
         weekday: "short",
       });
+  const hasHolidays = !!summary && summary.holidays.length > 0;
+  const hasEvents = !!summary && summary.events.length > 0;
+  const hasTodos = !!summary && summary.todos.length > 0;
+  const hasAnyData = hasHolidays || hasEvents || hasTodos;
 
   return (
     <aside className="w-full shrink-0 border-t border-border bg-background lg:h-full lg:w-[340px] lg:border-l lg:border-t-0">
@@ -1450,11 +1576,11 @@ function YearCompactDayPanel({
             <p className="text-sm text-text-muted">표시할 데이터가 없습니다.</p>
           ) : (
             <>
-              {summary.holidays.length === 0 && summary.events.length === 0 && summary.todos.length === 0 ? (
+              {!hasAnyData ? (
                 <p className="text-sm text-text-muted">표시할 데이터가 없습니다.</p>
               ) : (
                 <div className="space-y-5">
-                  {summary.holidays.length > 0 ? (
+                  {hasHolidays ? (
                     <section>
                       <p className="mb-2 text-xs font-medium text-text-muted">공휴일</p>
                       <div className="space-y-1">
@@ -1467,11 +1593,9 @@ function YearCompactDayPanel({
                     </section>
                   ) : null}
 
-                  <section>
-                    <p className="mb-2 text-xs font-medium text-text-muted">일정</p>
-                    {summary.events.length === 0 ? (
-                      <p className="text-sm text-text-muted">없음</p>
-                    ) : (
+                  {hasEvents ? (
+                    <section>
+                      <p className="mb-2 text-xs font-medium text-text-muted">일정</p>
                       <div className="space-y-1.5">
                         {summary.events.map((event) => (
                           <button
@@ -1491,14 +1615,12 @@ function YearCompactDayPanel({
                           </button>
                         ))}
                       </div>
-                    )}
-                  </section>
+                    </section>
+                  ) : null}
 
-                  <section>
-                    <p className="mb-2 text-xs font-medium text-text-muted">Todo</p>
-                    {summary.todos.length === 0 ? (
-                      <p className="text-sm text-text-muted">없음</p>
-                    ) : (
+                  {hasTodos ? (
+                    <section>
+                      <p className="mb-2 text-xs font-medium text-text-muted">Todo</p>
                       <div className="space-y-1.5">
                         {summary.todos.map((todo) => {
                           const dueLabel = formatDueYYMMDD(todo.due);
@@ -1515,8 +1637,8 @@ function YearCompactDayPanel({
                           );
                         })}
                       </div>
-                    )}
-                  </section>
+                    </section>
+                  ) : null}
                 </div>
               )}
             </>

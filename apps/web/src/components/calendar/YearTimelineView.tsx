@@ -15,6 +15,12 @@ interface EventData {
   calendar_id: string;
 }
 
+interface TimelineTodoItem {
+  id: string;
+  title: string;
+  is_done: boolean;
+}
+
 interface TimelineEvent extends EventData {
   startKey: string;
   endKey: string;
@@ -25,6 +31,7 @@ interface YearTimelineViewProps {
   year: number;
   events: EventData[];
   holidaysByDate: Map<string, string[]>;
+  todosByDate?: Map<string, TimelineTodoItem[]>;
   selectedDateKey?: string | null;
   getEventColor: (
     colorId: string | null,
@@ -91,6 +98,7 @@ export function YearTimelineView({
   year,
   events,
   holidaysByDate,
+  todosByDate = new Map(),
   selectedDateKey,
   getEventColor,
   calendars,
@@ -200,22 +208,61 @@ export function YearTimelineView({
 
                   const dateKey = `${year}-${String(monthIndex + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
                   const dayEvents = eventsByDate.get(dateKey) || [];
+                  const dayTodos = todosByDate.get(dateKey) || [];
                   const visibleEvents = dayEvents.filter((event) => (laneByEventID.get(event.id) ?? 0) < MAX_VISIBLE_LANES);
-                  const hiddenCount = Math.max(0, dayEvents.length - visibleEvents.length);
                   const holidayLabel = holidaysByDate.get(dateKey)?.[0] || "";
-                  const displayEvent = visibleEvents.find((event) => event.startKey === dateKey) || visibleEvents[0] || null;
-                  const displayText = holidayLabel || displayEvent?.title || "";
                   const isToday = dateKey === todayKey;
                   const isWeekend = new Date(year, monthIndex, day).getDay() % 6 === 0;
                   const isSelected = selectedDateKey === dateKey;
+                  const displayableEvent =
+                    visibleEvents.find((event) => event.startKey === dateKey) || visibleEvents[0] || null;
+                  const displayEventColor = displayableEvent
+                    ? getEventColor(displayableEvent.color_id, calMap.get(displayableEvent.calendar_id))
+                    : "";
+                  const continuedEvent =
+                    day === 1 && visibleEvents.length > 0 && visibleEvents[0].startKey < dateKey ? visibleEvents[0] : null;
+
+                  const firstTodo = dayTodos[0] || null;
+                  let hiddenTodoCount = 0;
+                  let displayType: "none" | "holiday" | "event" | "todo" | "continued" = "none";
+                  let displayText = "";
+
+                  if (holidayLabel) {
+                    displayType = "holiday";
+                    displayText = holidayLabel;
+                    hiddenTodoCount = dayTodos.length;
+                  } else if (visibleEvents.length > 0) {
+                    const startEvent = visibleEvents.find((event) => {
+                      const isSingle = event.startKey === dateKey && event.endKey === dateKey;
+                      const isStart = event.startKey === dateKey;
+                      return isSingle || isStart;
+                    });
+
+                    if (startEvent) {
+                      displayType = "event";
+                      displayText = startEvent.title || "(제목 없음)";
+                      hiddenTodoCount = dayTodos.length;
+                    } else if (firstTodo) {
+                      displayType = "todo";
+                      hiddenTodoCount = Math.max(0, dayTodos.length - 1);
+                    } else if (continuedEvent) {
+                      displayType = "continued";
+                      displayText = `← ${continuedEvent.title || "(제목 없음)"}`;
+                    }
+                  } else if (firstTodo) {
+                    displayType = "todo";
+                    hiddenTodoCount = Math.max(0, dayTodos.length - 1);
+                  }
+
+                  const hiddenCount = Math.max(0, dayEvents.length - visibleEvents.length) + hiddenTodoCount;
 
                   return (
-                    <td key={monthIndex} className="h-full border-b border-r border-border/30 p-0 align-top">
+                    <td key={monthIndex} className="h-full overflow-visible border-b border-r border-border/30 p-0 align-top">
                       <button
                         type="button"
                         onClick={() => onDateClick?.(new Date(year, monthIndex, day), dateKey)}
                         className={cn(
-                          "relative flex h-full w-full cursor-pointer items-center overflow-hidden px-1 pl-[14px] text-left transition-colors",
+                          "relative flex h-full w-full cursor-pointer items-center overflow-visible px-1 pl-[14px] text-left transition-colors",
                           isWeekend && !isToday && "bg-surface-accent/25",
                           isToday && "bg-primary/10",
                           isSelected && "ring-1 ring-inset ring-primary/60"
@@ -224,17 +271,17 @@ export function YearTimelineView({
                         {visibleEvents.map((event) => {
                           const lane = laneByEventID.get(event.id) ?? 0;
                           const isSingle = event.startKey === dateKey && event.endKey === dateKey;
-                          const isStart = event.startKey === dateKey;
+                          const isStart = event.startKey === dateKey || (day === 1 && event.startKey < dateKey);
                           const isEnd = event.endKey === dateKey;
                           return (
                             <span
                               key={event.id}
                               className={cn(
-                                "pointer-events-none absolute w-[3px]",
+                                "pointer-events-none absolute z-[1] w-[3px]",
                                 isSingle && "top-[2px] bottom-[2px] rounded-[3px]",
-                                !isSingle && isStart && "top-[1px] bottom-0 rounded-t-[3px]",
-                                !isSingle && isEnd && "top-0 bottom-[1px] rounded-b-[3px]",
-                                !isSingle && !isStart && !isEnd && "top-0 bottom-0"
+                                !isSingle && isStart && "top-[1px] bottom-[-1px] rounded-t-[3px]",
+                                !isSingle && isEnd && "top-[-1px] bottom-[1px] rounded-b-[3px]",
+                                !isSingle && !isStart && !isEnd && "top-[-1px] bottom-[-1px]"
                               )}
                               style={{
                                 left: `${1 + lane * 4}px`,
@@ -243,15 +290,33 @@ export function YearTimelineView({
                             />
                           );
                         })}
-                        <span
-                          className={cn(
-                            "truncate text-[10px] leading-none",
-                            holidayLabel ? "font-semibold text-error" : "text-text-secondary"
-                          )}
-                          title={displayText}
-                        >
-                          {displayText}
-                        </span>
+                        {displayType === "todo" && firstTodo ? (
+                          <span
+                            className={cn(
+                              "z-[2] min-w-0 flex-1 truncate rounded-full border border-violet-300/50 bg-violet-100/60 px-1.5 py-[1px] text-[9px] leading-none text-violet-700",
+                              firstTodo.is_done && "border-slate-300/60 bg-slate-100 text-slate-500 line-through"
+                            )}
+                            title={firstTodo.title}
+                          >
+                            {firstTodo.title}
+                          </span>
+                        ) : displayType !== "none" ? (
+                          <span
+                            className={cn(
+                              "z-[2] truncate text-[10px] leading-none",
+                              displayType === "holiday" && "font-semibold text-error",
+                              displayType === "continued" && "italic opacity-60"
+                            )}
+                            style={
+                              displayType === "event" || displayType === "continued"
+                                ? { color: displayEventColor || undefined }
+                                : undefined
+                            }
+                            title={displayText}
+                          >
+                            {displayText}
+                          </span>
+                        ) : null}
                         {hiddenCount > 0 ? (
                           <span className="ml-1 shrink-0 text-[8px] font-semibold leading-none text-primary">+{hiddenCount}</span>
                         ) : null}
