@@ -56,14 +56,25 @@
 - explorer는 read-only 탐색, worker는 구현, reviewer는 리스크 검토, monitor는 장기 대기/폴링 담당
 
 ## 워크트리 운영 원칙
-- 기본 브랜치 기준은 `dev`로 고정한다.
+- 기본 통합 브랜치 기준은 `dev`로 고정한다.
 - 작은 작업은 일반 브랜치 또는 worktree 중 하나를 선택할 수 있다.
 - 큰 작업, 병렬 작업, 멀티플랫폼 작업은 git worktree 사용을 기본으로 한다.
-- 브랜치 네이밍: `task/<ticket>-<scope>-<platform>`
+- Codex는 저장소 상위 디렉터리에서 시작해도 된다.
+- 에이전트는 먼저 원본 repo 경로를 확인한 뒤, 원본 repo에서 worktree를 생성해야 한다.
+- worktree 생성 후에는 생성된 worktree 경로를 작업 기준 경로로 전환하고, 원본 repo에서는 계속 구현하지 않는다.
+- 브랜치 네이밍 기본 형식은 `task/<scope>-<platform>`이다.
+- 외부 작업 ID가 있을 때만 `task/<ticket>-<scope>-<platform>` 형식을 사용한다.
 - 브랜치는 `dev` 최신 상태를 기준으로 생성하고, 병합 전까지 수시로 `dev` 기준 rebase를 유지한다.
 - 병합 전략은 `dev` 대상 squash merge를 기본으로 한다.
 - web-first 통합 브랜치를 사용한다.
 - 순서: Web 공통 반영 -> Desktop/Mobile rebase+merge -> 통합 검증 -> `dev` squash merge
+
+## 에이전트 완료 책임
+- 사용자가 작업 완료까지 요청한 경우, 에이전트는 로컬 수정만 하고 멈추지 않는다.
+- worktree 전략을 쓰는 작업이면 원본 repo에서 worktree 생성 후 생성된 worktree 안에서 후속 작업을 이어간다.
+- 기본 흐름은 브랜치 푸시 -> PR 생성 -> 필요 시 리뷰/상태 확인 -> squash merge -> 원격 브랜치 삭제 -> 로컬 브랜치와 worktree 정리다.
+- PR/merge/정리 단계가 실행되지 못하면, 실패 지점과 원인을 보고한다.
+- 원격 반영 전에는 커밋 범위와 검증 결과를 다시 확인한다.
 
 ## 실행 정책 검증
 - 레포 도메인 규칙은 `.claude/rules/*.md`로 운영한다.

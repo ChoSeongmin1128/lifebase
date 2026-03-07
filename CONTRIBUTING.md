@@ -35,8 +35,15 @@
 - 영향 범위를 먼저 확인하고 필요하면 작업 시작 전에 기준을 합의한다.
 
 ## git worktree 운영
-- 브랜치 네이밍은 `task/<ticket>-<scope>-<platform>`을 사용한다.
+- 브랜치 네이밍 기본 형식은 `task/<scope>-<platform>`이다.
+- 외부 작업 ID가 있을 때만 `task/<ticket>-<scope>-<platform>` 형식을 사용한다.
+- 예: `task/calendar-sync-web`, `task/workflow-docs-repo`, `task/128-calendar-sync-web`
+- Codex는 저장소 상위 디렉터리에서 시작할 수 있다.
+- 이 경우 에이전트는 원본 repo 경로를 찾은 뒤 그 repo에서 worktree를 생성한다.
+- worktree 생성 후에는 생성된 worktree 경로에서만 구현, 검증, 커밋, PR 작업을 이어간다.
 - worktree 디렉터리는 현재 작업 목적이 드러나는 이름으로 만든다.
+- worktree는 저장소 루트에서 생성해도 되고, 경로는 보통 저장소 상위 디렉터리의 형제 폴더로 둔다.
+- 예: `/Users/seongmin/project/lifebase`에서 `git worktree add ../lifebase-calendar-sync-web -b task/calendar-sync-web dev`
 - 작업 브랜치는 생성 직후 `dev` 기준으로 맞추고, 오래 열어두지 않는다.
 - 장기 작업은 중간 병합 대신 `git fetch` 후 `dev` 기준 rebase를 우선한다.
 
@@ -47,6 +54,17 @@
 4. Desktop/Mobile은 Web 결과 기준으로 rebase 후 반영한다.
 5. 통합 검증을 마친 뒤 `dev`에 squash merge 한다.
 
+## 에이전트 수행 범위
+- 사용자가 작업 완료까지 요청한 경우 에이전트는 아래 범위를 끝까지 수행한다.
+- worktree 전략이면 원본 repo에서 worktree 생성 후 생성된 worktree 경로로 작업 컨텍스트 전환
+- 작업 브랜치 정리 및 커밋
+- 원격 브랜치 푸시
+- PR 생성과 본문 작성
+- squash merge
+- 원격 브랜치 삭제
+- 로컬 브랜치와 worktree 정리
+- 실패 시 중단 지점, 원인, 필요한 후속 액션을 바로 보고한다.
+
 ## PR 작성 규칙
 - squash merge를 전제로 하므로 PR이 상세 작업 기록의 기준 문서가 된다.
 - PR 설명에는 최소한 아래 내용을 포함한다.
@@ -56,6 +74,32 @@
 - 실행한 테스트와 수동 검증 결과
 - 미실행 테스트와 그 이유
 - 주요 리스크, 롤백 포인트, 후속 작업
+
+## PR 본문 템플릿
+```md
+## 배경
+- 이 변경이 필요한 이유
+
+## 변경 범위
+- 이번 PR에 포함한 내용
+
+## 비범위
+- 이번 PR에서 의도적으로 제외한 내용
+
+## 영향 플랫폼
+- Web:
+- Desktop:
+- Mobile:
+
+## 검증
+- 실행한 테스트:
+- 수동 검증:
+- 미실행 항목과 이유:
+
+## 리스크와 후속 작업
+- 현재 리스크:
+- 후속 작업:
+```
 
 ## squash merge 커밋 규칙
 - squash merge 커밋은 최종 의사결정과 검증 범위를 남기는 요약본으로 작성한다.
