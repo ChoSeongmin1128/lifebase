@@ -10,6 +10,7 @@ description: Orchestrate multi-agent and git worktree execution for complex Life
   - at least two large work units overlap in modified scope, or
   - two or more platforms are touched.
 - If large-unit/complex-task classification is ambiguous, ask the user directly instead of guessing.
-- Use branch naming: `task/<ticket>-<scope>-<platform>`.
+- Use branch naming `task/<scope>-<platform>` by default.
+- If an external work item ID exists, expand to `task/<ticket>-<scope>-<platform>`.
 - Execute web-first integration, then desktop/mobile rebase+merge.
 - Require final integrated verification after platform merges.

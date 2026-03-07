@@ -35,8 +35,12 @@
 - 영향 범위를 먼저 확인하고 필요하면 작업 시작 전에 기준을 합의한다.
 
 ## git worktree 운영
-- 브랜치 네이밍은 `task/<ticket>-<scope>-<platform>`을 사용한다.
+- 브랜치 네이밍 기본 형식은 `task/<scope>-<platform>`이다.
+- 외부 작업 ID가 있을 때만 `task/<ticket>-<scope>-<platform>` 형식을 사용한다.
+- 예: `task/calendar-sync-web`, `task/workflow-docs-repo`, `task/128-calendar-sync-web`
 - worktree 디렉터리는 현재 작업 목적이 드러나는 이름으로 만든다.
+- worktree는 저장소 루트에서 생성해도 되고, 경로는 보통 저장소 상위 디렉터리의 형제 폴더로 둔다.
+- 예: `/Users/seongmin/project/lifebase`에서 `git worktree add ../lifebase-calendar-sync-web -b task/calendar-sync-web dev`
 - 작업 브랜치는 생성 직후 `dev` 기준으로 맞추고, 오래 열어두지 않는다.
 - 장기 작업은 중간 병합 대신 `git fetch` 후 `dev` 기준 rebase를 우선한다.
 

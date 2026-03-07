@@ -56,10 +56,11 @@
 - explorer는 read-only 탐색, worker는 구현, reviewer는 리스크 검토, monitor는 장기 대기/폴링 담당
 
 ## 워크트리 운영 원칙
-- 기본 브랜치 기준은 `dev`로 고정한다.
+- 기본 통합 브랜치 기준은 `dev`로 고정한다.
 - 작은 작업은 일반 브랜치 또는 worktree 중 하나를 선택할 수 있다.
 - 큰 작업, 병렬 작업, 멀티플랫폼 작업은 git worktree 사용을 기본으로 한다.
-- 브랜치 네이밍: `task/<ticket>-<scope>-<platform>`
+- 브랜치 네이밍 기본 형식은 `task/<scope>-<platform>`이다.
+- 외부 작업 ID가 있을 때만 `task/<ticket>-<scope>-<platform>` 형식을 사용한다.
 - 브랜치는 `dev` 최신 상태를 기준으로 생성하고, 병합 전까지 수시로 `dev` 기준 rebase를 유지한다.
 - 병합 전략은 `dev` 대상 squash merge를 기본으로 한다.
 - web-first 통합 브랜치를 사용한다.
