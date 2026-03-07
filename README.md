@@ -187,9 +187,16 @@ npx expo start
 
 ```bash
 cd apps/server
-go test ./...
-# 14개 테스트 (Todo 5, Sharing 6, Response 3)
+LIFEBASE_TEST_DATABASE_URL='postgres://<user>@localhost:5432/lifebase_test?sslmode=disable' \
+go test -p 1 ./... -coverprofile=/tmp/lifebase-cover.out
+go tool cover -func=/tmp/lifebase-cover.out | tail -n 1
 ```
+
+백엔드 테스트 정책:
+- 백엔드 변경은 항상 TDD(`Fail -> Pass -> Refactor`)로 진행
+- 전체 직렬 실행 기준 테스트 커버리지 `100%` 유지
+- Go 테스트는 대상 코드와 같은 디렉토리에 `*_test.go`로 배치
+- 공통 테스트 도우미는 `apps/server/internal/testutil` 사용
 
 ## 아키텍처
 

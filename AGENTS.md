@@ -10,6 +10,7 @@
 - auth/data access/sharing/sync/logging/file handling -> `.claude/rules/security.md`
 - API endpoint/use case/adapter/layer boundary -> `.claude/rules/api-architecture.md`
 - migration/index/rollback/schema change -> `.claude/rules/database.md`
+- backend test/TDD/coverage -> `.claude/rules/testing.md`
 - route state/URL/deep-link/navigation change -> `.claude/rules/routing.md`
 - commit policy -> `.claude/rules/commit-message.md`
 - release/version bump/sync -> `.claude/rules/versioning.md`
