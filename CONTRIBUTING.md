@@ -38,6 +38,9 @@
 - 브랜치 네이밍 기본 형식은 `task/<scope>-<platform>`이다.
 - 외부 작업 ID가 있을 때만 `task/<ticket>-<scope>-<platform>` 형식을 사용한다.
 - 예: `task/calendar-sync-web`, `task/workflow-docs-repo`, `task/128-calendar-sync-web`
+- Codex는 저장소 상위 디렉터리에서 시작할 수 있다.
+- 이 경우 에이전트는 원본 repo 경로를 찾은 뒤 그 repo에서 worktree를 생성한다.
+- worktree 생성 후에는 생성된 worktree 경로에서만 구현, 검증, 커밋, PR 작업을 이어간다.
 - worktree 디렉터리는 현재 작업 목적이 드러나는 이름으로 만든다.
 - worktree는 저장소 루트에서 생성해도 되고, 경로는 보통 저장소 상위 디렉터리의 형제 폴더로 둔다.
 - 예: `/Users/seongmin/project/lifebase`에서 `git worktree add ../lifebase-calendar-sync-web -b task/calendar-sync-web dev`
@@ -53,6 +56,7 @@
 
 ## 에이전트 수행 범위
 - 사용자가 작업 완료까지 요청한 경우 에이전트는 아래 범위를 끝까지 수행한다.
+- worktree 전략이면 원본 repo에서 worktree 생성 후 생성된 worktree 경로로 작업 컨텍스트 전환
 - 작업 브랜치 정리 및 커밋
 - 원격 브랜치 푸시
 - PR 생성과 본문 작성
