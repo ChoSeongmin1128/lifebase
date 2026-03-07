@@ -4,6 +4,8 @@
 
 Google OAuth 단일 인증으로 파일 관리, 일정, 할 일을 하나의 서비스에서 관리한다.
 
+개발 협업 워크플로우는 `CONTRIBUTING.md`를 기준으로 운영한다.
+
 ## 스택
 
 | 영역 | 기술 |
@@ -218,6 +220,7 @@ internal/<module>/
 | `docs/220-할일-기능.md` | Todo 계층, 우선순위, 고정, Google Tasks |
 | `docs/400-시스템-아키텍처.md` | 헥사고날 구조, 인프라, 파일 스토리지, 썸네일 |
 | `docs/420-플랫폼-기술선정.md` | 스택 선정 이유, 플랫폼별 역할 |
+| `CONTRIBUTING.md` | 브랜치 전략, worktree 기준, squash merge 운영 |
 | `docs/700-마일스톤.md` | 10단계 구현 로드맵 + 현재 진행 상황 |
 
 전체 문서 인덱스: `plan.md`
