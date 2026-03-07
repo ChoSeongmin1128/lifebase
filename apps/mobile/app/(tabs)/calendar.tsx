@@ -15,6 +15,7 @@ import {
 } from "../../lib/calendar/month-grid";
 import type { CalendarData, CalendarEvent, DaySummaryData } from "../../features/calendar/domain/CalendarEntities";
 import { formatDueYYMMDD } from "../../features/todo/lib/formatDueDate";
+import { formatDescriptionText } from "../../lib/rich-text-description";
 
 const SHOW_SPECIAL_CALENDARS_SETTING_KEY = "calendar_show_special_calendars";
 const SPECIAL_ACCOUNT_SELECTION_SETTING_KEY = "calendar_selected_special_account_ids";
@@ -627,6 +628,11 @@ export default function CalendarScreen() {
                           </Text>
                         </View>
                         <Text style={styles.summaryMetaText}>{formatSummaryEventTime(event)}</Text>
+                        {formatDescriptionText(event.description) ? (
+                          <Text style={styles.summaryDescriptionText} numberOfLines={6}>
+                            {formatDescriptionText(event.description)}
+                          </Text>
+                        ) : null}
                       </View>
                     ))
                   )}
@@ -849,6 +855,12 @@ const styles = StyleSheet.create({
   summaryMetaText: {
     fontSize: 11,
     color: "#6b7280",
+  },
+  summaryDescriptionText: {
+    fontSize: 12,
+    lineHeight: 18,
+    color: "#4b5563",
+    marginTop: 6,
   },
   summaryEmpty: {
     fontSize: 12,

@@ -61,6 +61,7 @@ import {
 } from "@/lib/google-account-preferences";
 import { getEventEndDateKey, getEventStartDateKey } from "@/lib/calendar/event-date";
 import { formatDueYYMMDD } from "@/features/todo/lib/formatDueDate";
+import { RichTextDescription } from "@/lib/rich-text-description";
 
 interface EventEditorForm {
   title: string;
@@ -1414,9 +1415,7 @@ export default function CalendarPage() {
                 {selectedEvent.location && (
                   <p className="mt-1 text-xs text-text-muted">{selectedEvent.location}</p>
                 )}
-                {selectedEvent.description && (
-                  <p className="mt-2 text-xs text-text-secondary">{selectedEvent.description}</p>
-                )}
+                <RichTextDescription value={selectedEvent.description} />
               </div>
             </div>
             <div className="mt-3 flex justify-between gap-2">

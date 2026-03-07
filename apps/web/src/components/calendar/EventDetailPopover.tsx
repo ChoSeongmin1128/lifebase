@@ -2,6 +2,7 @@
 
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent } from "@/components/ui/popover";
+import { RichTextDescription } from "@/lib/rich-text-description";
 import { MapPin, Clock, Trash2 } from "lucide-react";
 
 interface EventData {
@@ -50,9 +51,7 @@ export function EventDetailPopover({ event, open, onClose, onDelete, color }: Ev
                 {event.location}
               </div>
             )}
-            {event.description && (
-              <p className="mt-2 text-xs text-text-secondary">{event.description}</p>
-            )}
+            <RichTextDescription value={event.description} />
           </div>
         </div>
         <div className="mt-3 flex justify-between">
