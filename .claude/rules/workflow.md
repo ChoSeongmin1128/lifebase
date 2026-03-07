@@ -66,6 +66,12 @@
 - web-first 통합 브랜치를 사용한다.
 - 순서: Web 공통 반영 -> Desktop/Mobile rebase+merge -> 통합 검증 -> `dev` squash merge
 
+## 에이전트 완료 책임
+- 사용자가 작업 완료까지 요청한 경우, 에이전트는 로컬 수정만 하고 멈추지 않는다.
+- 기본 흐름은 브랜치 푸시 -> PR 생성 -> 필요 시 리뷰/상태 확인 -> squash merge -> 원격 브랜치 삭제 -> 로컬 브랜치와 worktree 정리다.
+- PR/merge/정리 단계가 실행되지 못하면, 실패 지점과 원인을 보고한다.
+- 원격 반영 전에는 커밋 범위와 검증 결과를 다시 확인한다.
+
 ## 실행 정책 검증
 - 레포 도메인 규칙은 `.claude/rules/*.md`로 운영한다.
 - Codex 명령 실행 정책(강제)은 `.codex/rules/default.rules`로 운영한다.

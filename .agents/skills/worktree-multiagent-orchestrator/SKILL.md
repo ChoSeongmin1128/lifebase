@@ -14,3 +14,4 @@ description: Orchestrate multi-agent and git worktree execution for complex Life
 - If an external work item ID exists, expand to `task/<ticket>-<scope>-<platform>`.
 - Execute web-first integration, then desktop/mobile rebase+merge.
 - Require final integrated verification after platform merges.
+- When the user expects end-to-end completion, carry the work through push, PR creation, squash merge, and branch/worktree cleanup.
