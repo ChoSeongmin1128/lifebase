@@ -403,15 +403,11 @@ func (uc *todoUseCase) ReorderTodos(ctx context.Context, userID string, items []
 		}
 	}
 
-	resolveFinalParent := func(id string) (*string, error) {
+	resolveFinalParent := func(id string, fallback *string) *string {
 		if parentID, ok := nextParentByID[id]; ok {
-			return parentID, nil
+			return parentID
 		}
-		t, err := getTodo(id)
-		if err != nil {
-			return nil, err
-		}
-		return t.ParentID, nil
+		return fallback
 	}
 
 	for _, item := range items {
@@ -427,18 +423,12 @@ func (uc *todoUseCase) ReorderTodos(ctx context.Context, userID string, items []
 		if err != nil {
 			return fmt.Errorf("parent todo not found")
 		}
-		childTodo, err := getTodo(item.ID)
-		if err != nil {
-			return fmt.Errorf("todo not found")
-		}
+		childTodo := todoCache[item.ID]
 		if parentTodo.ListID != childTodo.ListID {
 			return fmt.Errorf("parent todo must be in same list")
 		}
 
-		parentFinalParent, err := resolveFinalParent(*parentID)
-		if err != nil {
-			return fmt.Errorf("parent todo not found")
-		}
+		parentFinalParent := resolveFinalParent(*parentID, parentTodo.ParentID)
 		// Max 1 level nesting: parent must be a root item in final state.
 		if parentFinalParent != nil {
 			return fmt.Errorf("maximum nesting depth is 1 level")

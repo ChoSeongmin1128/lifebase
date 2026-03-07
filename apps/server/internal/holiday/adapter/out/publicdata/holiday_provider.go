@@ -83,9 +83,6 @@ func (p *holidayProvider) fetchOnce(ctx context.Context, endpoint string, year, 
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode >= 500 {
-		return nil, "", fmt.Errorf("kasi api returned %d", resp.StatusCode)
-	}
 	if resp.StatusCode != http.StatusOK {
 		return nil, "", fmt.Errorf("kasi api returned %d", resp.StatusCode)
 	}
@@ -132,24 +129,6 @@ func extractItemRaw(itemsRaw json.RawMessage) (json.RawMessage, error) {
 		return nil, nil
 	}
 
-	// 일반 케이스: { "item": ... }
-	var wrapped struct {
-		Item json.RawMessage `json:"item"`
-	}
-	if err := json.Unmarshal(itemsRaw, &wrapped); err == nil {
-		itemTrimmed := strings.TrimSpace(string(wrapped.Item))
-		if itemTrimmed == "" || itemTrimmed == "null" || itemTrimmed == "{}" || itemTrimmed == `""` {
-			return nil, nil
-		}
-		return wrapped.Item, nil
-	}
-
-	// 일부 케이스에서 items가 item payload 자체로 내려오는 경우를 허용
-	if strings.HasPrefix(trimmed, "[") || strings.HasPrefix(trimmed, "{") {
-		return itemsRaw, nil
-	}
-
-	// items가 문자열이면 빈 문자열만 무시, 그 외는 오류로 처리
 	if strings.HasPrefix(trimmed, "\"") {
 		var value string
 		if err := json.Unmarshal(itemsRaw, &value); err != nil {
@@ -160,6 +139,28 @@ func extractItemRaw(itemsRaw json.RawMessage) (json.RawMessage, error) {
 			return nil, nil
 		}
 		return json.RawMessage(value), nil
+	}
+
+	if strings.HasPrefix(trimmed, "[") {
+		return itemsRaw, nil
+	}
+
+	if strings.HasPrefix(trimmed, "{") {
+		var wrapped map[string]json.RawMessage
+		if err := json.Unmarshal(itemsRaw, &wrapped); err != nil {
+			return nil, err
+		}
+
+		if itemRaw, ok := wrapped["item"]; ok {
+			itemTrimmed := strings.TrimSpace(string(itemRaw))
+			if itemTrimmed == "" || itemTrimmed == "null" || itemTrimmed == "{}" || itemTrimmed == `""` {
+				return nil, nil
+			}
+			return itemRaw, nil
+		}
+
+		// 일부 케이스에서 items가 item payload 자체로 내려오는 경우를 허용
+		return itemsRaw, nil
 	}
 
 	return nil, fmt.Errorf("unexpected items payload: %s", trimmed)

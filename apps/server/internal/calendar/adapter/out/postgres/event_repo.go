@@ -69,18 +69,7 @@ func (r *eventRepo) ListByRange(ctx context.Context, userID string, calendarIDs 
 		return nil, err
 	}
 	defer rows.Close()
-
-	var events []*domain.Event
-	for rows.Next() {
-		var e domain.Event
-		if err := rows.Scan(&e.ID, &e.CalendarID, &e.UserID, &e.GoogleID, &e.Title, &e.Description,
-			&e.Location, &e.StartTime, &e.EndTime, &e.Timezone, &e.IsAllDay,
-			&e.ColorID, &e.RecurrenceRule, &e.ETag, &e.CreatedAt, &e.UpdatedAt, &e.DeletedAt); err != nil {
-			return nil, err
-		}
-		events = append(events, &e)
-	}
-	return events, nil
+	return scanEventRows(rows)
 }
 
 func (r *eventRepo) Update(ctx context.Context, event *domain.Event) error {
@@ -136,7 +125,15 @@ func (r *reminderRepo) ListByEvent(ctx context.Context, eventID string) ([]domai
 		return nil, err
 	}
 	defer rows.Close()
+	return scanReminderRows(rows)
+}
 
+func (r *reminderRepo) DeleteByEvent(ctx context.Context, eventID string) error {
+	_, err := r.db.Exec(ctx, `DELETE FROM event_reminders WHERE event_id = $1`, eventID)
+	return err
+}
+
+func scanReminderRows(rows pgx.Rows) ([]domain.EventReminder, error) {
 	var reminders []domain.EventReminder
 	for rows.Next() {
 		var rem domain.EventReminder
@@ -145,10 +142,25 @@ func (r *reminderRepo) ListByEvent(ctx context.Context, eventID string) ([]domai
 		}
 		reminders = append(reminders, rem)
 	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
 	return reminders, nil
 }
 
-func (r *reminderRepo) DeleteByEvent(ctx context.Context, eventID string) error {
-	_, err := r.db.Exec(ctx, `DELETE FROM event_reminders WHERE event_id = $1`, eventID)
-	return err
+func scanEventRows(rows pgx.Rows) ([]*domain.Event, error) {
+	var events []*domain.Event
+	for rows.Next() {
+		var e domain.Event
+		if err := rows.Scan(&e.ID, &e.CalendarID, &e.UserID, &e.GoogleID, &e.Title, &e.Description,
+			&e.Location, &e.StartTime, &e.EndTime, &e.Timezone, &e.IsAllDay,
+			&e.ColorID, &e.RecurrenceRule, &e.ETag, &e.CreatedAt, &e.UpdatedAt, &e.DeletedAt); err != nil {
+			return nil, err
+		}
+		events = append(events, &e)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return events, nil
 }

@@ -239,7 +239,11 @@ func (uc *adminUseCase) CreateAdmin(ctx context.Context, actorUserID, email stri
 	}
 
 	existing, err := uc.admins.FindByUserID(ctx, targetUser.ID)
-	if err == nil && existing != nil {
+	if err != nil {
+		if err != pgx.ErrNoRows {
+			return nil, err
+		}
+	} else if existing != nil {
 		existing.Role = role
 		existing.IsActive = true
 		existing.UpdatedAt = time.Now()
@@ -257,8 +261,6 @@ func (uc *adminUseCase) CreateAdmin(ctx context.Context, actorUserID, email stri
 			CreatedAt: existing.CreatedAt,
 			UpdatedAt: existing.UpdatedAt,
 		}, nil
-	} else if err != nil && err != pgx.ErrNoRows {
-		return nil, err
 	}
 
 	now := time.Now()

@@ -18,6 +18,7 @@ const (
 
 var (
 	errInvalidState = errors.New("invalid oauth state")
+	randRead        = rand.Read
 )
 
 func Generate(app, hmacKey string) (string, error) {
@@ -29,7 +30,7 @@ func Generate(app, hmacKey string) (string, error) {
 	}
 
 	nonceBytes := make([]byte, 16)
-	if _, err := rand.Read(nonceBytes); err != nil {
+	if _, err := randRead(nonceBytes); err != nil {
 		return "", fmt.Errorf("generate nonce: %w", err)
 	}
 

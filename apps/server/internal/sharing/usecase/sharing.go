@@ -14,6 +14,8 @@ import (
 	portout "lifebase/internal/sharing/port/out"
 )
 
+var shareRandRead = rand.Read
+
 type sharingUseCase struct {
 	shares  portout.ShareRepository
 	invites portout.ShareInviteRepository
@@ -117,7 +119,7 @@ func (uc *sharingUseCase) RemoveShare(ctx context.Context, ownerID, shareID stri
 
 func generateToken() (string, error) {
 	b := make([]byte, 32)
-	if _, err := rand.Read(b); err != nil {
+	if _, err := shareRandRead(b); err != nil {
 		return "", err
 	}
 	return base64.URLEncoding.EncodeToString(b), nil

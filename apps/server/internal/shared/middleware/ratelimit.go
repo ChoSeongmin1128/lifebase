@@ -65,12 +65,16 @@ func (rl *RateLimiter) Handler(next http.Handler) http.Handler {
 func (rl *RateLimiter) cleanup() {
 	for {
 		time.Sleep(5 * time.Minute)
-		rl.mu.Lock()
-		for ip, v := range rl.visitors {
-			if time.Since(v.lastSeen) > 5*time.Minute {
-				delete(rl.visitors, ip)
-			}
+		rl.cleanupExpired(time.Now())
+	}
+}
+
+func (rl *RateLimiter) cleanupExpired(now time.Time) {
+	rl.mu.Lock()
+	defer rl.mu.Unlock()
+	for ip, v := range rl.visitors {
+		if now.Sub(v.lastSeen) > 5*time.Minute {
+			delete(rl.visitors, ip)
 		}
-		rl.mu.Unlock()
 	}
 }

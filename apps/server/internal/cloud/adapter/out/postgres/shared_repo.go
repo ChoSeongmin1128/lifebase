@@ -21,7 +21,7 @@ func (r *sharedRepo) ListSharedFolders(ctx context.Context, userID string) ([]*d
 		`SELECT DISTINCT ON (f.id)
 		 f.id, f.user_id, f.parent_id, f.name, f.created_at, f.updated_at, f.deleted_at
 		 FROM shares s
-		 JOIN folders f ON f.id = s.folder_id
+		 JOIN folders f ON f.id::text = s.folder_id
 		 WHERE s.shared_with = $1 AND f.deleted_at IS NULL
 		 ORDER BY f.id, s.created_at DESC`, userID)
 	if err != nil {

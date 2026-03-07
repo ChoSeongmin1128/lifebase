@@ -4,6 +4,7 @@ import (
 	"context"
 	"time"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	calendarportout "lifebase/internal/calendar/port/out"
@@ -35,16 +36,7 @@ func (r *daySummaryHolidayRepo) ListByDateRange(
 		return nil, err
 	}
 	defer rows.Close()
-
-	var holidays []calendarportout.DaySummaryHoliday
-	for rows.Next() {
-		var item calendarportout.DaySummaryHoliday
-		if err := rows.Scan(&item.Date, &item.Name); err != nil {
-			return nil, err
-		}
-		holidays = append(holidays, item)
-	}
-	return holidays, nil
+	return scanDaySummaryHolidayRows(rows)
 }
 
 type daySummaryTodoRepo struct {
@@ -88,7 +80,28 @@ func (r *daySummaryTodoRepo) ListByDueDate(
 		return nil, err
 	}
 	defer rows.Close()
+	return scanDaySummaryTodoRows(rows)
+}
 
+var _ calendarportout.DaySummaryHolidayRepository = (*daySummaryHolidayRepo)(nil)
+var _ calendarportout.DaySummaryTodoRepository = (*daySummaryTodoRepo)(nil)
+
+func scanDaySummaryHolidayRows(rows pgx.Rows) ([]calendarportout.DaySummaryHoliday, error) {
+	var holidays []calendarportout.DaySummaryHoliday
+	for rows.Next() {
+		var item calendarportout.DaySummaryHoliday
+		if err := rows.Scan(&item.Date, &item.Name); err != nil {
+			return nil, err
+		}
+		holidays = append(holidays, item)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return holidays, nil
+}
+
+func scanDaySummaryTodoRows(rows pgx.Rows) ([]calendarportout.DaySummaryTodo, error) {
 	var todos []calendarportout.DaySummaryTodo
 	for rows.Next() {
 		var item calendarportout.DaySummaryTodo
@@ -104,8 +117,8 @@ func (r *daySummaryTodoRepo) ListByDueDate(
 		}
 		todos = append(todos, item)
 	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
 	return todos, nil
 }
-
-var _ calendarportout.DaySummaryHolidayRepository = (*daySummaryHolidayRepo)(nil)
-var _ calendarportout.DaySummaryTodoRepository = (*daySummaryTodoRepo)(nil)

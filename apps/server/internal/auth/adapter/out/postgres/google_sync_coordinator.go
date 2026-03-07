@@ -20,6 +20,28 @@ type googleSyncCoordinator struct {
 	syncer portout.GoogleAccountSyncer
 }
 
+var (
+	coordinatorGetSettingBoolFn = func(c *googleSyncCoordinator, ctx context.Context, userID, key string, fallback bool) (bool, error) {
+		return c.getSettingBool(ctx, userID, key, fallback)
+	}
+	coordinatorLastSyncAtFn = func(c *googleSyncCoordinator, ctx context.Context, accountID, reason string) (time.Time, error) {
+		return c.lastSyncAt(ctx, accountID, reason)
+	}
+	coordinatorTouchSyncReasonFn = func(c *googleSyncCoordinator, ctx context.Context, accountID, userID, reason string, now time.Time) error {
+		return c.touchSyncReason(ctx, accountID, userID, reason, now)
+	}
+	coordinatorUpdateSyncSuccessFn = func(c *googleSyncCoordinator, ctx context.Context, accountID string, now time.Time) error {
+		return c.updateSyncSuccess(ctx, accountID, now)
+	}
+	coordinatorTryAdvisoryLockFn = func(ctx context.Context, conn *pgxpool.Conn, lockKey int64) (bool, error) {
+		var locked bool
+		if err := conn.QueryRow(ctx, `SELECT pg_try_advisory_lock($1)`, lockKey).Scan(&locked); err != nil {
+			return false, err
+		}
+		return locked, nil
+	}
+)
+
 func NewGoogleSyncCoordinator(db *pgxpool.Pool, syncer portout.GoogleAccountSyncer) *googleSyncCoordinator {
 	return &googleSyncCoordinator{db: db, syncer: syncer}
 }
@@ -108,8 +130,8 @@ func (c *googleSyncCoordinator) syncAccountIfDue(
 	}
 	defer lockConn.Release()
 
-	var locked bool
-	if err := lockConn.QueryRow(ctx, `SELECT pg_try_advisory_lock($1)`, lockKey).Scan(&locked); err != nil {
+	locked, err := coordinatorTryAdvisoryLockFn(ctx, lockConn, lockKey)
+	if err != nil {
 		return false, err
 	}
 	if !locked {
@@ -118,7 +140,7 @@ func (c *googleSyncCoordinator) syncAccountIfDue(
 	defer lockConn.Exec(context.Background(), `SELECT pg_advisory_unlock($1)`, lockKey)
 
 	now := time.Now()
-	lastAt, err := c.lastSyncAt(ctx, account.ID, reason)
+	lastAt, err := coordinatorLastSyncAtFn(c, ctx, account.ID, reason)
 	if err != nil {
 		return false, err
 	}
@@ -127,7 +149,7 @@ func (c *googleSyncCoordinator) syncAccountIfDue(
 		return false, nil
 	}
 
-	if err := c.touchSyncReason(ctx, account.ID, userID, reason, now); err != nil {
+	if err := coordinatorTouchSyncReasonFn(c, ctx, account.ID, userID, reason, now); err != nil {
 		return false, err
 	}
 
@@ -139,7 +161,7 @@ func (c *googleSyncCoordinator) syncAccountIfDue(
 		_ = c.updateSyncError(ctx, account.ID, shortenText(googleSyncErrorMessage(err)), now)
 		return true, err
 	}
-	if err := c.updateSyncSuccess(ctx, account.ID, now); err != nil {
+	if err := coordinatorUpdateSyncSuccessFn(c, ctx, account.ID, now); err != nil {
 		return true, err
 	}
 
@@ -169,11 +191,11 @@ func (c *googleSyncCoordinator) resolveSyncOptions(
 	ctx context.Context,
 	userID, accountID, area string,
 ) (portout.GoogleSyncOptions, bool, error) {
-	calendarEnabled, err := c.getSettingBool(ctx, userID, "google_account_sync_calendar_"+accountID, true)
+	calendarEnabled, err := coordinatorGetSettingBoolFn(c, ctx, userID, "google_account_sync_calendar_"+accountID, true)
 	if err != nil {
 		return portout.GoogleSyncOptions{}, false, err
 	}
-	todoEnabled, err := c.getSettingBool(ctx, userID, "google_account_sync_todo_"+accountID, true)
+	todoEnabled, err := coordinatorGetSettingBoolFn(c, ctx, userID, "google_account_sync_todo_"+accountID, true)
 	if err != nil {
 		return portout.GoogleSyncOptions{}, false, err
 	}
@@ -332,30 +354,7 @@ func (c *googleSyncCoordinator) listActiveAccountsByUser(ctx context.Context, us
 		return nil, err
 	}
 	defer rows.Close()
-
-	accounts := make([]*domain.GoogleAccount, 0)
-	for rows.Next() {
-		var a domain.GoogleAccount
-		if err := rows.Scan(
-			&a.ID,
-			&a.UserID,
-			&a.GoogleEmail,
-			&a.GoogleID,
-			&a.AccessToken,
-			&a.RefreshToken,
-			&a.TokenExpiresAt,
-			&a.Scopes,
-			&a.Status,
-			&a.IsPrimary,
-			&a.ConnectedAt,
-			&a.CreatedAt,
-			&a.UpdatedAt,
-		); err != nil {
-			return nil, err
-		}
-		accounts = append(accounts, &a)
-	}
-	return accounts, nil
+	return scanGoogleAccountsRows(rows)
 }
 
 func (c *googleSyncCoordinator) listActiveAccounts(ctx context.Context) ([]*domain.GoogleAccount, error) {
@@ -370,30 +369,7 @@ func (c *googleSyncCoordinator) listActiveAccounts(ctx context.Context) ([]*doma
 		return nil, err
 	}
 	defer rows.Close()
-
-	accounts := make([]*domain.GoogleAccount, 0)
-	for rows.Next() {
-		var a domain.GoogleAccount
-		if err := rows.Scan(
-			&a.ID,
-			&a.UserID,
-			&a.GoogleEmail,
-			&a.GoogleID,
-			&a.AccessToken,
-			&a.RefreshToken,
-			&a.TokenExpiresAt,
-			&a.Scopes,
-			&a.Status,
-			&a.IsPrimary,
-			&a.ConnectedAt,
-			&a.CreatedAt,
-			&a.UpdatedAt,
-		); err != nil {
-			return nil, err
-		}
-		accounts = append(accounts, &a)
-	}
-	return accounts, nil
+	return scanGoogleAccountsRows(rows)
 }
 
 func advisoryLockKey(input string) int64 {

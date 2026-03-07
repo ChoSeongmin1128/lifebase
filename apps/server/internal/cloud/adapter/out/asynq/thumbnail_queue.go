@@ -9,6 +9,8 @@ import (
 	"lifebase/internal/worker"
 )
 
+var newThumbnailTask = worker.NewThumbnailTask
+
 type ThumbnailQueue struct {
 	client *asynq.Client
 }
@@ -22,7 +24,7 @@ func (q *ThumbnailQueue) EnqueueThumbnail(_ context.Context, task portout.Thumbn
 		return nil
 	}
 
-	t, err := worker.NewThumbnailTask(task.FileID, task.UserID, task.StoragePath, task.MimeType)
+	t, err := newThumbnailTask(task.FileID, task.UserID, task.StoragePath, task.MimeType)
 	if err != nil {
 		return err
 	}

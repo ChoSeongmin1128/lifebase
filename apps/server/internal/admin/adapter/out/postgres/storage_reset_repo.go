@@ -3,6 +3,7 @@ package postgres
 import (
 	"context"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	adminout "lifebase/internal/admin/port/out"
@@ -25,16 +26,7 @@ func (r *StorageResetRepo) ListFilesByUser(ctx context.Context, userID string) (
 		return nil, err
 	}
 	defer rows.Close()
-
-	files := make([]adminout.FileRef, 0)
-	for rows.Next() {
-		var file adminout.FileRef
-		if err := rows.Scan(&file.ID, &file.StoragePath); err != nil {
-			return nil, err
-		}
-		files = append(files, file)
-	}
-	return files, nil
+	return scanFileRefsRows(rows)
 }
 
 func (r *StorageResetRepo) DeleteAllFilesByUser(ctx context.Context, userID string) error {
@@ -59,7 +51,7 @@ func (r *StorageResetRepo) DeleteSharesByOwner(ctx context.Context, ownerID stri
 	_, err := r.db.Exec(ctx,
 		`DELETE FROM shares
 		 WHERE owner_id = $1
-		    OR folder_id IN (SELECT id::text FROM folders WHERE user_id = $1)`,
+		    OR folder_id IN (SELECT id::text FROM folders WHERE user_id::text = $1)`,
 		ownerID,
 	)
 	if err != nil {
@@ -68,7 +60,7 @@ func (r *StorageResetRepo) DeleteSharesByOwner(ctx context.Context, ownerID stri
 	_, err = r.db.Exec(ctx,
 		`DELETE FROM share_invites
 		 WHERE owner_id = $1
-		    OR folder_id IN (SELECT id::text FROM folders WHERE user_id = $1)`,
+		    OR folder_id IN (SELECT id::text FROM folders WHERE user_id::text = $1)`,
 		ownerID,
 	)
 	return err
@@ -81,4 +73,19 @@ func (r *StorageResetRepo) SumStorageUsed(ctx context.Context, userID string) (i
 		userID,
 	).Scan(&used)
 	return used, err
+}
+
+func scanFileRefsRows(rows pgx.Rows) ([]adminout.FileRef, error) {
+	files := make([]adminout.FileRef, 0)
+	for rows.Next() {
+		var file adminout.FileRef
+		if err := rows.Scan(&file.ID, &file.StoragePath); err != nil {
+			return nil, err
+		}
+		files = append(files, file)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return files, nil
 }

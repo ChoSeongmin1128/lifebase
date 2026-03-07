@@ -14,6 +14,17 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
+var (
+	marshalThumbnailPayload = json.Marshal
+	mkdirAll               = os.MkdirAll
+	runThumbnailFn         = runVipsThumbnail
+	execCommand            = exec.Command
+	execThumbnailSQL       = func(ctx context.Context, db *pgxpool.Pool, sql string, args ...any) error {
+		_, err := db.Exec(ctx, sql, args...)
+		return err
+	}
+)
+
 type ThumbnailPayload struct {
 	FileID      string `json:"file_id"`
 	UserID      string `json:"user_id"`
@@ -22,7 +33,7 @@ type ThumbnailPayload struct {
 }
 
 func NewThumbnailTask(fileID, userID, storagePath, mimeType string) (*asynq.Task, error) {
-	payload, err := json.Marshal(ThumbnailPayload{
+	payload, err := marshalThumbnailPayload(ThumbnailPayload{
 		FileID:      fileID,
 		UserID:      userID,
 		StoragePath: storagePath,
@@ -53,14 +64,14 @@ func (h *ThumbnailHandler) ProcessTask(ctx context.Context, t *asynq.Task) error
 	slog.Info("generating thumbnail", "file_id", p.FileID, "mime_type", p.MimeType)
 
 	// Update status to processing
-	if _, err := h.db.Exec(ctx,
+	if err := execThumbnailSQL(ctx, h.db,
 		`UPDATE files SET thumb_status = 'processing' WHERE id = $1`, p.FileID); err != nil {
 		return fmt.Errorf("update status: %w", err)
 	}
 
 	srcPath := filepath.Join(h.dataPath, p.StoragePath)
 	thumbDir := filepath.Join(h.thumbPath, p.UserID)
-	if err := os.MkdirAll(thumbDir, 0755); err != nil {
+	if err := mkdirAll(thumbDir, 0755); err != nil {
 		return fmt.Errorf("create thumb dir: %w", err)
 	}
 
@@ -74,14 +85,14 @@ func (h *ThumbnailHandler) ProcessTask(ctx context.Context, t *asynq.Task) error
 		err = h.generateVideoThumbnails(srcPath, smallPath, mediumPath)
 	} else {
 		// Not a media file, mark as done
-		_, _ = h.db.Exec(ctx,
+		_ = execThumbnailSQL(ctx, h.db,
 			`UPDATE files SET thumb_status = 'done' WHERE id = $1`, p.FileID)
 		return nil
 	}
 
 	if err != nil {
 		slog.Error("thumbnail generation failed", "file_id", p.FileID, "error", err)
-		_, _ = h.db.Exec(ctx,
+		_ = execThumbnailSQL(ctx, h.db,
 			`UPDATE files SET thumb_status = 'failed' WHERE id = $1`, p.FileID)
 		return fmt.Errorf("generate thumbnails: %w", err)
 	}
@@ -91,7 +102,7 @@ func (h *ThumbnailHandler) ProcessTask(ctx context.Context, t *asynq.Task) error
 		h.extractExifTakenAt(ctx, srcPath, p.FileID)
 	}
 
-	if _, err := h.db.Exec(ctx,
+	if err := execThumbnailSQL(ctx, h.db,
 		`UPDATE files SET thumb_status = 'done' WHERE id = $1`, p.FileID); err != nil {
 		return fmt.Errorf("update status done: %w", err)
 	}
@@ -102,11 +113,11 @@ func (h *ThumbnailHandler) ProcessTask(ctx context.Context, t *asynq.Task) error
 
 func (h *ThumbnailHandler) generateImageThumbnails(src, smallDst, mediumDst string) error {
 	// small: 150x150
-	if err := runVipsThumbnail(src, smallDst, 150); err != nil {
+	if err := runThumbnailFn(src, smallDst, 150); err != nil {
 		return fmt.Errorf("small thumbnail: %w", err)
 	}
 	// medium: 400x400
-	if err := runVipsThumbnail(src, mediumDst, 400); err != nil {
+	if err := runThumbnailFn(src, mediumDst, 400); err != nil {
 		return fmt.Errorf("medium thumbnail: %w", err)
 	}
 	return nil
@@ -117,23 +128,23 @@ func (h *ThumbnailHandler) generateVideoThumbnails(src, smallDst, mediumDst stri
 	tmpFrame := smallDst + ".tmp.png"
 	defer os.Remove(tmpFrame)
 
-	cmd := exec.Command("ffmpeg", "-y", "-i", src, "-ss", "00:00:01", "-vframes", "1", "-q:v", "2", tmpFrame)
+	cmd := execCommand("ffmpeg", "-y", "-i", src, "-ss", "00:00:01", "-vframes", "1", "-q:v", "2", tmpFrame)
 	if out, err := cmd.CombinedOutput(); err != nil {
 		return fmt.Errorf("ffmpeg extract frame: %w (%s)", err, string(out))
 	}
 
 	// Convert frame to thumbnails
-	if err := runVipsThumbnail(tmpFrame, smallDst, 150); err != nil {
+	if err := runThumbnailFn(tmpFrame, smallDst, 150); err != nil {
 		return fmt.Errorf("small video thumbnail: %w", err)
 	}
-	if err := runVipsThumbnail(tmpFrame, mediumDst, 400); err != nil {
+	if err := runThumbnailFn(tmpFrame, mediumDst, 400); err != nil {
 		return fmt.Errorf("medium video thumbnail: %w", err)
 	}
 	return nil
 }
 
 func runVipsThumbnail(src, dst string, size int) error {
-	cmd := exec.Command("vipsthumbnail", src,
+	cmd := execCommand("vipsthumbnail", src,
 		"--size", fmt.Sprintf("%dx%d", size, size),
 		"--output", dst+"[Q=80]",
 	)
@@ -145,7 +156,7 @@ func runVipsThumbnail(src, dst string, size int) error {
 
 func (h *ThumbnailHandler) extractExifTakenAt(ctx context.Context, srcPath, fileID string) {
 	// Use vipsheader to extract EXIF date
-	cmd := exec.Command("exiftool", "-DateTimeOriginal", "-s3", srcPath)
+	cmd := execCommand("exiftool", "-DateTimeOriginal", "-s3", srcPath)
 	out, err := cmd.Output()
 	if err != nil || len(out) == 0 {
 		return

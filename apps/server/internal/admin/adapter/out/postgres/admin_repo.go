@@ -44,18 +44,7 @@ func (r *AdminRepo) List(ctx context.Context) ([]*admindomain.AdminUser, error) 
 		return nil, err
 	}
 	defer rows.Close()
-
-	out := make([]*admindomain.AdminUser, 0)
-	for rows.Next() {
-		row := &admindomain.AdminUser{}
-		var role string
-		if err := rows.Scan(&row.ID, &row.UserID, &role, &row.IsActive, &row.CreatedBy, &row.CreatedAt, &row.UpdatedAt); err != nil {
-			return nil, err
-		}
-		row.Role = admindomain.Role(role)
-		out = append(out, row)
-	}
-	return out, nil
+	return scanAdminRows(rows)
 }
 
 func (r *AdminRepo) Create(ctx context.Context, admin *admindomain.AdminUser) error {
@@ -97,16 +86,7 @@ func (r *AdminRepo) ListByUserID(ctx context.Context, userID string) ([]adminout
 		return nil, err
 	}
 	defer rows.Close()
-
-	out := make([]adminout.GoogleAccountRecord, 0)
-	for rows.Next() {
-		var row adminout.GoogleAccountRecord
-		if err := rows.Scan(&row.ID, &row.UserID, &row.GoogleEmail, &row.GoogleID, &row.Status, &row.IsPrimary, &row.ConnectedAt); err != nil {
-			return nil, err
-		}
-		out = append(out, row)
-	}
-	return out, nil
+	return scanGoogleAccountRows(rows)
 }
 
 func (r *AdminRepo) UpdateStatus(ctx context.Context, accountID, userID, status string) error {
@@ -139,4 +119,36 @@ func (r *AdminRepo) findOne(ctx context.Context, query, value string) (*admindom
 	}
 	row.Role = admindomain.Role(role)
 	return row, nil
+}
+
+func scanAdminRows(rows pgx.Rows) ([]*admindomain.AdminUser, error) {
+	out := make([]*admindomain.AdminUser, 0)
+	for rows.Next() {
+		row := &admindomain.AdminUser{}
+		var role string
+		if err := rows.Scan(&row.ID, &row.UserID, &role, &row.IsActive, &row.CreatedBy, &row.CreatedAt, &row.UpdatedAt); err != nil {
+			return nil, err
+		}
+		row.Role = admindomain.Role(role)
+		out = append(out, row)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func scanGoogleAccountRows(rows pgx.Rows) ([]adminout.GoogleAccountRecord, error) {
+	out := make([]adminout.GoogleAccountRecord, 0)
+	for rows.Next() {
+		var row adminout.GoogleAccountRecord
+		if err := rows.Scan(&row.ID, &row.UserID, &row.GoogleEmail, &row.GoogleID, &row.Status, &row.IsPrimary, &row.ConnectedAt); err != nil {
+			return nil, err
+		}
+		out = append(out, row)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return out, nil
 }

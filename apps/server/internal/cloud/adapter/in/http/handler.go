@@ -13,6 +13,9 @@ import (
 	"lifebase/internal/shared/response"
 )
 
+var readAllUploadFile = io.ReadAll
+var formatDownloadDisposition = mime.FormatMediaType
+
 type CloudHandler struct {
 	cloud portin.CloudUseCase
 }
@@ -162,7 +165,7 @@ func (h *CloudHandler) UploadFile(w http.ResponseWriter, r *http.Request) {
 	}
 	defer f.Close()
 
-	data, err := io.ReadAll(f)
+	data, err := readAllUploadFile(f)
 	if err != nil {
 		response.Error(w, http.StatusInternalServerError, "READ_FAILED", "failed to read file")
 		return
@@ -198,7 +201,7 @@ func (h *CloudHandler) DownloadFile(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", file.MimeType)
-	disposition := mime.FormatMediaType("attachment", map[string]string{"filename": file.Name})
+	disposition := formatDownloadDisposition("attachment", map[string]string{"filename": file.Name})
 	if disposition == "" {
 		disposition = "attachment"
 	}

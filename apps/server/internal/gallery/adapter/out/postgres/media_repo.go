@@ -86,5 +86,8 @@ func scanFiles(rows pgx.Rows) ([]*domain.Media, error) {
 		}
 		files = append(files, &f)
 	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
 	return files, nil
 }

@@ -16,6 +16,11 @@ import (
 	portout "lifebase/internal/auth/port/out"
 )
 
+var randRead = rand.Read
+var signJWTToken = func(token *jwt.Token, secret string) (string, error) {
+	return token.SignedString([]byte(secret))
+}
+
 type JWTOptions struct {
 	Secret        string
 	AccessExpiry  time.Duration
@@ -407,12 +412,12 @@ func (uc *authUseCase) generateAccessToken(userID string) (string, error) {
 	}
 
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-	return token.SignedString([]byte(uc.jwt.Secret))
+	return signJWTToken(token, uc.jwt.Secret)
 }
 
 func generateRandomToken() (string, error) {
 	b := make([]byte, 32)
-	if _, err := rand.Read(b); err != nil {
+	if _, err := randRead(b); err != nil {
 		return "", err
 	}
 	return base64.URLEncoding.EncodeToString(b), nil

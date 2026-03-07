@@ -58,24 +58,42 @@ import (
 	"lifebase/internal/worker"
 )
 
+var (
+	googlePullSyncInterval    = 10 * time.Minute
+	googlePullSyncStartupWait = 15 * time.Second
+	googlePushOutboxInterval  = 5 * time.Second
+	holidayRefreshInterval    = 3 * time.Hour
+	holidayRefreshStartupWait = 15 * time.Second
+	loadConfig               = config.Load
+	newDBPool                = pgxpool.New
+	pingDBPool               = func(ctx context.Context, pool *pgxpool.Pool) error { return pool.Ping(ctx) }
+	closeDBPool              = func(pool *pgxpool.Pool) { pool.Close() }
+	listenAndServeHTTPServer = func(srv *http.Server) error { return srv.ListenAndServe() }
+	shutdownHTTPServer       = func(srv *http.Server, ctx context.Context) error { return srv.Shutdown(ctx) }
+	exitProcess              = os.Exit
+)
+
 func main() {
-	cfg, err := config.Load()
+	cfg, err := loadConfig()
 	if err != nil {
 		slog.Error("failed to load config", "error", err)
-		os.Exit(1)
+		exitProcess(1)
+		return
 	}
 
 	// Database
-	dbpool, err := pgxpool.New(context.Background(), cfg.Database.URL)
+	dbpool, err := newDBPool(context.Background(), cfg.Database.URL)
 	if err != nil {
 		slog.Error("failed to connect to database", "error", err)
-		os.Exit(1)
+		exitProcess(1)
+		return
 	}
-	defer dbpool.Close()
+	defer closeDBPool(dbpool)
 
-	if err := dbpool.Ping(context.Background()); err != nil {
+	if err := pingDBPool(context.Background(), dbpool); err != nil {
 		slog.Error("failed to ping database", "error", err)
-		os.Exit(1)
+		exitProcess(1)
+		return
 	}
 	slog.Info("database connected")
 
@@ -382,9 +400,10 @@ func main() {
 	// Graceful shutdown
 	go func() {
 		slog.Info("server starting", "addr", addr, "env", cfg.Server.Env)
-		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+		if err := listenAndServeHTTPServer(srv); err != nil && err != http.ErrServerClosed {
 			slog.Error("server error", "error", err)
-			os.Exit(1)
+			exitProcess(1)
+			return
 		}
 	}()
 
@@ -403,16 +422,17 @@ func main() {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	if err := srv.Shutdown(ctx); err != nil {
+	if err := shutdownHTTPServer(srv, ctx); err != nil {
 		slog.Error("server forced to shutdown", "error", err)
-		os.Exit(1)
+		exitProcess(1)
+		return
 	}
 
 	slog.Info("server stopped")
 }
 
 func runGoogleBackgroundPullSync(ctx context.Context, authUC authportin.AuthUseCase) {
-	ticker := time.NewTicker(10 * time.Minute)
+	ticker := time.NewTicker(googlePullSyncInterval)
 	defer ticker.Stop()
 
 	run := func() {
@@ -430,7 +450,7 @@ func runGoogleBackgroundPullSync(ctx context.Context, authUC authportin.AuthUseC
 	}
 
 	// Warm start once shortly after boot.
-	startupDelay := time.NewTimer(15 * time.Second)
+	startupDelay := time.NewTimer(googlePullSyncStartupWait)
 	defer startupDelay.Stop()
 
 	for {
@@ -446,7 +466,7 @@ func runGoogleBackgroundPullSync(ctx context.Context, authUC authportin.AuthUseC
 }
 
 func runGooglePushOutboxWorker(ctx context.Context, authUC authportin.AuthUseCase) {
-	ticker := time.NewTicker(5 * time.Second)
+	ticker := time.NewTicker(googlePushOutboxInterval)
 	defer ticker.Stop()
 
 	for {
@@ -469,7 +489,7 @@ func runGooglePushOutboxWorker(ctx context.Context, authUC authportin.AuthUseCas
 }
 
 func runHolidayBackgroundRefresh(ctx context.Context, holidayUC holidayportin.HolidayUseCase) {
-	ticker := time.NewTicker(3 * time.Hour)
+	ticker := time.NewTicker(holidayRefreshInterval)
 	defer ticker.Stop()
 
 	refresh := func() {
@@ -484,7 +504,7 @@ func runHolidayBackgroundRefresh(ctx context.Context, holidayUC holidayportin.Ho
 		slog.Info("holiday background refresh completed")
 	}
 
-	startupDelay := time.NewTimer(15 * time.Second)
+	startupDelay := time.NewTimer(holidayRefreshStartupWait)
 	defer startupDelay.Stop()
 
 	for {

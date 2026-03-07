@@ -75,30 +75,7 @@ func (r *listRepo) ListByUser(ctx context.Context, userID string) ([]*domain.Tod
 		return nil, err
 	}
 	defer rows.Close()
-
-	var lists []*domain.TodoList
-	for rows.Next() {
-		var l domain.TodoList
-		if err := rows.Scan(
-			&l.ID,
-			&l.UserID,
-			&l.GoogleID,
-			&l.GoogleAccountID,
-			&l.GoogleAccountEmail,
-			&l.Name,
-			&l.SortOrder,
-			&l.ActiveCount,
-			&l.DoneCount,
-			&l.TotalCount,
-			&l.Source,
-			&l.CreatedAt,
-			&l.UpdatedAt,
-		); err != nil {
-			return nil, err
-		}
-		lists = append(lists, &l)
-	}
-	return lists, nil
+	return scanTodoListRows(rows)
 }
 
 func (r *listRepo) Update(ctx context.Context, list *domain.TodoList) error {
@@ -171,19 +148,7 @@ func (r *todoRepo) ListByList(ctx context.Context, userID, listID string, includ
 		return nil, err
 	}
 	defer rows.Close()
-
-	var todos []*domain.Todo
-	for rows.Next() {
-		var t domain.Todo
-		if err := rows.Scan(&t.ID, &t.ListID, &t.UserID, &t.ParentID, &t.GoogleID,
-			&t.Title, &t.Notes, &t.Due, &t.Priority,
-			&t.IsDone, &t.IsPinned, &t.SortOrder, &t.DoneAt,
-			&t.CreatedAt, &t.UpdatedAt, &t.DeletedAt); err != nil {
-			return nil, err
-		}
-		todos = append(todos, &t)
-	}
-	return todos, nil
+	return scanTodosRows(rows)
 }
 
 func (r *todoRepo) Update(ctx context.Context, todo *domain.Todo) error {
@@ -225,19 +190,7 @@ func (r *todoRepo) FindChildrenByParentID(ctx context.Context, userID, parentID 
 		return nil, err
 	}
 	defer rows.Close()
-
-	var todos []*domain.Todo
-	for rows.Next() {
-		var t domain.Todo
-		if err := rows.Scan(&t.ID, &t.ListID, &t.UserID, &t.ParentID, &t.GoogleID,
-			&t.Title, &t.Notes, &t.Due, &t.Priority,
-			&t.IsDone, &t.IsPinned, &t.SortOrder, &t.DoneAt,
-			&t.CreatedAt, &t.UpdatedAt, &t.DeletedAt); err != nil {
-			return nil, err
-		}
-		todos = append(todos, &t)
-	}
-	return todos, nil
+	return scanTodosRows(rows)
 }
 
 func (r *todoRepo) SoftDeleteByParentID(ctx context.Context, userID, parentID string) error {
@@ -283,4 +236,51 @@ func (r *todoRepo) NextSortOrder(ctx context.Context, userID, listID string, par
 		).Scan(&maxOrder)
 	}
 	return maxOrder, err
+}
+
+func scanTodoListRows(rows pgx.Rows) ([]*domain.TodoList, error) {
+	var lists []*domain.TodoList
+	for rows.Next() {
+		var l domain.TodoList
+		if err := rows.Scan(
+			&l.ID,
+			&l.UserID,
+			&l.GoogleID,
+			&l.GoogleAccountID,
+			&l.GoogleAccountEmail,
+			&l.Name,
+			&l.SortOrder,
+			&l.ActiveCount,
+			&l.DoneCount,
+			&l.TotalCount,
+			&l.Source,
+			&l.CreatedAt,
+			&l.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		lists = append(lists, &l)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return lists, nil
+}
+
+func scanTodosRows(rows pgx.Rows) ([]*domain.Todo, error) {
+	var todos []*domain.Todo
+	for rows.Next() {
+		var t domain.Todo
+		if err := rows.Scan(&t.ID, &t.ListID, &t.UserID, &t.ParentID, &t.GoogleID,
+			&t.Title, &t.Notes, &t.Due, &t.Priority,
+			&t.IsDone, &t.IsPinned, &t.SortOrder, &t.DoneAt,
+			&t.CreatedAt, &t.UpdatedAt, &t.DeletedAt); err != nil {
+			return nil, err
+		}
+		todos = append(todos, &t)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return todos, nil
 }

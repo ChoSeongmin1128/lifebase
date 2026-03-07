@@ -14,6 +14,8 @@ type contextKey string
 
 const UserIDKey contextKey = "user_id"
 
+var parseJWTToken = jwt.Parse
+
 func Auth(jwtSecret string) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -29,7 +31,7 @@ func Auth(jwtSecret string) func(http.Handler) http.Handler {
 				return
 			}
 
-			token, err := jwt.Parse(parts[1], func(token *jwt.Token) (any, error) {
+			token, err := parseJWTToken(parts[1], func(token *jwt.Token) (any, error) {
 				if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
 					return nil, jwt.ErrSignatureInvalid
 				}

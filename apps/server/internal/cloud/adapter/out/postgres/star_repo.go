@@ -5,6 +5,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	portout "lifebase/internal/cloud/port/out"
@@ -30,21 +31,7 @@ func (r *starRepo) List(ctx context.Context, userID string) ([]portout.StarRef, 
 		return nil, err
 	}
 	defer rows.Close()
-
-	refs := make([]portout.StarRef, 0)
-	for rows.Next() {
-		var key string
-		if err := rows.Scan(&key); err != nil {
-			return nil, err
-		}
-		ref, ok := parseStarKey(key)
-		if !ok {
-			continue
-		}
-		refs = append(refs, ref)
-	}
-
-	return refs, nil
+	return scanStarRows(rows)
 }
 
 func (r *starRepo) Set(ctx context.Context, userID, itemID, itemType string) error {
@@ -88,4 +75,23 @@ func parseStarKey(key string) (portout.StarRef, bool) {
 		ItemID:   itemID,
 		ItemType: itemType,
 	}, true
+}
+
+func scanStarRows(rows pgx.Rows) ([]portout.StarRef, error) {
+	refs := make([]portout.StarRef, 0)
+	for rows.Next() {
+		var key string
+		if err := rows.Scan(&key); err != nil {
+			return nil, err
+		}
+		ref, ok := parseStarKey(key)
+		if !ok {
+			continue
+		}
+		refs = append(refs, ref)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return refs, nil
 }

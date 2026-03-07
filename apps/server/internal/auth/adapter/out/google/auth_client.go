@@ -22,6 +22,8 @@ type oauthClient struct {
 	redirects    map[string]string
 }
 
+var requestWithContext = http.NewRequestWithContext
+
 func NewOAuthClient(clientID, clientSecret string, redirects map[string]string) *oauthClient {
 	cloned := map[string]string{}
 	for k, v := range redirects {
@@ -262,7 +264,7 @@ func (c *oauthClient) DeleteTaskList(
 	taskListID string,
 ) error {
 	client := c.apiClient(ctx, token)
-	req, err := http.NewRequestWithContext(
+	req, err := requestWithContext(
 		ctx,
 		http.MethodDelete,
 		fmt.Sprintf(
@@ -584,7 +586,7 @@ func (c *oauthClient) DeleteCalendarEvent(
 	calendarID, eventID string,
 ) error {
 	client := c.apiClient(ctx, token)
-	req, err := http.NewRequestWithContext(
+	req, err := requestWithContext(
 		ctx,
 		http.MethodDelete,
 		fmt.Sprintf(
@@ -684,7 +686,7 @@ func (c *oauthClient) DeleteTask(
 	taskListID, taskID string,
 ) error {
 	client := c.apiClient(ctx, token)
-	req, err := http.NewRequestWithContext(
+	req, err := requestWithContext(
 		ctx,
 		http.MethodDelete,
 		fmt.Sprintf(

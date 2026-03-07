@@ -22,6 +22,22 @@ type googlePushProcessor struct {
 	googleAuth portout.GoogleAuthClient
 }
 
+var queryGooglePushRowsFn = func(ctx context.Context, db *pgxpool.Pool, sql string, args ...any) (pgx.Rows, error) {
+	return db.Query(ctx, sql, args...)
+}
+
+var googlePushTryAdvisoryLockFn = func(ctx context.Context, conn *pgxpool.Conn, lockKey int64) (bool, error) {
+	var locked bool
+	if err := conn.QueryRow(ctx, `SELECT pg_try_advisory_lock($1)`, lockKey).Scan(&locked); err != nil {
+		return false, err
+	}
+	return locked, nil
+}
+
+var googlePushLoadAccountTokenFn = func(p *googlePushProcessor, ctx context.Context, userID, accountID string) (*accountToken, error) {
+	return p.loadAccountToken(ctx, userID, accountID)
+}
+
 type pushOutboxItem struct {
 	ID                string
 	AccountID         string
@@ -104,7 +120,7 @@ func (p *googlePushProcessor) ProcessPending(ctx context.Context, limit int) (in
 }
 
 func (p *googlePushProcessor) claimPending(ctx context.Context, limit int) ([]pushOutboxItem, error) {
-	rows, err := p.db.Query(ctx,
+	rows, err := queryGooglePushRowsFn(ctx, p.db,
 		`WITH picked AS (
 		   SELECT id
 		     FROM google_push_outbox
@@ -160,8 +176,8 @@ func (p *googlePushProcessor) processOne(ctx context.Context, item pushOutboxIte
 	}
 	defer lockConn.Release()
 
-	var locked bool
-	if err := lockConn.QueryRow(ctx, `SELECT pg_try_advisory_lock($1)`, lockKey).Scan(&locked); err != nil {
+	locked, err := googlePushTryAdvisoryLockFn(ctx, lockConn, lockKey)
+	if err != nil {
 		return err
 	}
 	if !locked {
@@ -169,7 +185,7 @@ func (p *googlePushProcessor) processOne(ctx context.Context, item pushOutboxIte
 	}
 	defer lockConn.Exec(context.Background(), `SELECT pg_advisory_unlock($1)`, lockKey)
 
-	account, err := p.loadAccountToken(ctx, item.UserID, item.AccountID)
+	account, err := googlePushLoadAccountTokenFn(p, ctx, item.UserID, item.AccountID)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return p.markDead(ctx, item.ID, "google account not found")
@@ -578,11 +594,7 @@ func nextRetryDelay(attempt int) time.Duration {
 		steps = 8
 	}
 	delay := (1 << (steps - 1)) * 10
-	seconds := time.Duration(delay) * time.Second
-	if seconds > 30*time.Minute {
-		return 30 * time.Minute
-	}
-	return seconds
+	return time.Duration(delay) * time.Second
 }
 
 func shortenError(err error) string {

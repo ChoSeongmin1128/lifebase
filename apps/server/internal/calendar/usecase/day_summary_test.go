@@ -2,6 +2,7 @@ package usecase
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"reflect"
 	"strings"
@@ -135,6 +136,7 @@ func TestGetDaySummary_Success(t *testing.T) {
 			{Date: time.Date(2026, 3, 1, 0, 0, 0, 0, time.UTC), Name: "삼일절"},
 			{Date: time.Date(2026, 3, 1, 0, 0, 0, 0, time.UTC), Name: "삼일절"},
 			{Date: time.Date(2026, 3, 1, 0, 0, 0, 0, time.UTC), Name: "A Holiday"},
+			{Date: time.Date(2026, 2, 28, 0, 0, 0, 0, time.UTC), Name: "Earlier"},
 		},
 	}
 	todoRepo := &mockDaySummaryTodoRepo{
@@ -184,10 +186,10 @@ func TestGetDaySummary_Success(t *testing.T) {
 		t.Fatalf("unexpected range: %s - %s", eventsRepo.gotStart, eventsRepo.gotEnd)
 	}
 
-	if len(result.Holidays) != 2 {
-		t.Fatalf("expected deduped 2 holidays, got %d", len(result.Holidays))
+	if len(result.Holidays) != 3 {
+		t.Fatalf("expected deduped 3 holidays, got %d", len(result.Holidays))
 	}
-	if result.Holidays[0].Name != "A Holiday" || result.Holidays[1].Name != "삼일절" {
+	if result.Holidays[0].Name != "Earlier" || result.Holidays[1].Name != "A Holiday" || result.Holidays[2].Name != "삼일절" {
 		t.Fatalf("unexpected holiday order: %#v", result.Holidays)
 	}
 
@@ -196,5 +198,21 @@ func TestGetDaySummary_Success(t *testing.T) {
 	}
 	if len(result.Todos) != 1 || result.Todos[0].ID != "todo-1" {
 		t.Fatalf("unexpected todo result: %#v", result.Todos)
+	}
+}
+
+func TestGetDaySummary_EventRepoError(t *testing.T) {
+	uc := &calendarUseCase{
+		events: &mockDaySummaryEventRepo{err: errors.New("event repo failed")},
+	}
+
+	_, err := uc.GetDaySummary(context.Background(), "user-1", portin.DaySummaryInput{
+		Date: "2026-03-01",
+	})
+	if err == nil {
+		t.Fatal("expected event repo error, got nil")
+	}
+	if !strings.Contains(err.Error(), "event repo failed") {
+		t.Fatalf("unexpected error: %v", err)
 	}
 }

@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"lifebase/internal/holiday/domain"
@@ -14,6 +15,20 @@ import (
 
 type holidayRepo struct {
 	db *pgxpool.Pool
+}
+
+var queryAdvisoryLock = func(ctx context.Context, conn *pgxpool.Conn, lockKey int64) (bool, error) {
+	var locked bool
+	if err := conn.QueryRow(ctx, `SELECT pg_try_advisory_lock($1)`, lockKey).Scan(&locked); err != nil {
+		return false, err
+	}
+	return locked, nil
+}
+
+type holidayTx interface {
+	Exec(ctx context.Context, sql string, arguments ...any) (pgconn.CommandTag, error)
+	Commit(ctx context.Context) error
+	Rollback(ctx context.Context) error
 }
 
 func NewHolidayRepo(db *pgxpool.Pool) *holidayRepo {
@@ -32,27 +47,7 @@ func (r *holidayRepo) ListByDateRange(ctx context.Context, start, end time.Time)
 		return nil, err
 	}
 	defer rows.Close()
-
-	items := make([]domain.Holiday, 0, 32)
-	for rows.Next() {
-		var item domain.Holiday
-		if err := rows.Scan(
-			&item.Date,
-			&item.Name,
-			&item.Year,
-			&item.Month,
-			&item.DateKind,
-			&item.IsHoliday,
-			&item.FetchedAt,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, item)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
+	return scanHolidayRows(rows)
 }
 
 func (r *holidayRepo) GetMonthSyncState(ctx context.Context, year, month int) (*domain.MonthSyncState, error) {
@@ -84,6 +79,18 @@ func (r *holidayRepo) ReplaceMonth(
 		return err
 	}
 	defer tx.Rollback(ctx)
+
+	return replaceMonthTx(ctx, tx, year, month, holidays, fetchedAt, resultCode)
+}
+
+func replaceMonthTx(
+	ctx context.Context,
+	tx holidayTx,
+	year, month int,
+	holidays []domain.Holiday,
+	fetchedAt time.Time,
+	resultCode string,
+) error {
 
 	if _, err := tx.Exec(ctx,
 		`DELETE FROM public_holidays_kr WHERE year = $1 AND month = $2`,
@@ -127,7 +134,10 @@ func (r *holidayRepo) ReplaceMonth(
 		return err
 	}
 
-	return tx.Commit(ctx)
+	if err := tx.Commit(ctx); err != nil {
+		return err
+	}
+	return nil
 }
 
 func (r *holidayRepo) TryAdvisoryMonthLock(ctx context.Context, year, month int) (bool, portout.UnlockFunc, error) {
@@ -137,8 +147,8 @@ func (r *holidayRepo) TryAdvisoryMonthLock(ctx context.Context, year, month int)
 	}
 
 	lockKey := advisoryMonthLockKey(year, month)
-	var locked bool
-	if err := conn.QueryRow(ctx, `SELECT pg_try_advisory_lock($1)`, lockKey).Scan(&locked); err != nil {
+	locked, err := queryAdvisoryLock(ctx, conn, lockKey)
+	if err != nil {
 		conn.Release()
 		return false, nil, err
 	}
@@ -156,6 +166,29 @@ func (r *holidayRepo) TryAdvisoryMonthLock(ctx context.Context, year, month int)
 
 func advisoryMonthLockKey(year, month int) int64 {
 	return int64(91000000 + (year * 100) + month)
+}
+
+func scanHolidayRows(rows pgx.Rows) ([]domain.Holiday, error) {
+	items := make([]domain.Holiday, 0, 32)
+	for rows.Next() {
+		var item domain.Holiday
+		if err := rows.Scan(
+			&item.Date,
+			&item.Name,
+			&item.Year,
+			&item.Month,
+			&item.DateKind,
+			&item.IsHoliday,
+			&item.FetchedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, item)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 var _ portout.HolidayCacheRepository = (*holidayRepo)(nil)

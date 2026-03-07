@@ -10,6 +10,8 @@ import (
 	"github.com/joho/godotenv"
 )
 
+var absPathFn = filepath.Abs
+
 type Config struct {
 	Server       ServerConfig
 	Database     DatabaseConfig
@@ -127,7 +129,7 @@ func loadFromDirs(files []string, dirs ...string) {
 	seen := map[string]struct{}{}
 
 	for _, dir := range dirs {
-		abs, err := filepath.Abs(dir)
+		abs, err := absPathFn(dir)
 		if err != nil {
 			abs = dir
 		}
@@ -157,7 +159,7 @@ func detectServerEnv(rootDir string) string {
 
 	seen := map[string]struct{}{}
 	for _, file := range candidates {
-		abs, err := filepath.Abs(file)
+		abs, err := absPathFn(file)
 		if err != nil {
 			abs = file
 		}

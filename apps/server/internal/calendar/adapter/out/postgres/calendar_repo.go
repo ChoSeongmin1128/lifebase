@@ -80,7 +80,24 @@ func (r *calendarRepo) ListByUser(ctx context.Context, userID string) ([]*domain
 		return nil, err
 	}
 	defer rows.Close()
+	return scanCalendarRows(rows)
+}
 
+func (r *calendarRepo) Update(ctx context.Context, cal *domain.Calendar) error {
+	_, err := r.db.Exec(ctx,
+		`UPDATE calendars SET name = $3, color_id = $4, is_visible = $5, updated_at = $6
+		 WHERE id = $1 AND user_id = $2`,
+		cal.ID, cal.UserID, cal.Name, cal.ColorID, cal.IsVisible, cal.UpdatedAt,
+	)
+	return err
+}
+
+func (r *calendarRepo) Delete(ctx context.Context, id string) error {
+	_, err := r.db.Exec(ctx, `DELETE FROM calendars WHERE id = $1`, id)
+	return err
+}
+
+func scanCalendarRows(rows pgx.Rows) ([]*domain.Calendar, error) {
 	var calendars []*domain.Calendar
 	for rows.Next() {
 		var c domain.Calendar
@@ -106,19 +123,8 @@ func (r *calendarRepo) ListByUser(ctx context.Context, userID string) ([]*domain
 		}
 		calendars = append(calendars, &c)
 	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
 	return calendars, nil
-}
-
-func (r *calendarRepo) Update(ctx context.Context, cal *domain.Calendar) error {
-	_, err := r.db.Exec(ctx,
-		`UPDATE calendars SET name = $3, color_id = $4, is_visible = $5, updated_at = $6
-		 WHERE id = $1 AND user_id = $2`,
-		cal.ID, cal.UserID, cal.Name, cal.ColorID, cal.IsVisible, cal.UpdatedAt,
-	)
-	return err
-}
-
-func (r *calendarRepo) Delete(ctx context.Context, id string) error {
-	_, err := r.db.Exec(ctx, `DELETE FROM calendars WHERE id = $1`, id)
-	return err
 }

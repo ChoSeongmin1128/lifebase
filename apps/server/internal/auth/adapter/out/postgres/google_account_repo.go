@@ -63,17 +63,7 @@ func (r *googleAccountRepo) FindByUserID(ctx context.Context, userID string) ([]
 		return nil, err
 	}
 	defer rows.Close()
-
-	var accounts []*domain.GoogleAccount
-	for rows.Next() {
-		var a domain.GoogleAccount
-		if err := rows.Scan(&a.ID, &a.UserID, &a.GoogleEmail, &a.GoogleID, &a.AccessToken, &a.RefreshToken,
-			&a.TokenExpiresAt, &a.Scopes, &a.Status, &a.IsPrimary, &a.ConnectedAt, &a.CreatedAt, &a.UpdatedAt); err != nil {
-			return nil, err
-		}
-		accounts = append(accounts, &a)
-	}
-	return accounts, nil
+	return scanGoogleAccountsRows(rows)
 }
 
 func (r *googleAccountRepo) Create(ctx context.Context, account *domain.GoogleAccount) error {
@@ -96,4 +86,20 @@ func (r *googleAccountRepo) Update(ctx context.Context, account *domain.GoogleAc
 		account.ID, account.AccessToken, account.RefreshToken, account.TokenExpiresAt, account.Status, account.UpdatedAt,
 	)
 	return err
+}
+
+func scanGoogleAccountsRows(rows pgx.Rows) ([]*domain.GoogleAccount, error) {
+	accounts := make([]*domain.GoogleAccount, 0)
+	for rows.Next() {
+		var a domain.GoogleAccount
+		if err := rows.Scan(&a.ID, &a.UserID, &a.GoogleEmail, &a.GoogleID, &a.AccessToken, &a.RefreshToken,
+			&a.TokenExpiresAt, &a.Scopes, &a.Status, &a.IsPrimary, &a.ConnectedAt, &a.CreatedAt, &a.UpdatedAt); err != nil {
+			return nil, err
+		}
+		accounts = append(accounts, &a)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return accounts, nil
 }

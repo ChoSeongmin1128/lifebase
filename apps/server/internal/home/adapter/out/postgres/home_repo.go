@@ -17,6 +17,15 @@ type homeRepo struct {
 	db *pgxpool.Pool
 }
 
+var (
+	queryHomeRowsFn = func(ctx context.Context, db *pgxpool.Pool, sql string, args ...any) (pgx.Rows, error) {
+		return db.Query(ctx, sql, args...)
+	}
+	scanEventSummariesFn      = scanEventSummaries
+	scanTodoSummariesFn       = scanTodoSummaries
+	scanRecentFileSummariesFn = scanRecentFileSummaries
+)
+
 func NewHomeRepo(db *pgxpool.Pool) portout.HomeRepository {
 	return &homeRepo{db: db}
 }
@@ -35,7 +44,7 @@ func (r *homeRepo) ListEventsInRange(ctx context.Context, userID string, startIS
 		return nil, 0, err
 	}
 
-	rows, err := r.db.Query(ctx,
+	rows, err := queryHomeRowsFn(ctx, r.db,
 		`SELECT id, calendar_id, title, start_time, end_time, is_all_day, color_id
 		 FROM events
 		 WHERE user_id = $1
@@ -51,23 +60,10 @@ func (r *homeRepo) ListEventsInRange(ctx context.Context, userID string, startIS
 	}
 	defer rows.Close()
 
-	items := make([]domain.EventSummary, 0, limit)
-	for rows.Next() {
-		var item domain.EventSummary
-		if err := rows.Scan(
-			&item.ID,
-			&item.CalendarID,
-			&item.Title,
-			&item.StartTime,
-			&item.EndTime,
-			&item.IsAllDay,
-			&item.ColorID,
-		); err != nil {
-			return nil, 0, err
-		}
-		items = append(items, item)
+	items, err := scanEventSummariesFn(rows, limit)
+	if err != nil {
+		return nil, 0, err
 	}
-
 	return items, total, nil
 }
 
@@ -112,31 +108,15 @@ func (r *homeRepo) listTodosByDueScope(ctx context.Context, userID, todayDate st
 		return nil, 0, err
 	}
 
-	rows, err := r.db.Query(ctx, listQuery, userID, todayDate, limit)
+	rows, err := queryHomeRowsFn(ctx, r.db, listQuery, userID, todayDate, limit)
 	if err != nil {
 		return nil, 0, err
 	}
 	defer rows.Close()
 
-	items := make([]domain.TodoSummary, 0, limit)
-	for rows.Next() {
-		var item domain.TodoSummary
-		var dueDate *time.Time
-		if err := rows.Scan(
-			&item.ID,
-			&item.ListID,
-			&item.Title,
-			&dueDate,
-			&item.Priority,
-			&item.IsPinned,
-		); err != nil {
-			return nil, 0, err
-		}
-		if dueDate != nil {
-			s := dueDate.Format("2006-01-02")
-			item.DueDate = &s
-		}
-		items = append(items, item)
+	items, err := scanTodoSummariesFn(rows, limit)
+	if err != nil {
+		return nil, 0, err
 	}
 	return items, total, nil
 }
@@ -153,7 +133,7 @@ func (r *homeRepo) ListRecentFiles(ctx context.Context, userID string, limit int
 		return nil, 0, err
 	}
 
-	rows, err := r.db.Query(ctx,
+	rows, err := queryHomeRowsFn(ctx, r.db,
 		`SELECT id, folder_id, name, mime_type, size_bytes, thumb_status, updated_at
 		 FROM files
 		 WHERE user_id = $1
@@ -167,21 +147,9 @@ func (r *homeRepo) ListRecentFiles(ctx context.Context, userID string, limit int
 	}
 	defer rows.Close()
 
-	items := make([]domain.RecentFileSummary, 0, limit)
-	for rows.Next() {
-		var item domain.RecentFileSummary
-		if err := rows.Scan(
-			&item.ID,
-			&item.FolderID,
-			&item.Name,
-			&item.MimeType,
-			&item.SizeBytes,
-			&item.ThumbStatus,
-			&item.UpdatedAt,
-		); err != nil {
-			return nil, 0, err
-		}
-		items = append(items, item)
+	items, err := scanRecentFileSummariesFn(rows, limit)
+	if err != nil {
+		return nil, 0, err
 	}
 	return items, total, nil
 }
@@ -203,7 +171,7 @@ func (r *homeRepo) GetStorageSummary(ctx context.Context, userID string) (domain
 }
 
 func (r *homeRepo) ListStorageTypeUsage(ctx context.Context, userID string) ([]domain.StorageTypeUsage, error) {
-	rows, err := r.db.Query(ctx,
+	rows, err := queryHomeRowsFn(ctx, r.db,
 		`SELECT type_key, COALESCE(SUM(size_bytes), 0) AS used_bytes
 		 FROM (
 		   SELECT
@@ -242,6 +210,83 @@ func (r *homeRepo) ListStorageTypeUsage(ctx context.Context, userID string) ([]d
 	}
 	defer rows.Close()
 
+	return scanStorageTypeUsage(rows)
+}
+
+func scanEventSummaries(rows pgx.Rows, limit int) ([]domain.EventSummary, error) {
+	items := make([]domain.EventSummary, 0, limit)
+	for rows.Next() {
+		var item domain.EventSummary
+		if err := rows.Scan(
+			&item.ID,
+			&item.CalendarID,
+			&item.Title,
+			&item.StartTime,
+			&item.EndTime,
+			&item.IsAllDay,
+			&item.ColorID,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, item)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+func scanTodoSummaries(rows pgx.Rows, limit int) ([]domain.TodoSummary, error) {
+	items := make([]domain.TodoSummary, 0, limit)
+	for rows.Next() {
+		var item domain.TodoSummary
+		var dueDate *time.Time
+		if err := rows.Scan(
+			&item.ID,
+			&item.ListID,
+			&item.Title,
+			&dueDate,
+			&item.Priority,
+			&item.IsPinned,
+		); err != nil {
+			return nil, err
+		}
+		if dueDate != nil {
+			s := dueDate.Format("2006-01-02")
+			item.DueDate = &s
+		}
+		items = append(items, item)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+func scanRecentFileSummaries(rows pgx.Rows, limit int) ([]domain.RecentFileSummary, error) {
+	items := make([]domain.RecentFileSummary, 0, limit)
+	for rows.Next() {
+		var item domain.RecentFileSummary
+		if err := rows.Scan(
+			&item.ID,
+			&item.FolderID,
+			&item.Name,
+			&item.MimeType,
+			&item.SizeBytes,
+			&item.ThumbStatus,
+			&item.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, item)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+func scanStorageTypeUsage(rows pgx.Rows) ([]domain.StorageTypeUsage, error) {
 	out := make([]domain.StorageTypeUsage, 0, 3)
 	for rows.Next() {
 		var item domain.StorageTypeUsage
@@ -249,6 +294,9 @@ func (r *homeRepo) ListStorageTypeUsage(ctx context.Context, userID string) ([]d
 			return nil, err
 		}
 		out = append(out, item)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
 	}
 	return out, nil
 }

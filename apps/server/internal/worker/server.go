@@ -7,6 +7,10 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
+var runAsynqServer = func(srv *asynq.Server, mux *asynq.ServeMux) error {
+	return srv.Run(mux)
+}
+
 func StartWorkerServer(redisURL string, db *pgxpool.Pool, dataPath, thumbPath string) *asynq.Server {
 	redisOpt, err := asynq.ParseRedisURI(redisURL)
 	if err != nil {
@@ -27,7 +31,7 @@ func StartWorkerServer(redisURL string, db *pgxpool.Pool, dataPath, thumbPath st
 	mux.HandleFunc(TypeThumbnailGenerate, thumbHandler.ProcessTask)
 
 	go func() {
-		if err := srv.Run(mux); err != nil {
+		if err := runAsynqServer(srv, mux); err != nil {
 			slog.Error("worker server error", "error", err)
 		}
 	}()

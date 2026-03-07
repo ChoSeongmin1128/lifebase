@@ -83,14 +83,9 @@ func (r *userRepo) ListUsers(ctx context.Context, search, cursor string, limit i
 		return nil, "", err
 	}
 	defer rows.Close()
-
-	users := make([]*domain.User, 0, limit+1)
-	for rows.Next() {
-		var u domain.User
-		if err := rows.Scan(&u.ID, &u.Email, &u.Name, &u.Picture, &u.StorageQuotaBytes, &u.StorageUsedBytes, &u.CreatedAt, &u.UpdatedAt); err != nil {
-			return nil, "", err
-		}
-		users = append(users, &u)
+	users, err := scanUserRows(rows)
+	if err != nil {
+		return nil, "", err
 	}
 
 	nextCursor := ""
@@ -132,4 +127,19 @@ func (r *userRepo) UpdateStorageUsed(ctx context.Context, userID string, usedByt
 		userID, usedBytes,
 	)
 	return err
+}
+
+func scanUserRows(rows pgx.Rows) ([]*domain.User, error) {
+	users := make([]*domain.User, 0)
+	for rows.Next() {
+		var u domain.User
+		if err := rows.Scan(&u.ID, &u.Email, &u.Name, &u.Picture, &u.StorageQuotaBytes, &u.StorageUsedBytes, &u.CreatedAt, &u.UpdatedAt); err != nil {
+			return nil, err
+		}
+		users = append(users, &u)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return users, nil
 }
