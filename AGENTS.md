@@ -26,7 +26,9 @@
 - After Web baseline is stable, execute Desktop/Mobile in parallel and run integration validation.
 
 ## Multi-Agent / Worktree Policy
-- Follow `.claude/rules/workflow.md` trigger conditions for multi-agent and worktree usage.
+- Default working context is the current repository's `dev` branch.
+- Do not create or switch to a git worktree unless the user explicitly asks for it.
+- Follow `.claude/rules/workflow.md` for multi-agent usage and for worktree handling after an explicit user request.
 - If large-unit or complex-task classification is ambiguous, do not guess. Ask the user directly before proceeding.
 
 ## Codex Exec Policy

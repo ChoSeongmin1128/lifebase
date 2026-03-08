@@ -40,7 +40,8 @@
 - `CLAUDE.md`
 
 ## 7-1. 로컬 개발/worktree 실행 규칙
-- 새 worktree를 만들면 `pnpm bootstrap:worktree`로 env 복사와 `pnpm install`을 먼저 수행한다.
+- 기본 작업 위치는 현재 repo의 `dev` 컨텍스트다.
+- 사용자가 worktree를 명시적으로 요구한 경우에만 새 worktree를 만들고, 그때 `pnpm bootstrap:worktree`로 env 복사와 `pnpm install`을 먼저 수행한다.
 - 로컬 통합 실행은 루트에서 `pnpm dev`를 사용한다.
 - 실행 상태 확인은 `pnpm dev:status`, 종료는 `pnpm dev:stop`을 사용한다.
 - 기본 포트는 API `38117`, Web `39001`이며, 충돌 시 빈 포트로 자동 조정될 수 있다.
