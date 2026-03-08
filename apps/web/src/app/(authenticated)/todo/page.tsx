@@ -209,6 +209,7 @@ function TodoPageInner() {
   const [googleAccounts, setGoogleAccounts] = useState<GoogleAccountSummary[]>([]);
   const [showNewList, setShowNewList] = useState(false);
   const [editingTodoId, setEditingTodoId] = useState<string | null>(null);
+  const [closingTodoId, setClosingTodoId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [filter, setFilter] = useState<TodoFilterMode>("all");
   const [doneCollapsed, setDoneCollapsed] = useState(true);
@@ -222,6 +223,8 @@ function TodoPageInner() {
   const [syncingNow, setSyncingNow] = useState(false);
   const quickActionHandledRef = useRef(false);
   const syncThrottleRef = useRef<Record<string, number>>({});
+  const editingTodoIdRef = useRef<string | null>(null);
+  const closeAnimationTimerRef = useRef<number | null>(null);
 
   // DnD state
   const [dragActiveId, setDragActiveId] = useState<string | null>(null);
@@ -238,6 +241,51 @@ function TodoPageInner() {
   const realLists = useMemo(() => lists.filter((list) => !list.is_virtual), [lists]);
   const realListsRef = useRef<TodoList[]>([]);
   const realListIDsKey = useMemo(() => realLists.map((list) => list.id).join(","), [realLists]);
+
+  useEffect(() => {
+    editingTodoIdRef.current = editingTodoId;
+  }, [editingTodoId]);
+
+  useEffect(() => {
+    return () => {
+      if (closeAnimationTimerRef.current !== null) {
+        window.clearTimeout(closeAnimationTimerRef.current);
+      }
+    };
+  }, []);
+
+  const scheduleClosingTodo = useCallback((todoId: string | null) => {
+    if (!todoId) return;
+    setClosingTodoId(todoId);
+    if (closeAnimationTimerRef.current !== null) {
+      window.clearTimeout(closeAnimationTimerRef.current);
+    }
+    closeAnimationTimerRef.current = window.setTimeout(() => {
+      setClosingTodoId((prev) => (prev === todoId ? null : prev));
+      closeAnimationTimerRef.current = null;
+    }, 220);
+  }, []);
+
+  const closeEditingTodo = useCallback((todoId?: string | null) => {
+    const targetId = todoId ?? editingTodoIdRef.current;
+    if (targetId) {
+      scheduleClosingTodo(targetId);
+    }
+    setEditingTodoId((prev) => (targetId && prev === targetId ? null : prev));
+  }, [scheduleClosingTodo]);
+
+  const toggleEditingTodo = useCallback((todoId: string) => {
+    const currentEditingId = editingTodoIdRef.current;
+    if (currentEditingId === todoId) {
+      closeEditingTodo(todoId);
+      return;
+    }
+    if (currentEditingId) {
+      scheduleClosingTodo(currentEditingId);
+    }
+    setClosingTodoId((prev) => (prev === todoId ? null : prev));
+    setEditingTodoId(todoId);
+  }, [closeEditingTodo, scheduleClosingTodo]);
   const listNameByID = useMemo(
     () => new Map(realLists.map((list) => [list.id, list.name])),
     [realLists],
@@ -539,14 +587,41 @@ function TodoPageInner() {
     const handlePointerDown = (event: PointerEvent) => {
       const target = event.target;
       if (!(target instanceof HTMLElement)) return;
-      if (target.closest(`[data-todo-row-id="${editingTodoId}"]`)) return;
-      if (target.closest("[data-radix-popper-content-wrapper]")) return;
-      setEditingTodoId(null);
+      const eventPath = typeof event.composedPath === "function" ? event.composedPath() : [];
+      const matchesInPath = (predicate: (node: HTMLElement) => boolean) =>
+        eventPath.some((node) => node instanceof HTMLElement && predicate(node));
+
+      if (document.body.dataset.todoEditOverlayOpen === "true") return;
+      if (
+        target.closest(`[data-todo-row-id="${editingTodoId}"]`) ||
+        matchesInPath((node) => Boolean(node.closest(`[data-todo-row-id="${editingTodoId}"]`)))
+      ) {
+        return;
+      }
+      if (
+        target.closest("[data-todo-row-id]") ||
+        matchesInPath((node) => Boolean(node.closest("[data-todo-row-id]")))
+      ) {
+        return;
+      }
+      if (
+        target.closest('[data-todo-edit-layer="true"]') ||
+        matchesInPath((node) => Boolean(node.closest('[data-todo-edit-layer="true"]')))
+      ) {
+        return;
+      }
+      if (
+        target.closest("[data-radix-popper-content-wrapper]") ||
+        matchesInPath((node) => Boolean(node.closest("[data-radix-popper-content-wrapper]")))
+      ) {
+        return;
+      }
+      closeEditingTodo(editingTodoId);
     };
 
     const handleEscape = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
-        setEditingTodoId(null);
+        closeEditingTodo(editingTodoId);
       }
     };
 
@@ -557,7 +632,7 @@ function TodoPageInner() {
       document.removeEventListener("pointerdown", handlePointerDown);
       document.removeEventListener("keydown", handleEscape);
     };
-  }, [editingTodoId]);
+  }, [closeEditingTodo, editingTodoId]);
 
   const handleCreateList = async () => {
     if (!newListName.trim()) return;
@@ -656,7 +731,7 @@ function TodoPageInner() {
   const handleDeleteTodo = async (todoId: string) => {
     try {
       await deleteTodo(todoId);
-      setEditingTodoId(null);
+      closeEditingTodo(todoId);
       await loadTodos();
       await loadLists();
       void triggerTodoSync("page_action", PAGE_ACTION_SYNC_COOLDOWN_MS);
@@ -938,6 +1013,9 @@ function TodoPageInner() {
     const isCollapsed = collapsed.has(todo.id);
     const childCount = childCountMap.get(todo.id);
     const isDragging = todo.id === dragActiveId;
+    const isExpanded = editingTodoId === todo.id;
+    const isClosing = closingTodoId === todo.id;
+    const shouldKeepExpandedContent = isExpanded || isClosing;
 
     // Show drop indicator when this is the over item during drag
     const isDropTarget = isDndEnabled && dragActiveId && dragOverId === todo.id && dragActiveId !== todo.id;
@@ -947,7 +1025,7 @@ function TodoPageInner() {
         key={todo.id}
         className={cn(
           "mx-2 rounded-xl transition-all",
-          editingTodoId === todo.id && "bg-surface-accent/70 ring-1 ring-border/70"
+          isExpanded && "bg-surface-accent/70 ring-1 ring-border/70"
         )}
       >
         {isDropTarget && (
@@ -966,19 +1044,18 @@ function TodoPageInner() {
           childCount={childCount}
           showDragHandle={isDndEnabled}
           isDragging={isDragging}
-          isExpanded={editingTodoId === todo.id}
+          isExpanded={isExpanded}
           lists={realLists}
           onToggleCollapse={() => toggleCollapse(todo.id)}
           onToggleDone={() => handleToggleDone(todo)}
           onTogglePin={() => handleTogglePin(todo)}
-          onEdit={() => setEditingTodoId((prev) => (prev === todo.id ? null : todo.id))}
+          onEdit={() => toggleEditingTodo(todo.id)}
           onDelete={() => handleDeleteTodo(todo.id)}
           onChangePriority={(p) => handleUpdateTodo(todo.id, { priority: p })}
           onUpdateTitle={(title) => handleUpdateTodo(todo.id, { title })}
           expandedContent={
-            editingTodoId === todo.id ? (
+            shouldKeepExpandedContent ? (
               <TodoInlineEditor
-                key={`${todo.id}:${todo.updated_at ?? todo.notes}:${todo.due_date ?? ""}:${todo.due_time ?? ""}:${todo.priority}`}
                 todo={todo}
                 listName={listNameByID.get(todo.list_id)}
                 onUpdate={(updates) => handleUpdateTodo(todo.id, updates)}

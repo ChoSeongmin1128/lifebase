@@ -139,34 +139,21 @@ function ExpandableDetails({
   open: boolean;
   children?: ReactNode;
 }) {
-  const bodyRef = useRef<HTMLDivElement | null>(null);
-
-  useEffect(() => {
-    if (!open || !bodyRef.current) return;
-    const body = bodyRef.current;
-    const measuredHeight = body.scrollHeight;
-    const animation = body.animate(
-      [
-        { opacity: 0, transform: "translateY(-6px)", maxHeight: "0px" },
-        { opacity: 1, transform: "translateY(0)", maxHeight: `${measuredHeight}px` },
-      ],
-      {
-        duration: 220,
-        easing: "cubic-bezier(0.22, 1, 0.36, 1)",
-      }
-    );
-    return () => animation.cancel();
-  }, [open, children]);
-
-  if (!open || !children) return null;
+  if (!children) return null;
 
   return (
-    <div className="overflow-hidden">
-      <div
-        ref={bodyRef}
-        className="mt-2 opacity-100"
-      >
-        {children}
+    <div
+      className={cn(
+        "mt-2 grid overflow-hidden transition-[grid-template-rows,opacity,transform] duration-220 ease-[cubic-bezier(0.22,1,0.36,1)]",
+        open
+          ? "grid-rows-[1fr] opacity-100 translate-y-0"
+          : "pointer-events-none grid-rows-[0fr] opacity-0 -translate-y-1"
+      )}
+    >
+      <div className="min-h-0 overflow-hidden">
+        <div>
+          {children}
+        </div>
       </div>
     </div>
   );
