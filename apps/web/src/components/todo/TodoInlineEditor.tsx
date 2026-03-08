@@ -43,6 +43,8 @@ export function TodoInlineEditor({
   const [priority, setPriority] = useState(todo.priority);
   const [notes, setNotes] = useState(todo.notes);
   const notesRef = useRef<HTMLTextAreaElement | null>(null);
+  const dateInputRef = useRef<HTMLInputElement | null>(null);
+  const timeInputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
     if (!notesRef.current) return;
@@ -74,9 +76,16 @@ export function TodoInlineEditor({
           </span>
         ) : null}
 
-        <div className="flex items-center gap-1.5 rounded-full border border-border bg-background px-2.5 py-1">
+        <div
+          className="flex items-center gap-1.5 rounded-full border border-border bg-background px-2.5 py-1 transition-colors hover:border-primary/40"
+          onClick={() => {
+            dateInputRef.current?.focus();
+            dateInputRef.current?.showPicker?.();
+          }}
+        >
           <CalendarDays size={13} className="text-text-muted" />
           <Input
+            ref={dateInputRef}
             type="date"
             value={dueDate}
             className="h-auto min-w-[132px] border-0 bg-transparent px-0 py-0 text-xs shadow-none focus-visible:ring-0"
@@ -96,9 +105,20 @@ export function TodoInlineEditor({
           />
         </div>
 
-        <div className="flex items-center gap-1.5 rounded-full border border-border bg-background px-2.5 py-1">
+        <div
+          className={cn(
+            "flex items-center gap-1.5 rounded-full border border-border bg-background px-2.5 py-1 transition-colors",
+            dueDate ? "hover:border-primary/40" : "opacity-60"
+          )}
+          onClick={() => {
+            if (!dueDate) return;
+            timeInputRef.current?.focus();
+            timeInputRef.current?.showPicker?.();
+          }}
+        >
           <Clock3 size={13} className="text-text-muted" />
           <Input
+            ref={timeInputRef}
             type="time"
             value={dueTime}
             disabled={!dueDate}

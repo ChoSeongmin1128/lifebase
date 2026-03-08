@@ -170,6 +170,7 @@ export function TodoRow({
     <div
       ref={isOverlay ? undefined : sortable.setNodeRef}
       style={style}
+      data-todo-row-id={todo.id}
       className={cn(
         "group flex items-start gap-2 py-2 pr-4 transition-colors",
         !isOverlay && !isExpanded && "hover:bg-surface-accent/50",
@@ -247,7 +248,7 @@ export function TodoRow({
             </p>
           ) : null}
           {isExpanded && expandedContent ? (
-            <div className="mt-2">
+            <div className="mt-2 animate-in slide-in-from-top-1 fade-in-0 duration-200">
               {expandedContent}
             </div>
           ) : null}

@@ -201,6 +201,7 @@ npx expo start
 - 확장 영역은 메모, 일정, 우선순위만 보조 편집해 Google Tasks에 가까운 인라인 편집 흐름을 유지한다
 - Web Cloud/Gallery도 섹션·폴더·필터 전환 시 기존 목록을 유지한 채 백그라운드 refresh로 갱신한다
 
+- 선택된 Todo는 같은 행을 다시 누르거나 빈 영역/Esc를 누르면 접히고, 날짜·시간 칩 전체 클릭으로 picker를 연다
 ### 공유
 - 10분 만료 초대 토큰
 - ACL: viewer(읽기)/editor(수정)

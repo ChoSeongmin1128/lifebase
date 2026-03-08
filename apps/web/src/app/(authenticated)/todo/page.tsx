@@ -533,6 +533,32 @@ function TodoPageInner() {
     router.replace(next ? `/todo?${next}` : "/todo", { scroll: false });
   }, [quickAction, activeListId, realLists, router, setActiveListId, sortBy]);
 
+  useEffect(() => {
+    if (!editingTodoId) return;
+
+    const handlePointerDown = (event: PointerEvent) => {
+      const target = event.target;
+      if (!(target instanceof HTMLElement)) return;
+      if (target.closest(`[data-todo-row-id="${editingTodoId}"]`)) return;
+      if (target.closest("[data-radix-popper-content-wrapper]")) return;
+      setEditingTodoId(null);
+    };
+
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setEditingTodoId(null);
+      }
+    };
+
+    document.addEventListener("pointerdown", handlePointerDown);
+    document.addEventListener("keydown", handleEscape);
+
+    return () => {
+      document.removeEventListener("pointerdown", handlePointerDown);
+      document.removeEventListener("keydown", handleEscape);
+    };
+  }, [editingTodoId]);
+
   const handleCreateList = async () => {
     if (!newListName.trim()) return;
     if (newListTarget === "google" && !newListGoogleAccountID) return;
