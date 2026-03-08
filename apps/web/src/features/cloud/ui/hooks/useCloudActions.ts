@@ -13,6 +13,7 @@ export function useCloudActions() {
   return useMemo(
     () => ({
       listItems: (input: ListCloudItemsInput) => useCase.listItems(input),
+      getFolder: (folderId: string) => useCase.getFolder(folderId),
       listStars: () => useCase.listStars(),
       uploadFile: (file: File, folderId?: string | null) => useCase.uploadFile(file, folderId),
       createTextFile: (name: string, extension: "md" | "txt", folderId?: string | null) =>

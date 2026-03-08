@@ -166,6 +166,9 @@ npx expo start
 ### Cloud
 - 파일 업로드/다운로드/삭제/이동/이름변경
 - 폴더 CRUD + 계층 탐색
+- Web Cloud는 `/cloud/folders/{folderId}`를 canonical 폴더 URL로 사용하고, 기존 `?folder=` 진입은 canonical route로 정리한다
+- Web Cloud 폴더 화면은 `뒤로가기 + 현재 폴더명 + 경로 보기` 패턴을 기본 헤더로 사용한다
+- Mobile/Desktop Cloud도 같은 정보 구조를 기준으로 후속 정렬한다
 - 휴지통 (복원/비우기)
 - 파일 검색 (pg_trgm)
 - 정렬: 이름/크기/수정일/생성일
