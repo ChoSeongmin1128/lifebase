@@ -95,6 +95,10 @@ const INTERNAL_ITEM_DRAG_TYPE = "application/x-lifebase-cloud-item";
 const ROOT_PATH_ENTRY: CloudPathEntry = { id: null, name: "내 클라우드" };
 const TRASH_ROOT_PATH_ENTRY: CloudPathEntry = { id: null, name: "휴지통" };
 const DELETE_UNDO_WINDOW_MS = 5_000;
+const cloudPathCache = new Map<string, CloudPathEntry[]>();
+const cloudFolderCache = new Map<string, FolderData>();
+
+const getCloudLocationKey = (section: CloudSection, folderId: string | null) => `${section}:${folderId || "root"}`;
 
 const isTextInputTarget = (target: EventTarget | null) => {
   if (!(target instanceof HTMLElement)) return false;
@@ -128,9 +132,18 @@ function CloudPageInner() {
     }
     return null;
   }, [folderQuery, routeFolderId, section]);
+  const locationKey = useMemo(() => getCloudLocationKey(section, resolvedFolderID), [resolvedFolderID, section]);
+  const initialRootPathEntry = section === "trash" ? TRASH_ROOT_PATH_ENTRY : ROOT_PATH_ENTRY;
+  const initialPath = useMemo(() => {
+    const cached = cloudPathCache.get(locationKey);
+    if (cached && cached.length > 0) {
+      return cached;
+    }
+    return [initialRootPathEntry];
+  }, [initialRootPathEntry, locationKey]);
   const [activeFolderID, setActiveFolderID] = useState<string | null>(resolvedFolderID);
   const [items, setItems] = useState<FolderItem[]>([]);
-  const [path, setPath] = useState<CloudPathEntry[]>([ROOT_PATH_ENTRY]);
+  const [path, setPath] = useState<CloudPathEntry[]>(initialPath);
   const [pathLoading, setPathLoading] = useState(false);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -162,13 +175,13 @@ function CloudPageInner() {
   const [starredKeys, setStarredKeys] = useState<Set<string>>(new Set());
 
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const folderCacheRef = useRef<Map<string, FolderData>>(new Map());
+  const folderCacheRef = useRef<Map<string, FolderData>>(new Map(cloudFolderCache));
   const itemsRequestRef = useRef(0);
   const pathRequestRef = useRef(0);
   const quickActionHandledRef = useRef(false);
   const pendingDeletionRef = useRef<PendingCloudDeletion | null>(null);
   const pendingTrashEmptyRef = useRef<PendingTrashEmpty | null>(null);
-  const locationKeyRef = useRef(`${section}:${resolvedFolderID || "root"}`);
+  const locationKeyRef = useRef(locationKey);
 
   const currentFolderID = activeFolderID;
   const hasLegacyFolderQuery = isMyFilesSection && !routeFolderId && !!folderQuery;
@@ -180,6 +193,11 @@ function CloudPageInner() {
   useEffect(() => {
     setActiveFolderID(resolvedFolderID);
   }, [resolvedFolderID]);
+
+  const updatePathState = useCallback((nextPath: CloudPathEntry[], folderId: string | null = currentFolderID) => {
+    setPath(nextPath);
+    cloudPathCache.set(getCloudLocationKey(section, folderId), nextPath);
+  }, [currentFolderID, section]);
 
   const buildCloudHref = useCallback((targetSection: CloudSection, folderId?: string | null, quick?: string | null) => {
     const params = new URLSearchParams();
@@ -252,6 +270,7 @@ function CloudPageInner() {
         nextItems.forEach((item) => {
           if (item.type === "folder" && item.folder) {
             folderCacheRef.current.set(item.folder.id, item.folder);
+            cloudFolderCache.set(item.folder.id, item.folder);
           }
         });
       }
@@ -279,13 +298,24 @@ function CloudPageInner() {
   const loadFolderPath = useCallback(async () => {
     if ((!isMyFilesSection && !isTrashSection) || !authed) {
       pathRequestRef.current += 1;
-      setPath([rootPathEntry]);
+      updatePathState([rootPathEntry], null);
       setPathLoading(false);
       return;
     }
     if (!currentFolderID) {
       pathRequestRef.current += 1;
-      setPath([rootPathEntry]);
+      updatePathState([rootPathEntry], null);
+      setPathLoading(false);
+      return;
+    }
+
+    const lastEntry = path[path.length - 1];
+    const hasStablePath =
+      path.length > 1
+      && path[0]?.id === rootPathEntry.id
+      && lastEntry?.id === currentFolderID;
+    if (hasStablePath) {
+      pathRequestRef.current += 1;
       setPathLoading(false);
       return;
     }
@@ -304,22 +334,23 @@ function CloudPageInner() {
         if (!folder) {
           folder = isTrashSection ? await cloud.getTrashFolder(cursor) : await cloud.getFolder(cursor);
           folderCacheRef.current.set(folder.id, folder);
+          cloudFolderCache.set(folder.id, folder);
         }
         nextEntries.unshift({ id: folder.id, name: folder.name });
         cursor = folder.parent_id;
       }
 
       if (requestId !== pathRequestRef.current) return;
-      setPath([rootPathEntry, ...nextEntries]);
+      updatePathState([rootPathEntry, ...nextEntries], currentFolderID);
     } catch {
       if (requestId !== pathRequestRef.current) return;
       const fallbackName = folderCacheRef.current.get(currentFolderID)?.name || "폴더";
-      setPath([rootPathEntry, { id: currentFolderID, name: fallbackName }]);
+      updatePathState([rootPathEntry, { id: currentFolderID, name: fallbackName }], currentFolderID);
     } finally {
       if (requestId !== pathRequestRef.current) return;
       setPathLoading(false);
     }
-  }, [authed, cloud, currentFolderID, isMyFilesSection, isTrashSection, rootPathEntry]);
+  }, [authed, cloud, currentFolderID, isMyFilesSection, isTrashSection, path, rootPathEntry, updatePathState]);
 
   const loadStars = useCallback(async () => {
     if (!authed) {
@@ -338,7 +369,7 @@ function CloudPageInner() {
   useEffect(() => {
     if (!isMyFilesSection && !isTrashSection) {
       setPathLoading(false);
-      setPath([rootPathEntry]);
+      updatePathState([rootPathEntry], null);
     }
     setRenaming(null);
     setShowNewFolder(false);
@@ -355,10 +386,10 @@ function CloudPageInner() {
     setMovingItemKey(null);
     loadStars();
     loadItems();
-  }, [isMyFilesSection, isTrashSection, loadItems, loadStars, rootPathEntry]);
+  }, [isMyFilesSection, isTrashSection, loadItems, loadStars, rootPathEntry, updatePathState]);
 
   useEffect(() => {
-    const nextKey = `${section}:${currentFolderID || "root"}`;
+    const nextKey = getCloudLocationKey(section, currentFolderID);
     if (locationKeyRef.current !== nextKey && pendingDeletionRef.current) {
       void pendingDeletionRef.current.flush();
     }
@@ -408,12 +439,15 @@ function CloudPageInner() {
     if (!isMyFilesSection && !isTrashSection) return;
     setActiveFolderID(folder.id);
     folderCacheRef.current.set(folder.id, folder);
+    cloudFolderCache.set(folder.id, folder);
     setPath((prev) => {
       const lastEntry = prev[prev.length - 1];
       if (lastEntry?.id === folder.id) {
         return prev;
       }
-      return [...prev, { id: folder.id, name: folder.name }];
+      const nextPath = [...prev, { id: folder.id, name: folder.name }];
+      cloudPathCache.set(getCloudLocationKey(section, folder.id), nextPath);
+      return nextPath;
     });
     syncFolderUrl(folder.id, "push");
   };
@@ -423,14 +457,20 @@ function CloudPageInner() {
     setActiveFolderID(folderId);
     setPath((prev) => {
       if (folderId === null) {
-        return [rootPathEntry];
+        const nextPath = [rootPathEntry];
+        cloudPathCache.set(getCloudLocationKey(section, null), nextPath);
+        return nextPath;
       }
       const existingIndex = prev.findIndex((entry) => entry.id === folderId);
       if (existingIndex >= 0) {
-        return prev.slice(0, existingIndex + 1);
+        const nextPath = prev.slice(0, existingIndex + 1);
+        cloudPathCache.set(getCloudLocationKey(section, folderId), nextPath);
+        return nextPath;
       }
       const cached = folderCacheRef.current.get(folderId);
-      return [rootPathEntry, { id: folderId, name: cached?.name || "폴더" }];
+      const nextPath = [rootPathEntry, { id: folderId, name: cached?.name || "폴더" }];
+      cloudPathCache.set(getCloudLocationKey(section, folderId), nextPath);
+      return nextPath;
     });
     syncFolderUrl(folderId, "push");
   };
