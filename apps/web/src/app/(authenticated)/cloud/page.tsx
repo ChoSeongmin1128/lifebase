@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { useState, useEffect, useCallback, useMemo, useRef, Suspense } from "react";
 import { getCloudItemToken } from "@lifebase/design-tokens";
 import { useCloudActions } from "@/features/cloud/ui/hooks/useCloudActions";
@@ -25,6 +25,7 @@ import {
   DropdownMenuItem,
   DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
+import { CloudFolderHeader, type CloudPathEntry } from "@/components/cloud/CloudFolderHeader";
 import { FileIcon } from "@/components/cloud/FileIcon";
 import { ThumbnailImage } from "@/components/cloud/ThumbnailImage";
 import { BulkActionBar } from "@/components/cloud/BulkActionBar";
@@ -76,6 +77,7 @@ interface CloudDragItem {
 }
 
 const INTERNAL_ITEM_DRAG_TYPE = "application/x-lifebase-cloud-item";
+const ROOT_PATH_ENTRY: CloudPathEntry = { id: null, name: "내 클라우드" };
 
 const isTextInputTarget = (target: EventTarget | null) => {
   if (!(target instanceof HTMLElement)) return false;
@@ -85,10 +87,13 @@ const isTextInputTarget = (target: EventTarget | null) => {
 };
 
 function CloudPageInner() {
+  const params = useParams<{ folderId?: string }>();
   const router = useRouter();
   const searchParams = useSearchParams();
-  const section = parseCloudSection(searchParams.get("section")) as CloudSection;
-  const folderFromUrl = searchParams.get("folder");
+  const routeFolderId = typeof params.folderId === "string" ? params.folderId : null;
+  const legacyFolderFromUrl = searchParams.get("folder");
+  const sectionQuery = parseCloudSection(searchParams.get("section")) as CloudSection;
+  const section = routeFolderId ? "" : sectionQuery;
   const quickAction = searchParams.get("quick");
   const isMyFilesSection = section === "";
   const isTrashSection = section === "trash";
@@ -98,10 +103,8 @@ function CloudPageInner() {
   const isSelectableSection = isMyFilesSection || isTrashSection;
 
   const [items, setItems] = useState<FolderItem[]>([]);
-  const [path, setPath] = useState<{ id: string | null; name: string }[]>([
-    { id: null, name: "내 클라우드" },
-  ]);
-  const [knownFolderNames, setKnownFolderNames] = useState<Map<string, string>>(new Map());
+  const [path, setPath] = useState<CloudPathEntry[]>([ROOT_PATH_ENTRY]);
+  const [pathLoading, setPathLoading] = useState(false);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [hasLoadedItems, setHasLoadedItems] = useState(false);
@@ -132,31 +135,38 @@ function CloudPageInner() {
   const [starredKeys, setStarredKeys] = useState<Set<string>>(new Set());
 
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const folderCacheRef = useRef<Map<string, FolderData>>(new Map());
+  const pathRequestRef = useRef(0);
   const quickActionHandledRef = useRef(false);
 
   const currentFolderID = useMemo(() => {
     if (!isMyFilesSection) return null;
-    return folderFromUrl || null;
-  }, [folderFromUrl, isMyFilesSection]);
+    return routeFolderId || legacyFolderFromUrl || null;
+  }, [isMyFilesSection, legacyFolderFromUrl, routeFolderId]);
+  const hasLegacyFolderQuery = isMyFilesSection && !routeFolderId && !!legacyFolderFromUrl;
   const authed = isAuthenticated();
   const cloud = useCloudActions();
   const toast = useToast();
 
-  const buildCloudHref = useCallback((targetSection: CloudSection, folderId?: string | null) => {
+  const buildCloudHref = useCallback((targetSection: CloudSection, folderId?: string | null, quick?: string | null) => {
     const params = new URLSearchParams();
     if (targetSection) {
       params.set("section", targetSection);
     }
-    if (!targetSection && folderId) {
-      params.set("folder", folderId);
+    if (quick) {
+      params.set("quick", quick);
     }
     const query = params.toString();
+    if (!targetSection && folderId) {
+      const basePath = `/cloud/folders/${encodeURIComponent(folderId)}`;
+      return query ? `${basePath}?${query}` : basePath;
+    }
     return query ? `/cloud?${query}` : "/cloud";
   }, []);
 
   const syncFolderUrl = useCallback(
-    (folderId: string | null, mode: "push" | "replace" = "replace") => {
-      const href = buildCloudHref(section, folderId);
+    (folderId: string | null, mode: "push" | "replace" = "replace", nextQuickAction?: string | null) => {
+      const href = buildCloudHref(section, folderId, nextQuickAction);
       if (mode === "push") {
         router.push(href, { scroll: false });
         return;
@@ -199,14 +209,10 @@ function CloudPageInner() {
       });
       setItems(nextItems);
       if (isMyFilesSection) {
-        setKnownFolderNames((prev) => {
-          const next = new Map(prev);
-          nextItems.forEach((item) => {
-            if (item.type === "folder" && item.folder) {
-              next.set(item.folder.id, item.folder.name);
-            }
-          });
-          return next;
+        nextItems.forEach((item) => {
+          if (item.type === "folder" && item.folder) {
+            folderCacheRef.current.set(item.folder.id, item.folder);
+          }
         });
       }
     } catch {
@@ -227,6 +233,51 @@ function CloudPageInner() {
     isMyFilesSection,
   ]);
 
+  const loadFolderPath = useCallback(async () => {
+    if (!isMyFilesSection || !authed) {
+      pathRequestRef.current += 1;
+      setPath([ROOT_PATH_ENTRY]);
+      setPathLoading(false);
+      return;
+    }
+    if (!currentFolderID) {
+      pathRequestRef.current += 1;
+      setPath([ROOT_PATH_ENTRY]);
+      setPathLoading(false);
+      return;
+    }
+
+    const requestId = pathRequestRef.current + 1;
+    pathRequestRef.current = requestId;
+    setPathLoading(true);
+    try {
+      const visited = new Set<string>();
+      const nextEntries: CloudPathEntry[] = [];
+      let cursor: string | null = currentFolderID;
+
+      while (cursor && !visited.has(cursor)) {
+        visited.add(cursor);
+        let folder = folderCacheRef.current.get(cursor);
+        if (!folder) {
+          folder = await cloud.getFolder(cursor);
+          folderCacheRef.current.set(folder.id, folder);
+        }
+        nextEntries.unshift({ id: folder.id, name: folder.name });
+        cursor = folder.parent_id;
+      }
+
+      if (requestId !== pathRequestRef.current) return;
+      setPath([ROOT_PATH_ENTRY, ...nextEntries]);
+    } catch {
+      if (requestId !== pathRequestRef.current) return;
+      const fallbackName = folderCacheRef.current.get(currentFolderID)?.name || "폴더";
+      setPath([ROOT_PATH_ENTRY, { id: currentFolderID, name: fallbackName }]);
+    } finally {
+      if (requestId !== pathRequestRef.current) return;
+      setPathLoading(false);
+    }
+  }, [authed, cloud, currentFolderID, isMyFilesSection]);
+
   const loadStars = useCallback(async () => {
     if (!authed) {
       setStarredKeys(new Set());
@@ -243,8 +294,8 @@ function CloudPageInner() {
 
   useEffect(() => {
     if (!isMyFilesSection) {
-      setPath([{ id: null, name: "내 클라우드" }]);
-      setKnownFolderNames(new Map());
+      setPathLoading(false);
+      setPath([ROOT_PATH_ENTRY]);
     }
     setRenaming(null);
     setShowNewFolder(false);
@@ -262,26 +313,19 @@ function CloudPageInner() {
     loadStars();
     loadItems();
   }, [isMyFilesSection, loadItems, loadStars]);
+
   useEffect(() => {
-    if (!isMyFilesSection) return;
-    if (!folderFromUrl) {
-      setPath([{ id: null, name: "내 클라우드" }]);
+    if (!hasLegacyFolderQuery || !legacyFolderFromUrl) return;
+    router.replace(buildCloudHref("", legacyFolderFromUrl, quickAction), { scroll: false });
+  }, [buildCloudHref, hasLegacyFolderQuery, legacyFolderFromUrl, quickAction, router]);
+
+  useEffect(() => {
+    if (!isMyFilesSection) {
       return;
     }
+    loadFolderPath();
+  }, [isMyFilesSection, loadFolderPath]);
 
-    setPath((prev) => {
-      const foundIndex = prev.findIndex((entry) => entry.id === folderFromUrl);
-      const knownName = knownFolderNames.get(folderFromUrl);
-      if (foundIndex >= 0) {
-        const next = prev.slice(0, foundIndex + 1);
-        if (knownName && next[foundIndex].name !== knownName) {
-          next[foundIndex] = { ...next[foundIndex], name: knownName };
-        }
-        return next;
-      }
-      return [...prev, { id: folderFromUrl, name: knownName || "폴더" }];
-    });
-  }, [folderFromUrl, isMyFilesSection, knownFolderNames]);
   useEffect(() => {
     if (quickAction !== "upload") return;
     if (quickActionHandledRef.current) return;
@@ -297,19 +341,31 @@ function CloudPageInner() {
 
   const navigateToFolder = (folder: FolderData) => {
     if (!isMyFilesSection) return;
-    setKnownFolderNames((prev) => new Map(prev).set(folder.id, folder.name));
-    setPath((prev) => [...prev, { id: folder.id, name: folder.name }]);
+    folderCacheRef.current.set(folder.id, folder);
+    setPath((prev) => {
+      const lastEntry = prev[prev.length - 1];
+      if (lastEntry?.id === folder.id) {
+        return prev;
+      }
+      return [...prev, { id: folder.id, name: folder.name }];
+    });
     syncFolderUrl(folder.id, "push");
   };
 
-  const navigateToBreadcrumb = (index: number) => {
+  const navigateToHeaderPath = (folderId: string | null) => {
     if (!isMyFilesSection) return;
     setPath((prev) => {
-      const next = prev.slice(0, index + 1);
-      const nextFolderId = next[next.length - 1]?.id ?? null;
-      syncFolderUrl(nextFolderId, "push");
-      return next;
+      if (folderId === null) {
+        return [ROOT_PATH_ENTRY];
+      }
+      const existingIndex = prev.findIndex((entry) => entry.id === folderId);
+      if (existingIndex >= 0) {
+        return prev.slice(0, existingIndex + 1);
+      }
+      const cached = folderCacheRef.current.get(folderId);
+      return [ROOT_PATH_ENTRY, { id: folderId, name: cached?.name || "폴더" }];
     });
+    syncFolderUrl(folderId, "push");
   };
 
   const handleUpload = async (files: FileList | null) => {
@@ -804,7 +860,18 @@ function CloudPageInner() {
     : items;
 
   const sectionLabel = CLOUD_SECTION_LABELS[section];
-  const showBreadcrumb = isMyFilesSection && path.length > 1;
+  const displayPath = (() => {
+    if (!isMyFilesSection) return path;
+    if (currentFolderID === null) return [ROOT_PATH_ENTRY];
+    const lastEntry = path[path.length - 1];
+    if (lastEntry?.id === currentFolderID) return path;
+    const existingIndex = path.findIndex((entry) => entry.id === currentFolderID);
+    if (existingIndex >= 0) return path.slice(0, existingIndex + 1);
+    const cached = folderCacheRef.current.get(currentFolderID);
+    return [ROOT_PATH_ENTRY, { id: currentFolderID, name: cached?.name || "폴더" }];
+  })();
+  const showFolderHeader = isMyFilesSection;
+  const headerLoading = pathLoading || (currentFolderID !== null && displayPath[displayPath.length - 1]?.id !== currentFolderID);
   const showSearchResultBanner = isMyFilesSection && searchResults !== null;
   const showBulkBar = selectedIds.size > 0 && (isMyFilesSection || isTrashSection);
   const currentViewMode: ViewMode = isMyFilesSection ? viewMode : "list";
@@ -823,32 +890,18 @@ function CloudPageInner() {
       }}
       onDrop={handleDrop}
     >
-      {showBreadcrumb && (
-        <PageToolbar className="justify-start py-3">
-          <nav className="flex items-center gap-1 text-sm">
-            {path.map((p, i) => (
-              <span key={i} className="flex items-center gap-1">
-                {i > 0 && <span className="text-text-muted">/</span>}
-                <button
-                  onClick={() => navigateToBreadcrumb(i)}
-                  className={`hover:underline ${
-                    i === path.length - 1
-                      ? "font-medium text-text-strong"
-                      : "text-text-secondary"
-                  }`}
-                >
-                  {p.name}
-                </button>
-              </span>
-            ))}
-          </nav>
-        </PageToolbar>
+      {showFolderHeader && (
+        <CloudFolderHeader
+          path={displayPath}
+          loading={headerLoading}
+          onNavigate={navigateToHeaderPath}
+        />
       )}
 
       <div className="flex gap-1.5 overflow-x-auto border-b border-border px-4 py-2 md:hidden">
         {CLOUD_SECTION_ITEMS.map((item) => {
           const isActive = item.section === section;
-          const href = item.section ? `/cloud?section=${item.section}` : "/cloud";
+          const href = buildCloudHref(item.section);
           return (
             <Link
               key={item.section || "root"}

@@ -2,6 +2,7 @@ import { api, apiDownload, apiUpload } from "@/features/shared/infrastructure/ht
 import { getAccessToken } from "@/features/auth/infrastructure/token-auth";
 import type {
   CloudFile,
+  FolderData,
   FolderItem,
   ListCloudItemsInput,
   StarItem,
@@ -64,6 +65,11 @@ export class HttpCloudRepository implements CloudRepository {
 
     const data = await api<ItemsResponse>(`/cloud/folders?${params.toString()}`, { token });
     return data.items || [];
+  }
+
+  getFolder(folderId: string): Promise<FolderData> {
+    const token = this.getToken();
+    return api<FolderData>(`/cloud/folders/${folderId}`, { token });
   }
 
   async listStars(): Promise<StarItem[]> {

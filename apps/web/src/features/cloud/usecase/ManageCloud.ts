@@ -8,6 +8,10 @@ export class ManageCloudUseCase {
     return this.repo.listItems(input);
   }
 
+  getFolder(folderId: string) {
+    return this.repo.getFolder(folderId);
+  }
+
   listStars() {
     return this.repo.listStars();
   }
