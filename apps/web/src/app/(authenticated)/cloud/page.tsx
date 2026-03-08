@@ -64,11 +64,15 @@ type SortDir = "asc" | "desc";
 type ViewMode = "list" | "grid";
 type ClipboardMode = "copy" | "cut";
 type ClipboardItemType = "file" | "folder";
-interface CloudClipboard {
-  mode: ClipboardMode;
+interface CloudClipboardItem {
   itemType: ClipboardItemType;
   itemID: string;
   itemName: string;
+}
+interface CloudClipboard {
+  mode: ClipboardMode;
+  items: CloudClipboardItem[];
+  summary: string;
 }
 interface CloudDragItem {
   itemType: ClipboardItemType;
@@ -105,6 +109,17 @@ const isTextInputTarget = (target: EventTarget | null) => {
   if (target.isContentEditable) return true;
   const tag = target.tagName;
   return tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT";
+};
+
+const buildClipboardSummary = (items: CloudClipboardItem[]) => {
+  if (items.length === 0) return "";
+  if (items.length === 1) return items[0].itemName;
+
+  const fileCount = items.filter((item) => item.itemType === "file").length;
+  const folderCount = items.length - fileCount;
+  if (fileCount === items.length) return `파일 ${items.length}개`;
+  if (folderCount === items.length) return `폴더 ${items.length}개`;
+  return `항목 ${items.length}개`;
 };
 
 function CloudPageInner() {
@@ -969,62 +984,96 @@ function CloudPageInner() {
     handleUpload(e.dataTransfer.files);
   };
 
-  const showCloudActionError = useCallback((prefix: string, err: unknown) => {
-    console.error(prefix, err);
-    const msg = err instanceof Error ? err.message : "알 수 없는 오류";
-    toast.error(prefix, msg);
-  }, [toast]);
+  const toClipboardItem = useCallback((item: FolderItem): CloudClipboardItem => {
+    if (item.type === "folder") {
+      return {
+        itemType: "folder",
+        itemID: item.folder!.id,
+        itemName: item.folder!.name,
+      };
+    }
+    return {
+      itemType: "file",
+      itemID: item.file!.id,
+      itemName: item.file!.name,
+    };
+  }, []);
 
-  const setClipboardFromItem = useCallback((mode: ClipboardMode, item: FolderItem) => {
+  const setClipboardFromItems = useCallback((mode: ClipboardMode, items: FolderItem[]) => {
     if (!isMyFilesSection) return;
-    if (mode === "copy" && item.type === "folder") {
+    if (items.length === 0) return;
+    if (mode === "copy" && items.some((item) => item.type === "folder")) {
       toast.warning("폴더 복사는 지원하지 않습니다", "잘라내기 후 붙여넣기를 사용해 주세요.");
       return;
     }
-    const itemID = item.type === "folder" ? item.folder!.id : item.file!.id;
-    const itemName = item.type === "folder" ? item.folder!.name : item.file!.name;
-    setClipboard({ mode, itemType: item.type, itemID, itemName });
-  }, [isMyFilesSection, toast]);
+    const clipboardItems = items.map(toClipboardItem);
+    setClipboard({
+      mode,
+      items: clipboardItems,
+      summary: buildClipboardSummary(clipboardItems),
+    });
+  }, [isMyFilesSection, toast, toClipboardItem]);
+
+  const setClipboardFromItem = useCallback((mode: ClipboardMode, item: FolderItem) => {
+    setClipboardFromItems(mode, [item]);
+  }, [setClipboardFromItems]);
 
   const applyClipboardToFolder = useCallback(async (targetFolderID: string | null) => {
     if (!authed || !isMyFilesSection || !clipboard || clipboardBusy) return;
 
     setClipboardBusy(true);
     try {
-      if (clipboard.itemType === "file") {
-        if (clipboard.mode === "copy") {
-          await cloud.copyFile(clipboard.itemID, targetFolderID);
-        } else {
-          await cloud.moveFile(clipboard.itemID, targetFolderID);
+      const results = await Promise.allSettled(
+        clipboard.items.map((item) => {
+          if (item.itemType === "file") {
+            return clipboard.mode === "copy"
+              ? cloud.copyFile(item.itemID, targetFolderID)
+              : cloud.moveFile(item.itemID, targetFolderID);
+          }
+          return clipboard.mode === "copy"
+            ? cloud.copyFolder(item.itemID, targetFolderID)
+            : cloud.moveFolder(item.itemID, targetFolderID);
+        }),
+      );
+
+      const failedItems = clipboard.items.filter((_, index) => results[index].status === "rejected");
+      if (clipboard.mode === "cut") {
+        if (failedItems.length === 0) {
           setClipboard(null);
-        }
-      } else {
-        if (clipboard.mode === "copy") {
-          await cloud.copyFolder(clipboard.itemID, targetFolderID);
         } else {
-          await cloud.moveFolder(clipboard.itemID, targetFolderID);
-          setClipboard(null);
+          setClipboard({
+            mode: "cut",
+            items: failedItems,
+            summary: buildClipboardSummary(failedItems),
+          });
         }
       }
 
+      if (failedItems.length > 0) {
+        toast.warning("일부 항목 붙여넣기 실패", `${failedItems.length}개 항목을 처리하지 못했습니다.`);
+      }
+
       await loadItems();
-    } catch (err) {
-      showCloudActionError("붙여넣기에 실패했습니다", err);
     } finally {
       setClipboardBusy(false);
     }
-  }, [authed, clipboard, clipboardBusy, cloud, isMyFilesSection, loadItems, showCloudActionError]);
+  }, [authed, clipboard, clipboardBusy, cloud, isMyFilesSection, loadItems, toast]);
 
-  const getSingleSelectedItem = useCallback(() => {
-    if (!isMyFilesSection || selectedIds.size !== 1) return null;
+  const getSelectedItems = useCallback(() => {
+    if (!isMyFilesSection || selectedIds.size === 0) return [];
     const currentItems: FolderItem[] = isMyFilesSection && searchResults
       ? searchResults.map((f) => ({ type: "file" as const, file: f, path: undefined }))
       : items;
-    const selectedID = Array.from(selectedIds)[0];
-    return currentItems.find((item) =>
-      item.type === "folder" ? item.folder?.id === selectedID : item.file?.id === selectedID,
-    ) ?? null;
+    return currentItems.filter((item) => {
+      const id = item.type === "folder" ? item.folder?.id : item.file?.id;
+      return !!id && selectedIds.has(id);
+    });
   }, [isMyFilesSection, items, searchResults, selectedIds]);
+
+  const isClipboardCutItem = useCallback((itemType: ClipboardItemType, itemID: string) => {
+    if (clipboard?.mode !== "cut") return false;
+    return clipboard.items.some((item) => item.itemType === itemType && item.itemID === itemID);
+  }, [clipboard]);
 
   const toggleSelect = (id: string) => {
     if (!isSelectableSection) return;
@@ -1049,6 +1098,14 @@ function CloudPageInner() {
     if (!isMyFilesSection) return;
 
     const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && !isTextInputTarget(e.target)) {
+        if (selectedIds.size === 0 && !clipboard) return;
+        e.preventDefault();
+        setSelectedIds(new Set());
+        setClipboard(null);
+        return;
+      }
+
       if (!(e.metaKey || e.ctrlKey) || e.altKey) return;
       if (isTextInputTarget(e.target)) return;
 
@@ -1065,11 +1122,11 @@ function CloudPageInner() {
         return;
       }
 
-      const selectedItem = getSingleSelectedItem();
-      if (!selectedItem) return;
+      const selectedItems = getSelectedItems();
+      if (selectedItems.length === 0) return;
 
       e.preventDefault();
-      setClipboardFromItem(key === "x" ? "cut" : "copy", selectedItem);
+      setClipboardFromItems(key === "x" ? "cut" : "copy", selectedItems);
     };
 
     window.addEventListener("keydown", onKeyDown);
@@ -1079,9 +1136,10 @@ function CloudPageInner() {
     clipboard,
     clipboardBusy,
     currentFolderID,
-    getSingleSelectedItem,
+    getSelectedItems,
     isMyFilesSection,
-    setClipboardFromItem,
+    selectedIds,
+    setClipboardFromItems,
   ]);
 
   const isMediaFile = (mimeType: string) =>
@@ -1426,9 +1484,9 @@ function CloudPageInner() {
       {isMyFilesSection && clipboard && (
         <div className="flex items-center gap-2 border-b border-border bg-surface-accent/40 px-6 py-2 text-xs text-text-secondary">
           <span>
-            {clipboard.mode === "copy" ? "복사됨" : "잘라내기됨"}: {clipboard.itemName}
+            {clipboard.mode === "copy" ? "복사됨" : "잘라내기됨"}: {clipboard.summary}
           </span>
-          <span className="text-text-muted">붙여넣기: mac ⌘V / windows Ctrl+V</span>
+          <span className="text-text-muted">붙여넣기: mac ⌘V / windows Ctrl+V, 해제: Esc</span>
         </div>
       )}
 
@@ -1540,8 +1598,7 @@ function CloudPageInner() {
                 const isDropTarget = isMyFilesSection && item.type === "folder" && dropTargetFolderId === id;
                 const isDraggingItem =
                   isMyFilesSection && draggingItem?.itemType === item.type && draggingItem.itemID === id;
-                const isCutClipboardItem =
-                  clipboard?.mode === "cut" && clipboard.itemType === item.type && clipboard.itemID === id;
+                const isCutClipboardItem = isClipboardCutItem(item.type, id);
                 const itemToken = item.type === "folder"
                   ? getCloudItemToken({ type: "folder" })
                   : getCloudItemToken({ type: "file", mimeType: item.file!.mime_type });
@@ -1769,8 +1826,7 @@ function CloudPageInner() {
               const isDropTarget = isMyFilesSection && item.type === "folder" && dropTargetFolderId === id;
               const isDraggingItem =
                 isMyFilesSection && draggingItem?.itemType === item.type && draggingItem.itemID === id;
-              const isCutClipboardItem =
-                clipboard?.mode === "cut" && clipboard.itemType === item.type && clipboard.itemID === id;
+              const isCutClipboardItem = isClipboardCutItem(item.type, id);
               const itemToken = item.type === "folder"
                 ? getCloudItemToken({ type: "folder" })
                 : getCloudItemToken({ type: "file", mimeType: item.file!.mime_type });
