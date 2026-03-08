@@ -35,6 +35,27 @@ func TestLocalStorageSaveReadDelete(t *testing.T) {
 	}
 }
 
+func TestLocalStorageDeletePrunesEmptyParentDirs(t *testing.T) {
+	base := t.TempDir()
+	s := NewLocalStorage(base)
+
+	storagePath, err := s.Save("u1", "ab1234", []byte("hello"))
+	if err != nil {
+		t.Fatalf("save failed: %v", err)
+	}
+
+	if err := s.Delete(storagePath); err != nil {
+		t.Fatalf("delete failed: %v", err)
+	}
+
+	if _, err := os.Stat(filepath.Join(base, "u1", "ab")); !os.IsNotExist(err) {
+		t.Fatalf("expected empty prefix dir pruned, stat err=%v", err)
+	}
+	if _, err := os.Stat(filepath.Join(base, "u1")); !os.IsNotExist(err) {
+		t.Fatalf("expected empty user dir pruned, stat err=%v", err)
+	}
+}
+
 func TestLocalStorageSaveCreateDirError(t *testing.T) {
 	base := t.TempDir()
 	blocker := filepath.Join(base, "u2")

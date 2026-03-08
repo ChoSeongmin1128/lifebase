@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+
+	"lifebase/internal/shared/fsutil"
 )
 
 type localStorage struct {
@@ -25,6 +27,7 @@ func (s *localStorage) Save(userID, fileID string, data []byte) (string, error) 
 	fullPath := filepath.Join(s.basePath, storagePath)
 
 	if err := os.WriteFile(fullPath, data, 0644); err != nil {
+		_ = fsutil.PruneEmptyParents(s.basePath, dir)
 		return "", fmt.Errorf("write file: %w", err)
 	}
 
@@ -38,5 +41,8 @@ func (s *localStorage) Read(storagePath string) ([]byte, error) {
 
 func (s *localStorage) Delete(storagePath string) error {
 	fullPath := filepath.Join(s.basePath, storagePath)
-	return os.Remove(fullPath)
+	if err := os.Remove(fullPath); err != nil {
+		return err
+	}
+	return fsutil.PruneEmptyParents(s.basePath, filepath.Dir(fullPath))
 }

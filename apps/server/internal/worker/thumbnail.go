@@ -16,10 +16,10 @@ import (
 
 var (
 	marshalThumbnailPayload = json.Marshal
-	mkdirAll               = os.MkdirAll
-	runThumbnailFn         = runVipsThumbnail
-	execCommand            = exec.Command
-	execThumbnailSQL       = func(ctx context.Context, db *pgxpool.Pool, sql string, args ...any) error {
+	mkdirAll                = os.MkdirAll
+	runThumbnailFn          = runVipsThumbnail
+	execCommand             = exec.Command
+	execThumbnailSQL        = func(ctx context.Context, db *pgxpool.Pool, sql string, args ...any) error {
 		_, err := db.Exec(ctx, sql, args...)
 		return err
 	}
@@ -70,18 +70,22 @@ func (h *ThumbnailHandler) ProcessTask(ctx context.Context, t *asynq.Task) error
 	}
 
 	srcPath := filepath.Join(h.dataPath, p.StoragePath)
-	thumbDir := filepath.Join(h.thumbPath, p.UserID)
-	if err := mkdirAll(thumbDir, 0755); err != nil {
-		return fmt.Errorf("create thumb dir: %w", err)
-	}
-
-	smallPath := filepath.Join(thumbDir, p.FileID+"_small.webp")
-	mediumPath := filepath.Join(thumbDir, p.FileID+"_medium.webp")
-
 	var err error
 	if strings.HasPrefix(p.MimeType, "image/") {
+		thumbDir := filepath.Join(h.thumbPath, p.UserID)
+		if err := mkdirAll(thumbDir, 0755); err != nil {
+			return fmt.Errorf("create thumb dir: %w", err)
+		}
+		smallPath := filepath.Join(thumbDir, p.FileID+"_small.webp")
+		mediumPath := filepath.Join(thumbDir, p.FileID+"_medium.webp")
 		err = h.generateImageThumbnails(srcPath, smallPath, mediumPath)
 	} else if strings.HasPrefix(p.MimeType, "video/") {
+		thumbDir := filepath.Join(h.thumbPath, p.UserID)
+		if err := mkdirAll(thumbDir, 0755); err != nil {
+			return fmt.Errorf("create thumb dir: %w", err)
+		}
+		smallPath := filepath.Join(thumbDir, p.FileID+"_small.webp")
+		mediumPath := filepath.Join(thumbDir, p.FileID+"_medium.webp")
 		err = h.generateVideoThumbnails(srcPath, smallPath, mediumPath)
 	} else {
 		// Not a media file, mark as done

@@ -4,7 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -228,6 +230,25 @@ func TestThumbnailHandlerProcessTaskHookedBranches(t *testing.T) {
 		}
 		if execCalls != 2 {
 			t.Fatalf("expected processing+done status updates, got %d", execCalls)
+		}
+	})
+
+	t.Run("non_media_does_not_create_thumb_dir", func(t *testing.T) {
+		prevExec := execThumbnailSQL
+		execThumbnailSQL = func(context.Context, *pgxpool.Pool, string, ...any) error { return nil }
+		t.Cleanup(func() { execThumbnailSQL = prevExec })
+
+		thumbRoot := t.TempDir()
+		task, err := NewThumbnailTask("f1", "u1", "u1/f1", "application/pdf")
+		if err != nil {
+			t.Fatalf("new thumbnail task: %v", err)
+		}
+		h := NewThumbnailHandler(nil, t.TempDir(), thumbRoot)
+		if err := h.ProcessTask(context.Background(), task); err != nil {
+			t.Fatalf("expected non-media success, got %v", err)
+		}
+		if _, err := os.Stat(filepath.Join(thumbRoot, "u1")); !os.IsNotExist(err) {
+			t.Fatalf("expected no thumb dir for non-media, stat err=%v", err)
 		}
 	})
 }
