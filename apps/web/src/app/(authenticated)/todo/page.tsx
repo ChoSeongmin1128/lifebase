@@ -944,28 +944,23 @@ function TodoPageInner() {
           onToggleCollapse={() => toggleCollapse(todo.id)}
           onToggleDone={() => handleToggleDone(todo)}
           onTogglePin={() => handleTogglePin(todo)}
-          onEdit={() => setEditingTodoId(todo.id)}
+          onEdit={() => setEditingTodoId((prev) => (prev === todo.id ? null : todo.id))}
           onDelete={() => handleDeleteTodo(todo.id)}
           onChangePriority={(p) => handleUpdateTodo(todo.id, { priority: p })}
           onUpdateTitle={(title) => handleUpdateTodo(todo.id, { title })}
+          expandedContent={
+            editingTodoId === todo.id ? (
+              <TodoInlineEditor
+                key={`${todo.id}:${todo.updated_at ?? todo.notes}:${todo.due_date ?? ""}:${todo.due_time ?? ""}:${todo.priority}`}
+                todo={todo}
+                listName={listNameByID.get(todo.list_id)}
+                onUpdate={(updates) => handleUpdateTodo(todo.id, updates)}
+              />
+            ) : undefined
+          }
           onAddSubtask={!isAllView && depth < 1 ? () => { setCreateParentId(todo.id); setShowCreateDialog(true); } : undefined}
           onMoveToList={(listId) => handleUpdateTodo(todo.id, { list_id: listId })}
         />
-        {editingTodoId === todo.id ? (
-          <div
-            className="mb-3 mr-4 mt-1"
-            style={{ marginLeft: `${depth * 24 + 42}px` }}
-          >
-            <TodoInlineEditor
-              key={todo.id}
-              todo={todo}
-              listName={listNameByID.get(todo.list_id)}
-              onClose={() => setEditingTodoId(null)}
-              onDelete={() => handleDeleteTodo(todo.id)}
-              onUpdate={(updates) => handleUpdateTodo(todo.id, updates)}
-            />
-          </div>
-        ) : null}
       </div>
     );
   };

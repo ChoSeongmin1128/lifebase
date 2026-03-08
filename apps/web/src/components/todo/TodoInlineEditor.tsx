@@ -1,7 +1,7 @@
 "use client";
 
-import { useState } from "react";
-import { CalendarDays, Clock3, Flag, Trash2, X } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { CalendarDays, Clock3, Flag } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
@@ -29,8 +29,6 @@ interface TodoInlineEditorProps {
   todo: TodoItem;
   listName?: string;
   className?: string;
-  onClose: () => void;
-  onDelete: () => void;
   onUpdate: (updates: Record<string, unknown>) => Promise<void>;
 }
 
@@ -38,45 +36,44 @@ export function TodoInlineEditor({
   todo,
   listName,
   className,
-  onClose,
-  onDelete,
   onUpdate,
 }: TodoInlineEditorProps) {
   const [dueDate, setDueDate] = useState(todo.due_date || "");
   const [dueTime, setDueTime] = useState(todo.due_time || "");
   const [priority, setPriority] = useState(todo.priority);
+  const [notes, setNotes] = useState(todo.notes);
+  const notesRef = useRef<HTMLTextAreaElement | null>(null);
+
+  useEffect(() => {
+    if (!notesRef.current) return;
+    notesRef.current.style.height = "0px";
+    notesRef.current.style.height = `${notesRef.current.scrollHeight}px`;
+  }, [notes]);
 
   return (
-    <div className={cn("space-y-3 border-t border-border/60 pt-2", className)}>
-      <div className="flex items-center justify-between gap-3">
-        <div className="flex min-w-0 items-center gap-2">
-          {listName ? (
-            <span className="rounded-full bg-background px-2 py-0.5 text-[11px] text-text-muted">
-              {listName}
-            </span>
-          ) : null}
-        </div>
-        <div className="flex items-center gap-1">
-          <button
-            type="button"
-            onClick={onDelete}
-            className="rounded-md p-1 text-text-muted transition-colors hover:bg-background hover:text-error"
-            aria-label="Todo 삭제"
-          >
-            <Trash2 size={14} />
-          </button>
-          <button
-            type="button"
-            onClick={onClose}
-            className="rounded-md p-1 text-text-muted transition-colors hover:bg-background hover:text-text-primary"
-            aria-label="Todo 상세 닫기"
-          >
-            <X size={14} />
-          </button>
-        </div>
-      </div>
+    <div className={cn("space-y-3 pt-1", className)}>
+      <Textarea
+        ref={notesRef}
+        value={notes}
+        rows={1}
+        className="min-h-0 rounded-none border-0 bg-transparent px-0 py-0 text-xs leading-5 text-text-muted shadow-none placeholder:text-text-muted/70 focus-visible:ring-0"
+        placeholder="세부정보"
+        onClick={(event) => event.stopPropagation()}
+        onChange={(event) => setNotes(event.target.value)}
+        onBlur={() => {
+          if (notes !== todo.notes) {
+            void onUpdate({ notes });
+          }
+        }}
+      />
 
       <div className="flex flex-wrap items-center gap-2">
+        {listName ? (
+          <span className="rounded-full bg-background px-2 py-0.5 text-[11px] text-text-muted">
+            {listName}
+          </span>
+        ) : null}
+
         <div className="flex items-center gap-1.5 rounded-full border border-border bg-background px-2.5 py-1">
           <CalendarDays size={13} className="text-text-muted" />
           <Input
@@ -138,18 +135,6 @@ export function TodoInlineEditor({
           </Select>
         </div>
       </div>
-
-      <Textarea
-        defaultValue={todo.notes}
-        rows={3}
-        className="min-h-[88px] resize-none border-0 bg-background/60 px-3 py-2 text-sm shadow-none focus-visible:ring-1"
-        placeholder="메모 추가"
-        onBlur={(e) => {
-          if (e.target.value !== todo.notes) {
-            void onUpdate({ notes: e.target.value });
-          }
-        }}
-      />
     </div>
   );
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { type ReactNode, useEffect, useRef, useState } from "react";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -74,6 +74,7 @@ interface TodoRowProps {
   onDelete: () => void;
   onChangePriority: (priority: string) => void;
   onUpdateTitle?: (title: string) => void;
+  expandedContent?: ReactNode;
   onAddSubtask?: () => void;
   onMoveToList?: (listId: string) => void;
 }
@@ -151,6 +152,7 @@ export function TodoRow({
   onDelete,
   onChangePriority,
   onUpdateTitle,
+  expandedContent,
   onAddSubtask,
   onMoveToList,
 }: TodoRowProps) {
@@ -244,9 +246,14 @@ export function TodoRow({
               {todo.notes.trim()}
             </p>
           ) : null}
+          {isExpanded && expandedContent ? (
+            <div className="mt-2">
+              {expandedContent}
+            </div>
+          ) : null}
         </div>
         {/* Child count badge when collapsed */}
-        {isCollapsed && childCount && childCount.total > 0 && (
+        {!isExpanded && isCollapsed && childCount && childCount.total > 0 && (
           <span className="ml-2 inline-flex items-center rounded-full bg-surface-accent px-1.5 py-0.5 text-[10px] text-text-muted">
             {childCount.done}/{childCount.total}
           </span>
@@ -254,12 +261,12 @@ export function TodoRow({
       </div>
 
       {/* Due badge */}
-      {listLabel && (
+      {!isExpanded && listLabel && (
         <span className="shrink-0 rounded-full bg-surface-accent px-1.5 py-0.5 text-[10px] text-text-muted">
           {listLabel}
         </span>
       )}
-      {todo.due_date && !todo.is_done && (
+      {!isExpanded && todo.due_date && !todo.is_done && (
         <span
           className={cn(
             "shrink-0 text-[11px]",
@@ -302,7 +309,12 @@ export function TodoRow({
           {/* More menu */}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <button className="shrink-0 text-text-muted opacity-0 group-hover:opacity-100 transition-opacity">
+              <button
+                className={cn(
+                  "shrink-0 text-text-muted transition-opacity",
+                  isExpanded ? "opacity-100" : "opacity-0 group-hover:opacity-100"
+                )}
+              >
                 <MoreVertical size={14} />
               </button>
             </DropdownMenuTrigger>
