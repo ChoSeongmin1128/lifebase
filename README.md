@@ -172,12 +172,14 @@ npx expo start
 - 폴더 CRUD + 계층 탐색
 - Web Cloud는 `/cloud/folders/{folderId}`를 canonical 폴더 URL로 사용하고, 기존 `?folder=` 진입은 canonical route로 정리한다
 - Web Cloud 폴더 화면은 상단 breadcrumb + 현재 폴더명 헤더를 기본으로 사용하고, 탐색 중 경로 전체가 새로고침되듯 흔들리지 않도록 로컬 경로 상태를 우선 사용한다
+- Web Cloud 로딩 신호는 상단 헤더 한 곳으로만 모으고, 폴더 전환 중에는 지연된 작은 indicator만 보여 일관된 전환감을 유지한다
 - Web Cloud는 잘못된 UUID, 삭제된 폴더 링크, 일시적 폴더 조회 실패를 빈 폴더로 위장하지 않고 invalid/not-found/error 상태로 분리해 보여준다
 - Mobile/Desktop Cloud도 같은 정보 구조를 기준으로 후속 정렬한다
 - 휴지통 (복원/비우기)
 - Web Cloud 파일/폴더 삭제는 우측 하단 Undo 토스트 5초를 제공하고, 시간 경과 후 휴지통 이동을 확정한다
 - 폴더 삭제/복원/휴지통 비우기는 하위 폴더·파일까지 재귀로 함께 처리하고, 휴지통에서도 폴더 내부를 탐색할 수 있다
 - Web/Desktop Cloud는 `cmd/ctrl+a`로 현재 보이는 항목 전체 선택을 지원하고, 클립보드는 다중 파일 `copy/cut/paste`, `Esc` 선택/클립보드 해제를 지원한다
+- Web Cloud `새 파일` 기본 확장자는 `txt`를 사용하고, 필요할 때만 `md`로 바꿔 생성한다
 - 파일 검색 (pg_trgm)
 - 정렬: 이름/크기/수정일/생성일
 - Web/Mobile 공통 파일 타입 아이콘 색상 토큰 적용

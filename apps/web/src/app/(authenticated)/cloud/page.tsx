@@ -56,7 +56,6 @@ import {
   Scissors,
   Star as StarIcon,
   Undo2,
-  Loader2,
 } from "lucide-react";
 
 type SortBy = "name" | "size" | "updated_at" | "created_at";
@@ -175,7 +174,6 @@ function CloudPageInner() {
   const [path, setPath] = useState<CloudPathEntry[]>(initialPath);
   const [pathLoading, setPathLoading] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
   const [folderRouteState, setFolderRouteState] = useState<FolderRouteState>(resolvedFolderID ? "checking" : "ready");
   const [folderRouteReloadKey, setFolderRouteReloadKey] = useState(0);
   const [hasLoadedItems, setHasLoadedItems] = useState(false);
@@ -187,7 +185,7 @@ function CloudPageInner() {
   const [creatingFolder, setCreatingFolder] = useState(false);
   const [showNewFile, setShowNewFile] = useState(false);
   const [newFileName, setNewFileName] = useState("");
-  const [newFileExtension, setNewFileExtension] = useState<"md" | "txt">("md");
+  const [newFileExtension, setNewFileExtension] = useState<"md" | "txt">("txt");
   const [creatingFile, setCreatingFile] = useState(false);
   const [editorOpen, setEditorOpen] = useState(false);
   const [editingFile, setEditingFile] = useState<CloudFile | null>(null);
@@ -249,7 +247,6 @@ function CloudPageInner() {
       setFolderRouteState("invalid");
       setItems([]);
       setLoading(false);
-      setRefreshing(false);
       setPathLoading(false);
       updatePathState([rootPathEntry], null);
       return;
@@ -277,7 +274,6 @@ function CloudPageInner() {
         setFolderRouteState(isNotFoundError(error) ? "not_found" : "error");
         setItems([]);
         setLoading(false);
-        setRefreshing(false);
         setPathLoading(false);
         updatePathState([rootPathEntry], null);
       }
@@ -342,7 +338,6 @@ function CloudPageInner() {
     if (!authed) {
       itemsRequestRef.current += 1;
       setLoading(false);
-      setRefreshing(false);
       return;
     }
 
@@ -350,7 +345,6 @@ function CloudPageInner() {
       itemsRequestRef.current += 1;
       setItems([]);
       setLoading(folderRouteState === "checking");
-      setRefreshing(false);
       setHasLoadedItems(folderRouteState !== "checking");
       return;
     }
@@ -359,7 +353,6 @@ function CloudPageInner() {
     itemsRequestRef.current = requestId;
     const showInitialLoading = !hasLoadedItems;
     setLoading(showInitialLoading);
-    setRefreshing(!showInitialLoading);
     try {
       const nextItems = await cloud.listItems({
         section,
@@ -383,7 +376,6 @@ function CloudPageInner() {
     } finally {
       if (requestId !== itemsRequestRef.current) return;
       setLoading(false);
-      setRefreshing(false);
       setHasLoadedItems(true);
     }
   }, [
@@ -493,7 +485,7 @@ function CloudPageInner() {
     setNewFolderName("");
     setShowNewFile(false);
     setNewFileName("");
-    setNewFileExtension("md");
+    setNewFileExtension("txt");
     setSearchResults(null);
     setSearchQuery("");
     setSelectedIds(new Set());
@@ -837,7 +829,7 @@ function CloudPageInner() {
       await cloud.createTextFile(newFileName, newFileExtension, currentFolderID);
       setShowNewFile(false);
       setNewFileName("");
-      setNewFileExtension("md");
+      setNewFileExtension("txt");
       loadItems();
     } catch (err) {
       console.error("Create file failed:", err);
@@ -1405,11 +1397,6 @@ function CloudPageInner() {
         <PageToolbarGroup className="gap-2">
           {/* Search */}
           <div className="relative">
-            {refreshing ? (
-              <span className="absolute -left-5 top-1/2 -translate-y-1/2 text-primary" aria-label="업데이트 중">
-                <Loader2 size={12} className="animate-spin" />
-              </span>
-            ) : null}
             <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-text-muted" />
             <Input
               placeholder={isMyFilesSection ? "검색..." : `${sectionLabel}에서는 검색 미지원`}
@@ -1507,6 +1494,7 @@ function CloudPageInner() {
                 onClick={() => {
                   setShowNewFolder(false);
                   setNewFolderName("");
+                  setNewFileExtension("txt");
                   setShowNewFile(true);
                 }}
                 className="gap-1.5"
@@ -1599,7 +1587,7 @@ function CloudPageInner() {
               if (e.key === "Escape") {
                 setShowNewFile(false);
                 setNewFileName("");
-                setNewFileExtension("md");
+                setNewFileExtension("txt");
               }
             }}
             className="h-7 flex-1"
@@ -1629,7 +1617,7 @@ function CloudPageInner() {
             onClick={() => {
               setShowNewFile(false);
               setNewFileName("");
-              setNewFileExtension("md");
+              setNewFileExtension("txt");
             }}
           >
             취소
