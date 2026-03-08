@@ -35,7 +35,7 @@ import {
   useSensors,
 } from "@dnd-kit/core";
 import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
-import { ChevronRight, Loader2, Plus } from "lucide-react";
+import { ChevronRight, Plus } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { getGoogleAccountDisplayName } from "@/lib/google-account-preferences";
 import { normalizeDueDate, normalizeDueTime } from "@/features/todo/lib/formatDueDate";
