@@ -13,7 +13,7 @@ import {
 } from "@/components/ui/dialog";
 import { TodoToolbar, type TodoSortBy, type TodoFilterMode } from "@/components/todo/TodoToolbar";
 import { TodoRow } from "@/components/todo/TodoRow";
-import { TodoDetailPanel } from "@/components/todo/TodoDetailPanel";
+import { TodoInlineEditor } from "@/components/todo/TodoInlineEditor";
 import { CreateTodoDialog } from "@/components/todo/CreateTodoDialog";
 import { useCreateTodo } from "@/features/todo/ui/hooks/useCreateTodo";
 import { useTodoActions } from "@/features/todo/ui/hooks/useTodoActions";
@@ -883,11 +883,6 @@ function TodoPageInner() {
     return allFlat.find((f) => f.id === dragActiveId)?.todo ?? null;
   }, [dragActiveId, allFlat]);
 
-  const editingTodo = useMemo(() => {
-    if (!editingTodoId) return null;
-    return todos.find((todo) => todo.id === editingTodoId) ?? null;
-  }, [editingTodoId, todos]);
-
   const projectedDepth = projection?.depth ?? 0;
 
   const isDndEnabled = sortBy === "manual" && !isAllView;
@@ -942,12 +937,27 @@ function TodoPageInner() {
           onToggleCollapse={() => toggleCollapse(todo.id)}
           onToggleDone={() => handleToggleDone(todo)}
           onTogglePin={() => handleTogglePin(todo)}
-          onEdit={() => setEditingTodoId(todo.id)}
+          onEdit={() => setEditingTodoId((prev) => (prev === todo.id ? null : todo.id))}
           onDelete={() => handleDeleteTodo(todo.id)}
           onChangePriority={(p) => handleUpdateTodo(todo.id, { priority: p })}
           onAddSubtask={!isAllView && depth < 1 ? () => { setCreateParentId(todo.id); setShowCreateDialog(true); } : undefined}
           onMoveToList={(listId) => handleUpdateTodo(todo.id, { list_id: listId })}
         />
+        {editingTodoId === todo.id ? (
+          <div
+            className="mb-3 mr-4 mt-1"
+            style={{ marginLeft: `${depth * 24 + 64}px` }}
+          >
+            <TodoInlineEditor
+              key={todo.id}
+              todo={todo}
+              listName={listNameByID.get(todo.list_id)}
+              onClose={() => setEditingTodoId(null)}
+              onDelete={() => handleDeleteTodo(todo.id)}
+              onUpdate={(updates) => handleUpdateTodo(todo.id, updates)}
+            />
+          </div>
+        ) : null}
       </div>
     );
   };
@@ -1256,66 +1266,52 @@ function TodoPageInner() {
         </button>
 
         {/* Todo list */}
-        <div className="flex flex-1 min-h-0">
-          <div className="relative min-w-0 flex-1 overflow-auto">
-            {!settingsLoaded || loading ? (
-              <div className="flex items-center justify-center py-20 text-text-muted">
-                불러오는 중...
-              </div>
-            ) : !activeListId ? (
-              <div className="flex flex-col items-center justify-center py-20 text-text-muted">
-                <p>목록을 선택하거나 만들어 주세요</p>
-              </div>
-            ) : isDndEnabled ? (
-              <DndContext
-                sensors={sensors}
-                collisionDetection={closestCenter}
-                onDragStart={handleDragStart}
-                onDragMove={handleDragMove}
-                onDragOver={handleDragOver}
-                onDragEnd={handleDragEnd}
-                onDragCancel={handleDragCancel}
-              >
-                <SortableContext items={allFlatIds} strategy={verticalListSortingStrategy}>
-                  {todoListContent}
-                </SortableContext>
-                <DragOverlay dropAnimation={null}>
-                  {activeTodo && (
-                    <TodoRow
-                      todo={activeTodo}
-                      listLabel={isAllView ? listNameByID.get(activeTodo.list_id) : undefined}
-                      depth={projectedDepth}
-                      isOverdue={isOverdueTodo(activeTodo)}
-                      hasChildren={activeTodo.children.length > 0}
-                      isCollapsed={false}
-                      showDragHandle
-                      isOverlay
-                      onToggleCollapse={() => {}}
-                      onToggleDone={() => {}}
-                      onTogglePin={() => {}}
-                      onEdit={() => {}}
-                      onDelete={() => {}}
-                      onChangePriority={() => {}}
-                    />
-                  )}
-                </DragOverlay>
-              </DndContext>
-            ) : (
-              todoListContent
-            )}
-          </div>
-
-          {editingTodo ? (
-            <TodoDetailPanel
-              key={editingTodo.id}
-              todo={editingTodo}
-              listName={listNameByID.get(editingTodo.list_id)}
-              className="hidden w-[360px] shrink-0 md:flex"
-              onClose={() => setEditingTodoId(null)}
-              onDelete={() => handleDeleteTodo(editingTodo.id)}
-              onUpdate={(updates) => handleUpdateTodo(editingTodo.id, updates)}
-            />
-          ) : null}
+        <div className="relative flex-1 overflow-auto">
+          {!settingsLoaded || loading ? (
+            <div className="flex items-center justify-center py-20 text-text-muted">
+              불러오는 중...
+            </div>
+          ) : !activeListId ? (
+            <div className="flex flex-col items-center justify-center py-20 text-text-muted">
+              <p>목록을 선택하거나 만들어 주세요</p>
+            </div>
+          ) : isDndEnabled ? (
+            <DndContext
+              sensors={sensors}
+              collisionDetection={closestCenter}
+              onDragStart={handleDragStart}
+              onDragMove={handleDragMove}
+              onDragOver={handleDragOver}
+              onDragEnd={handleDragEnd}
+              onDragCancel={handleDragCancel}
+            >
+              <SortableContext items={allFlatIds} strategy={verticalListSortingStrategy}>
+                {todoListContent}
+              </SortableContext>
+              <DragOverlay dropAnimation={null}>
+                {activeTodo && (
+                  <TodoRow
+                    todo={activeTodo}
+                    listLabel={isAllView ? listNameByID.get(activeTodo.list_id) : undefined}
+                    depth={projectedDepth}
+                    isOverdue={isOverdueTodo(activeTodo)}
+                    hasChildren={activeTodo.children.length > 0}
+                    isCollapsed={false}
+                    showDragHandle
+                    isOverlay
+                    onToggleCollapse={() => {}}
+                    onToggleDone={() => {}}
+                    onTogglePin={() => {}}
+                    onEdit={() => {}}
+                    onDelete={() => {}}
+                    onChangePriority={() => {}}
+                  />
+                )}
+              </DragOverlay>
+            </DndContext>
+          ) : (
+            todoListContent
+          )}
         </div>
       </div>
 
@@ -1330,26 +1326,6 @@ function TodoPageInner() {
         parentId={createParentId}
         disabled={creating}
       />
-
-      {/* Edit Modal (mobile) */}
-      <Dialog open={!!editingTodo} onOpenChange={(v) => !v && setEditingTodoId(null)}>
-        {editingTodo && (
-          <DialogContent className="md:hidden max-w-lg p-0">
-            <DialogHeader className="sr-only">
-              <DialogTitle>Todo 수정</DialogTitle>
-            </DialogHeader>
-            <TodoDetailPanel
-              key={editingTodo.id}
-              todo={editingTodo}
-              listName={listNameByID.get(editingTodo.list_id)}
-              className="border-l-0"
-              onClose={() => setEditingTodoId(null)}
-              onDelete={() => handleDeleteTodo(editingTodo.id)}
-              onUpdate={(updates) => handleUpdateTodo(editingTodo.id, updates)}
-            />
-          </DialogContent>
-        )}
-      </Dialog>
 
       {/* List Delete Confirm Modal */}
       <Dialog open={!!listDeleteTarget} onOpenChange={(v) => !v && setListDeleteTarget(null)}>

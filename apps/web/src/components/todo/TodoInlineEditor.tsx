@@ -26,7 +26,7 @@ interface TodoItem {
   updated_at?: string;
 }
 
-interface TodoDetailPanelProps {
+interface TodoInlineEditorProps {
   todo: TodoItem;
   listName?: string;
   className?: string;
@@ -35,14 +35,14 @@ interface TodoDetailPanelProps {
   onUpdate: (updates: Record<string, unknown>) => Promise<void>;
 }
 
-export function TodoDetailPanel({
+export function TodoInlineEditor({
   todo,
   listName,
   className,
   onClose,
   onDelete,
   onUpdate,
-}: TodoDetailPanelProps) {
+}: TodoInlineEditorProps) {
   const [title, setTitle] = useState(todo.title);
   const [notes, setNotes] = useState(todo.notes);
   const [dueDate, setDueDate] = useState(todo.due_date || "");
@@ -50,8 +50,8 @@ export function TodoDetailPanel({
   const [priority, setPriority] = useState(todo.priority);
 
   return (
-    <aside className={cn("flex h-full flex-col border-l border-border bg-surface/40", className)}>
-      <div className="flex items-start justify-between gap-3 border-b border-border px-4 py-4">
+    <div className={cn("rounded-xl border border-border bg-surface p-4 shadow-sm", className)}>
+      <div className="mb-4 flex items-start justify-between gap-3">
         <div className="min-w-0">
           <p className="text-sm font-medium text-text-strong">Todo 상세</p>
           {listName ? <p className="mt-1 text-xs text-text-muted">{listName}</p> : null}
@@ -66,7 +66,7 @@ export function TodoDetailPanel({
         </button>
       </div>
 
-      <div className="flex-1 space-y-4 overflow-auto px-4 py-4">
+      <div className="space-y-4">
         <div>
           <label className="mb-1.5 block text-xs text-text-muted">제목</label>
           <Textarea
@@ -85,23 +85,7 @@ export function TodoDetailPanel({
           />
         </div>
 
-        <div>
-          <label className="mb-1.5 block text-xs text-text-muted">메모</label>
-          <Textarea
-            value={notes}
-            rows={8}
-            className="min-h-[180px] resize-y"
-            placeholder="메모"
-            onChange={(e) => setNotes(e.target.value)}
-            onBlur={() => {
-              if (notes !== todo.notes) {
-                void onUpdate({ notes });
-              }
-            }}
-          />
-        </div>
-
-        <div className="grid gap-3">
+        <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_112px_160px]">
           <div>
             <label className="mb-1.5 block text-xs text-text-muted">기한 날짜</label>
             <Input
@@ -161,9 +145,25 @@ export function TodoDetailPanel({
             </Select>
           </div>
         </div>
+
+        <div>
+          <label className="mb-1.5 block text-xs text-text-muted">메모</label>
+          <Textarea
+            value={notes}
+            rows={5}
+            className="min-h-[140px] resize-y"
+            placeholder="메모"
+            onChange={(e) => setNotes(e.target.value)}
+            onBlur={() => {
+              if (notes !== todo.notes) {
+                void onUpdate({ notes });
+              }
+            }}
+          />
+        </div>
       </div>
 
-      <div className="flex items-center justify-between border-t border-border px-4 py-3">
+      <div className="mt-4 flex items-center justify-between">
         <Button variant="danger" size="sm" onClick={onDelete}>
           삭제
         </Button>
@@ -171,6 +171,6 @@ export function TodoDetailPanel({
           닫기
         </Button>
       </div>
-    </aside>
+    </div>
   );
 }
