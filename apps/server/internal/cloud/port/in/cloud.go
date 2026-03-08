@@ -27,6 +27,7 @@ type CloudUseCase interface {
 	MoveFolder(ctx context.Context, userID, folderID string, newParentID *string) error
 	CopyFolder(ctx context.Context, userID, folderID string, targetParentID *string) error
 	DeleteFolder(ctx context.Context, userID, folderID string) error
+	GetTrashFolder(ctx context.Context, userID, folderID string) (*domain.Folder, error)
 
 	// Files
 	UploadFile(ctx context.Context, userID string, folderID *string, name string, mimeType string, size int64, data []byte) (*domain.File, error)
@@ -40,7 +41,7 @@ type CloudUseCase interface {
 	DeleteFile(ctx context.Context, userID, fileID string) error
 
 	// Trash
-	ListTrash(ctx context.Context, userID string) ([]FolderItem, error)
+	ListTrash(ctx context.Context, userID string, folderID *string) ([]FolderItem, error)
 	RestoreItem(ctx context.Context, userID, itemID, itemType string) error
 	EmptyTrash(ctx context.Context, userID string) error
 

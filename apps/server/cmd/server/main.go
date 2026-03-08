@@ -296,6 +296,7 @@ func main() {
 
 				// Trash
 				r.Get("/trash", cloudHandler.ListTrash)
+				r.Get("/trash/folders/{folderID}", cloudHandler.GetTrashFolder)
 				r.Post("/trash/restore", cloudHandler.RestoreItem)
 				r.Delete("/trash", cloudHandler.EmptyTrash)
 

@@ -144,6 +144,9 @@ func TestCloudPostgresReposDBErrorBranches(t *testing.T) {
 	if err := folderRepo.SoftDelete(ctx, userID, folderID); err == nil {
 		t.Fatal("expected folder soft delete error")
 	}
+	if _, err := folderRepo.FindTrashedByID(ctx, userID, folderID); err == nil {
+		t.Fatal("expected folder find trashed error")
+	}
 	if err := folderRepo.Restore(ctx, userID, folderID); err == nil {
 		t.Fatal("expected folder restore error")
 	}
@@ -152,6 +155,9 @@ func TestCloudPostgresReposDBErrorBranches(t *testing.T) {
 	}
 	if _, err := folderRepo.ListTrashed(ctx, userID); err == nil {
 		t.Fatal("expected folder list trashed error")
+	}
+	if _, err := folderRepo.ExistsByName(ctx, userID, nil, "folder"); err == nil {
+		t.Fatal("expected folder exists by name error")
 	}
 
 	if _, err := sharedRepo.ListSharedFolders(ctx, userID); err == nil {

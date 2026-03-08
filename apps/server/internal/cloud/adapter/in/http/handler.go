@@ -326,13 +326,30 @@ func (h *CloudHandler) DeleteFile(w http.ResponseWriter, r *http.Request) {
 
 func (h *CloudHandler) ListTrash(w http.ResponseWriter, r *http.Request) {
 	userID := middleware.GetUserID(r.Context())
+	folderID := r.URL.Query().Get("folder_id")
+	var folderIDPtr *string
+	if folderID != "" {
+		folderIDPtr = &folderID
+	}
 
-	items, err := h.cloud.ListTrash(r.Context(), userID)
+	items, err := h.cloud.ListTrash(r.Context(), userID, folderIDPtr)
 	if err != nil {
 		response.Error(w, http.StatusInternalServerError, "LIST_FAILED", err.Error())
 		return
 	}
 	response.JSON(w, http.StatusOK, map[string]any{"items": items})
+}
+
+func (h *CloudHandler) GetTrashFolder(w http.ResponseWriter, r *http.Request) {
+	userID := middleware.GetUserID(r.Context())
+	folderID := chi.URLParam(r, "folderID")
+
+	folder, err := h.cloud.GetTrashFolder(r.Context(), userID, folderID)
+	if err != nil {
+		response.Error(w, http.StatusNotFound, "NOT_FOUND", "folder not found")
+		return
+	}
+	response.JSON(w, http.StatusOK, folder)
 }
 
 func (h *CloudHandler) RestoreItem(w http.ResponseWriter, r *http.Request) {

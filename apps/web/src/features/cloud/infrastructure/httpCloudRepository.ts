@@ -38,7 +38,12 @@ export class HttpCloudRepository implements CloudRepository {
     const token = this.getToken();
 
     if (input.section === "trash") {
-      const data = await api<ItemsResponse>("/cloud/trash", { token });
+      const params = new URLSearchParams();
+      if (input.folderId) {
+        params.set("folder_id", input.folderId);
+      }
+      const query = params.toString();
+      const data = await api<ItemsResponse>(query ? `/cloud/trash?${query}` : "/cloud/trash", { token });
       return data.items || [];
     }
     if (input.section === "recent") {
@@ -70,6 +75,11 @@ export class HttpCloudRepository implements CloudRepository {
   getFolder(folderId: string): Promise<FolderData> {
     const token = this.getToken();
     return api<FolderData>(`/cloud/folders/${folderId}`, { token });
+  }
+
+  getTrashFolder(folderId: string): Promise<FolderData> {
+    const token = this.getToken();
+    return api<FolderData>(`/cloud/trash/folders/${folderId}`, { token });
   }
 
   async listStars(): Promise<StarItem[]> {

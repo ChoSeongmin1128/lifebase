@@ -62,6 +62,7 @@ import {
 import { getEventEndDateKey, getEventStartDateKey } from "@/lib/calendar/event-date";
 import { formatDueLabel } from "@/features/todo/lib/formatDueDate";
 import { RichTextDescription } from "@/lib/rich-text-description";
+import { useToast } from "@/components/providers/ToastProvider";
 
 interface EventEditorForm {
   title: string;
@@ -79,6 +80,11 @@ interface QuickCreateAnchorPoint {
   side?: "left" | "right";
 }
 
+interface PendingEventDeletion {
+  cancel: () => void;
+  flush: () => Promise<void>;
+}
+
 const COLORS = [
   "#4285f4", "#7986cb", "#33b679", "#8e24aa", "#e67c73",
   "#f6bf26", "#f4511e", "#039be5", "#616161", "#3f51b5",
@@ -90,6 +96,14 @@ const ACCOUNT_FILTER_SETTING_KEY = "calendar_selected_google_account_ids";
 const CALENDAR_LAST_SYNC_AT_SETTING_KEY = "calendar_last_sync_at";
 const CALENDAR_SHOW_PUBLIC_HOLIDAYS_SETTING_KEY = "calendar_show_public_holidays";
 const PAGE_ACTION_SYNC_COOLDOWN_MS = 15_000;
+const DELETE_UNDO_WINDOW_MS = 5_000;
+
+function toErrorMessage(err: unknown, fallback: string): string {
+  if (err instanceof Error && err.message.trim()) {
+    return err.message;
+  }
+  return fallback;
+}
 
 function getGoogleEventColor(colorId: string | null, calColorId: string | null): string {
   const id = colorId || calColorId;
@@ -328,6 +342,8 @@ export default function CalendarPage() {
   const accountSelectionInitializedRef = useRef(false);
   const accountSelectionPersistedRef = useRef("");
   const syncThrottleRef = useRef<Record<string, number>>({});
+  const pendingDeletionRef = useRef<PendingEventDeletion | null>(null);
+  const locationKeyRef = useRef(buildCalendarUrl(initialView, initialDate));
 
   const [editorOpen, setEditorOpen] = useState(false);
   const [editorMode, setEditorMode] = useState<"create" | "edit">("create");
@@ -356,6 +372,7 @@ export default function CalendarPage() {
   const { listLists: listTodoLists, listTodos } = useTodoActions();
   const { updateSetting } = useSettingsActions();
   const { listGoogleAccounts, triggerGoogleSync } = useAuthFlow();
+  const toast = useToast();
 
   const timezone = useMemo(
     () => Intl.DateTimeFormat().resolvedOptions().timeZone || "Asia/Seoul",
@@ -857,6 +874,20 @@ export default function CalendarPage() {
     return () => window.clearInterval(timer);
   }, [triggerCalendarSync]);
   useEffect(() => {
+    const nextKey = buildCalendarUrl(view, currentDate);
+    if (locationKeyRef.current !== nextKey && pendingDeletionRef.current) {
+      void pendingDeletionRef.current.flush();
+    }
+    locationKeyRef.current = nextKey;
+  }, [currentDate, view]);
+  useEffect(() => {
+    return () => {
+      if (pendingDeletionRef.current) {
+        void pendingDeletionRef.current.flush();
+      }
+    };
+  }, []);
+  useEffect(() => {
     if (!settingsLoaded) return;
     if (accountSelectionInitializedRef.current) return;
 
@@ -1128,14 +1159,60 @@ export default function CalendarPage() {
   };
 
   const handleDeleteEvent = async (eventID: string) => {
-    try {
-      await deleteEvent(eventID);
-      setSelectedEvent(null);
-      await loadEvents();
-      void triggerCalendarSync("page_action", PAGE_ACTION_SYNC_COOLDOWN_MS);
-    } catch (err) {
-      console.error("Delete event failed:", err);
+    if (pendingDeletionRef.current) {
+      await pendingDeletionRef.current.flush();
     }
+
+    const eventsSnapshot = events;
+    if (!eventsSnapshot.some((event) => event.id === eventID)) return;
+
+    let settled = false;
+    setEvents((prev) => prev.filter((event) => event.id !== eventID));
+    setSelectedEvent(null);
+
+    let timerID = 0;
+    const restore = () => {
+      setEvents(eventsSnapshot);
+    };
+
+    const finalize = async () => {
+      if (settled) return;
+      settled = true;
+      window.clearTimeout(timerID);
+      pendingDeletionRef.current = null;
+
+      try {
+        await deleteEvent(eventID);
+        await loadEvents();
+        void triggerCalendarSync("page_action", PAGE_ACTION_SYNC_COOLDOWN_MS);
+      } catch (err) {
+        restore();
+        console.error("Delete event failed:", err);
+        toast.error("일정 삭제 실패", toErrorMessage(err, "일정을 삭제하지 못했습니다."));
+      }
+    };
+
+    const cancel = () => {
+      if (settled) return;
+      settled = true;
+      window.clearTimeout(timerID);
+      pendingDeletionRef.current = null;
+      restore();
+      toast.success("복원됨");
+    };
+
+    pendingDeletionRef.current = { cancel, flush: finalize };
+    timerID = window.setTimeout(() => {
+      void finalize();
+    }, DELETE_UNDO_WINDOW_MS);
+
+    toast.show({
+      variant: "warning",
+      title: "일정 삭제됨",
+      duration: DELETE_UNDO_WINDOW_MS,
+      actionLabel: "실행 취소",
+      onAction: cancel,
+    });
   };
 
   const headerLabel = getHeaderLabel(currentDate, view);

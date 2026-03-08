@@ -76,8 +76,25 @@ interface CloudDragItem {
   parentFolderID: string | null;
 }
 
+interface PendingCloudDeletion {
+  cancel: () => void;
+  flush: () => Promise<void>;
+}
+
+interface PendingTrashEmpty {
+  cancel: () => void;
+  flush: () => Promise<void>;
+}
+
+interface CloudDeleteTarget {
+  id: string;
+  type: "folder" | "file";
+}
+
 const INTERNAL_ITEM_DRAG_TYPE = "application/x-lifebase-cloud-item";
 const ROOT_PATH_ENTRY: CloudPathEntry = { id: null, name: "내 클라우드" };
+const TRASH_ROOT_PATH_ENTRY: CloudPathEntry = { id: null, name: "휴지통" };
+const DELETE_UNDO_WINDOW_MS = 5_000;
 
 const isTextInputTarget = (target: EventTarget | null) => {
   if (!(target instanceof HTMLElement)) return false;
@@ -91,7 +108,7 @@ function CloudPageInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const routeFolderId = typeof params.folderId === "string" ? params.folderId : null;
-  const legacyFolderFromUrl = searchParams.get("folder");
+  const folderQuery = searchParams.get("folder");
   const sectionQuery = parseCloudSection(searchParams.get("section")) as CloudSection;
   const section = routeFolderId ? "" : sectionQuery;
   const quickAction = searchParams.get("quick");
@@ -102,6 +119,16 @@ function CloudPageInner() {
   const isStarredSection = section === "starred";
   const isSelectableSection = isMyFilesSection || isTrashSection;
 
+  const resolvedFolderID = useMemo(() => {
+    if (section === "") {
+      return routeFolderId || folderQuery || null;
+    }
+    if (section === "trash") {
+      return folderQuery || null;
+    }
+    return null;
+  }, [folderQuery, routeFolderId, section]);
+  const [activeFolderID, setActiveFolderID] = useState<string | null>(resolvedFolderID);
   const [items, setItems] = useState<FolderItem[]>([]);
   const [path, setPath] = useState<CloudPathEntry[]>([ROOT_PATH_ENTRY]);
   const [pathLoading, setPathLoading] = useState(false);
@@ -136,22 +163,31 @@ function CloudPageInner() {
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const folderCacheRef = useRef<Map<string, FolderData>>(new Map());
+  const itemsRequestRef = useRef(0);
   const pathRequestRef = useRef(0);
   const quickActionHandledRef = useRef(false);
+  const pendingDeletionRef = useRef<PendingCloudDeletion | null>(null);
+  const pendingTrashEmptyRef = useRef<PendingTrashEmpty | null>(null);
+  const locationKeyRef = useRef(`${section}:${resolvedFolderID || "root"}`);
 
-  const currentFolderID = useMemo(() => {
-    if (!isMyFilesSection) return null;
-    return routeFolderId || legacyFolderFromUrl || null;
-  }, [isMyFilesSection, legacyFolderFromUrl, routeFolderId]);
-  const hasLegacyFolderQuery = isMyFilesSection && !routeFolderId && !!legacyFolderFromUrl;
+  const currentFolderID = activeFolderID;
+  const hasLegacyFolderQuery = isMyFilesSection && !routeFolderId && !!folderQuery;
+  const rootPathEntry = isTrashSection ? TRASH_ROOT_PATH_ENTRY : ROOT_PATH_ENTRY;
   const authed = isAuthenticated();
   const cloud = useCloudActions();
   const toast = useToast();
+
+  useEffect(() => {
+    setActiveFolderID(resolvedFolderID);
+  }, [resolvedFolderID]);
 
   const buildCloudHref = useCallback((targetSection: CloudSection, folderId?: string | null, quick?: string | null) => {
     const params = new URLSearchParams();
     if (targetSection) {
       params.set("section", targetSection);
+    }
+    if (targetSection === "trash" && folderId) {
+      params.set("folder", folderId);
     }
     if (quick) {
       params.set("quick", quick);
@@ -192,11 +228,14 @@ function CloudPageInner() {
 
   const loadItems = useCallback(async () => {
     if (!authed) {
+      itemsRequestRef.current += 1;
       setLoading(false);
       setRefreshing(false);
       return;
     }
 
+    const requestId = itemsRequestRef.current + 1;
+    itemsRequestRef.current = requestId;
     const showInitialLoading = !hasLoadedItems;
     setLoading(showInitialLoading);
     setRefreshing(!showInitialLoading);
@@ -207,8 +246,9 @@ function CloudPageInner() {
         sortBy,
         sortDir,
       });
+      if (requestId !== itemsRequestRef.current) return;
       setItems(nextItems);
-      if (isMyFilesSection) {
+      if (isMyFilesSection || isTrashSection) {
         nextItems.forEach((item) => {
           if (item.type === "folder" && item.folder) {
             folderCacheRef.current.set(item.folder.id, item.folder);
@@ -216,8 +256,10 @@ function CloudPageInner() {
         });
       }
     } catch {
+      if (requestId !== itemsRequestRef.current) return;
       setItems([]);
     } finally {
+      if (requestId !== itemsRequestRef.current) return;
       setLoading(false);
       setRefreshing(false);
       setHasLoadedItems(true);
@@ -231,18 +273,19 @@ function CloudPageInner() {
     sortBy,
     sortDir,
     isMyFilesSection,
+    isTrashSection,
   ]);
 
   const loadFolderPath = useCallback(async () => {
-    if (!isMyFilesSection || !authed) {
+    if ((!isMyFilesSection && !isTrashSection) || !authed) {
       pathRequestRef.current += 1;
-      setPath([ROOT_PATH_ENTRY]);
+      setPath([rootPathEntry]);
       setPathLoading(false);
       return;
     }
     if (!currentFolderID) {
       pathRequestRef.current += 1;
-      setPath([ROOT_PATH_ENTRY]);
+      setPath([rootPathEntry]);
       setPathLoading(false);
       return;
     }
@@ -259,7 +302,7 @@ function CloudPageInner() {
         visited.add(cursor);
         let folder = folderCacheRef.current.get(cursor);
         if (!folder) {
-          folder = await cloud.getFolder(cursor);
+          folder = isTrashSection ? await cloud.getTrashFolder(cursor) : await cloud.getFolder(cursor);
           folderCacheRef.current.set(folder.id, folder);
         }
         nextEntries.unshift({ id: folder.id, name: folder.name });
@@ -267,16 +310,16 @@ function CloudPageInner() {
       }
 
       if (requestId !== pathRequestRef.current) return;
-      setPath([ROOT_PATH_ENTRY, ...nextEntries]);
+      setPath([rootPathEntry, ...nextEntries]);
     } catch {
       if (requestId !== pathRequestRef.current) return;
       const fallbackName = folderCacheRef.current.get(currentFolderID)?.name || "폴더";
-      setPath([ROOT_PATH_ENTRY, { id: currentFolderID, name: fallbackName }]);
+      setPath([rootPathEntry, { id: currentFolderID, name: fallbackName }]);
     } finally {
       if (requestId !== pathRequestRef.current) return;
       setPathLoading(false);
     }
-  }, [authed, cloud, currentFolderID, isMyFilesSection]);
+  }, [authed, cloud, currentFolderID, isMyFilesSection, isTrashSection, rootPathEntry]);
 
   const loadStars = useCallback(async () => {
     if (!authed) {
@@ -293,9 +336,9 @@ function CloudPageInner() {
   }, [authed, cloud]);
 
   useEffect(() => {
-    if (!isMyFilesSection) {
+    if (!isMyFilesSection && !isTrashSection) {
       setPathLoading(false);
-      setPath([ROOT_PATH_ENTRY]);
+      setPath([rootPathEntry]);
     }
     setRenaming(null);
     setShowNewFolder(false);
@@ -312,19 +355,41 @@ function CloudPageInner() {
     setMovingItemKey(null);
     loadStars();
     loadItems();
-  }, [isMyFilesSection, loadItems, loadStars]);
+  }, [isMyFilesSection, isTrashSection, loadItems, loadStars, rootPathEntry]);
 
   useEffect(() => {
-    if (!hasLegacyFolderQuery || !legacyFolderFromUrl) return;
-    router.replace(buildCloudHref("", legacyFolderFromUrl, quickAction), { scroll: false });
-  }, [buildCloudHref, hasLegacyFolderQuery, legacyFolderFromUrl, quickAction, router]);
+    const nextKey = `${section}:${currentFolderID || "root"}`;
+    if (locationKeyRef.current !== nextKey && pendingDeletionRef.current) {
+      void pendingDeletionRef.current.flush();
+    }
+    if (locationKeyRef.current !== nextKey && pendingTrashEmptyRef.current) {
+      void pendingTrashEmptyRef.current.flush();
+    }
+    locationKeyRef.current = nextKey;
+  }, [currentFolderID, section]);
 
   useEffect(() => {
-    if (!isMyFilesSection) {
+    return () => {
+      if (pendingDeletionRef.current) {
+        void pendingDeletionRef.current.flush();
+      }
+      if (pendingTrashEmptyRef.current) {
+        void pendingTrashEmptyRef.current.flush();
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!hasLegacyFolderQuery || !folderQuery) return;
+    router.replace(buildCloudHref("", folderQuery, quickAction), { scroll: false });
+  }, [buildCloudHref, hasLegacyFolderQuery, folderQuery, quickAction, router]);
+
+  useEffect(() => {
+    if (!isMyFilesSection && !isTrashSection) {
       return;
     }
     loadFolderPath();
-  }, [isMyFilesSection, loadFolderPath]);
+  }, [isMyFilesSection, isTrashSection, loadFolderPath]);
 
   useEffect(() => {
     if (quickAction !== "upload") return;
@@ -340,7 +405,8 @@ function CloudPageInner() {
   }, [quickAction, isMyFilesSection, authed, router, buildCloudHref, section, currentFolderID]);
 
   const navigateToFolder = (folder: FolderData) => {
-    if (!isMyFilesSection) return;
+    if (!isMyFilesSection && !isTrashSection) return;
+    setActiveFolderID(folder.id);
     folderCacheRef.current.set(folder.id, folder);
     setPath((prev) => {
       const lastEntry = prev[prev.length - 1];
@@ -353,17 +419,18 @@ function CloudPageInner() {
   };
 
   const navigateToHeaderPath = (folderId: string | null) => {
-    if (!isMyFilesSection) return;
+    if (!isMyFilesSection && !isTrashSection) return;
+    setActiveFolderID(folderId);
     setPath((prev) => {
       if (folderId === null) {
-        return [ROOT_PATH_ENTRY];
+        return [rootPathEntry];
       }
       const existingIndex = prev.findIndex((entry) => entry.id === folderId);
       if (existingIndex >= 0) {
         return prev.slice(0, existingIndex + 1);
       }
       const cached = folderCacheRef.current.get(folderId);
-      return [ROOT_PATH_ENTRY, { id: folderId, name: cached?.name || "폴더" }];
+      return [rootPathEntry, { id: folderId, name: cached?.name || "폴더" }];
     });
     syncFolderUrl(folderId, "push");
   };
@@ -430,35 +497,27 @@ function CloudPageInner() {
 
   const handleDelete = async (item: FolderItem) => {
     if (!authed || !isMyFilesSection) return;
-    try {
-      if (item.type === "folder" && item.folder) {
-        await cloud.deleteFolder(item.folder.id);
-      } else if (item.type === "file" && item.file) {
-        await cloud.deleteFile(item.file.id);
-      }
-      loadItems();
-    } catch (err) {
-      console.error("Delete failed:", err);
-    }
+    const target =
+      item.type === "folder" && item.folder
+        ? { id: item.folder.id, type: "folder" as const }
+        : item.type === "file" && item.file
+          ? { id: item.file.id, type: "file" as const }
+          : null;
+    if (!target) return;
+    await queueCloudDelete([target]);
   };
 
   const handleBulkDelete = async () => {
     if (!authed || !isMyFilesSection) return;
-    for (const item of displayItems) {
-      const id = item.type === "folder" ? item.folder!.id : item.file!.id;
-      if (!selectedIds.has(id)) continue;
-      try {
-        if (item.type === "folder") {
-          await cloud.deleteFolder(id);
-        } else {
-          await cloud.deleteFile(id);
-        }
-      } catch (err) {
-        console.error("Delete failed:", err);
-      }
-    }
-    setSelectedIds(new Set());
-    loadItems();
+    const targets = displayItems
+      .map((item) =>
+        item.type === "folder"
+          ? { id: item.folder!.id, type: "folder" as const }
+          : { id: item.file!.id, type: "file" as const },
+      )
+      .filter((target) => selectedIds.has(target.id));
+    if (targets.length === 0) return;
+    await queueCloudDelete(targets);
   };
 
   const handleBulkDownload = async () => {
@@ -519,13 +578,69 @@ function CloudPageInner() {
 
   const handleEmptyTrash = async () => {
     if (!authed || !isTrashSection) return;
-    try {
-      await cloud.emptyTrash();
-      setSelectedIds(new Set());
-      await loadItems();
-    } catch (err) {
-      console.error("Empty trash failed:", err);
+    if (pendingTrashEmptyRef.current) {
+      await pendingTrashEmptyRef.current.flush();
     }
+
+    const itemsSnapshot = items;
+    const pathSnapshot = path;
+    const selectedIdsSnapshot = selectedIds;
+    const folderSnapshot = currentFolderID;
+    let settled = false;
+    let timerID = 0;
+
+    const restore = () => {
+      setItems(itemsSnapshot);
+      setPath(pathSnapshot);
+      setSelectedIds(selectedIdsSnapshot);
+      setActiveFolderID(folderSnapshot);
+      syncFolderUrl(folderSnapshot, "replace");
+    };
+
+    setItems([]);
+    setPath([TRASH_ROOT_PATH_ENTRY]);
+    setSelectedIds(new Set());
+    setActiveFolderID(null);
+    syncFolderUrl(null, "replace");
+
+    const finalize = async () => {
+      if (settled) return;
+      settled = true;
+      window.clearTimeout(timerID);
+      pendingTrashEmptyRef.current = null;
+
+      try {
+        await cloud.emptyTrash();
+        await loadItems();
+      } catch (err) {
+        restore();
+        console.error("Empty trash failed:", err);
+        const msg = err instanceof Error ? err.message : "알 수 없는 오류";
+        toast.error("휴지통 비우기에 실패했습니다", msg);
+      }
+    };
+
+    const cancel = () => {
+      if (settled) return;
+      settled = true;
+      window.clearTimeout(timerID);
+      pendingTrashEmptyRef.current = null;
+      restore();
+      toast.success("복원됨");
+    };
+
+    pendingTrashEmptyRef.current = { cancel, flush: finalize };
+    timerID = window.setTimeout(() => {
+      void finalize();
+    }, DELETE_UNDO_WINDOW_MS);
+
+    toast.show({
+      variant: "warning",
+      title: "휴지통 비워짐",
+      duration: DELETE_UNDO_WINDOW_MS,
+      actionLabel: "실행 취소",
+      onAction: cancel,
+    });
   };
 
   const handleRename = async () => {
@@ -586,6 +701,116 @@ function CloudPageInner() {
       setSearchResults([]);
     }
   };
+
+  const refreshVisibleItems = useCallback(async () => {
+    await loadItems();
+    if (!authed || !isMyFilesSection || searchResults === null || !searchQuery.trim()) {
+      return;
+    }
+    try {
+      const files = await cloud.searchFiles(searchQuery);
+      setSearchResults(files || []);
+    } catch {
+      setSearchResults([]);
+    }
+  }, [authed, cloud, isMyFilesSection, loadItems, searchQuery, searchResults]);
+
+  const queueCloudDelete = useCallback(async (targets: CloudDeleteTarget[]) => {
+    if (!authed || !isMyFilesSection || targets.length === 0) return;
+
+    if (pendingDeletionRef.current) {
+      await pendingDeletionRef.current.flush();
+    }
+
+    const targetIDs = new Set(targets.map((target) => target.id));
+    const itemsSnapshot = items;
+    const searchResultsSnapshot = searchResults;
+    const selectedIdsSnapshot = selectedIds;
+    let settled = false;
+
+    setItems((prev) =>
+      prev.filter((item) => {
+        const id = item.type === "folder" ? item.folder!.id : item.file!.id;
+        return !targetIDs.has(id);
+      }),
+    );
+    setSearchResults((prev) => (prev ? prev.filter((file) => !targetIDs.has(file.id)) : prev));
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      targets.forEach((target) => next.delete(target.id));
+      return next;
+    });
+
+    let timerID = 0;
+    const restore = () => {
+      setItems(itemsSnapshot);
+      setSearchResults(searchResultsSnapshot);
+      setSelectedIds(selectedIdsSnapshot);
+    };
+
+    const finalize = async () => {
+      if (settled) return;
+      settled = true;
+      window.clearTimeout(timerID);
+      pendingDeletionRef.current = null;
+
+      try {
+        const results = await Promise.allSettled(
+          targets.map((target) =>
+            target.type === "folder" ? cloud.deleteFolder(target.id) : cloud.deleteFile(target.id),
+          ),
+        );
+        const failed = results.filter((result) => result.status === "rejected").length;
+
+        await refreshVisibleItems();
+
+        if (failed !== 0) {
+          toast.warning("일부 항목 삭제 실패", `${failed}개 항목을 삭제하지 못했습니다.`);
+        }
+      } catch (err) {
+        restore();
+        console.error("Delete failed:", err);
+        const msg = err instanceof Error ? err.message : "알 수 없는 오류";
+        toast.error("삭제에 실패했습니다", msg);
+      }
+    };
+
+    const cancel = () => {
+      if (settled) return;
+      settled = true;
+      window.clearTimeout(timerID);
+      pendingDeletionRef.current = null;
+      restore();
+      toast.success(targets.length === 1 ? "복원됨" : `항목 ${targets.length}개 복원됨`);
+    };
+
+    pendingDeletionRef.current = { cancel, flush: finalize };
+    timerID = window.setTimeout(() => {
+      void finalize();
+    }, DELETE_UNDO_WINDOW_MS);
+
+    const singleTarget = targets[0];
+    const title = targets.length === 1
+      ? singleTarget.type === "folder" ? "폴더 삭제됨" : "파일 삭제됨"
+      : `항목 ${targets.length}개 삭제됨`;
+
+    toast.show({
+      variant: "warning",
+      title,
+      duration: DELETE_UNDO_WINDOW_MS,
+      actionLabel: "실행 취소",
+      onAction: cancel,
+    });
+  }, [
+    authed,
+    cloud,
+    isMyFilesSection,
+    items,
+    refreshVisibleItems,
+    searchResults,
+    selectedIds,
+    toast,
+  ]);
 
   const getDragItemFromRow = (item: FolderItem): CloudDragItem => {
     if (item.type === "folder") {
@@ -861,16 +1086,16 @@ function CloudPageInner() {
 
   const sectionLabel = CLOUD_SECTION_LABELS[section];
   const displayPath = (() => {
-    if (!isMyFilesSection) return path;
-    if (currentFolderID === null) return [ROOT_PATH_ENTRY];
+    if (!isMyFilesSection && !isTrashSection) return path;
+    if (currentFolderID === null) return [rootPathEntry];
     const lastEntry = path[path.length - 1];
     if (lastEntry?.id === currentFolderID) return path;
     const existingIndex = path.findIndex((entry) => entry.id === currentFolderID);
     if (existingIndex >= 0) return path.slice(0, existingIndex + 1);
     const cached = folderCacheRef.current.get(currentFolderID);
-    return [ROOT_PATH_ENTRY, { id: currentFolderID, name: cached?.name || "폴더" }];
+    return [rootPathEntry, { id: currentFolderID, name: cached?.name || "폴더" }];
   })();
-  const showFolderHeader = isMyFilesSection;
+  const showFolderHeader = isMyFilesSection || isTrashSection;
   const headerLoading = pathLoading || (currentFolderID !== null && displayPath[displayPath.length - 1]?.id !== currentFolderID);
   const showSearchResultBanner = isMyFilesSection && searchResults !== null;
   const showBulkBar = selectedIds.size > 0 && (isMyFilesSection || isTrashSection);
@@ -1318,7 +1543,9 @@ function CloudPageInner() {
                       void handleFolderDrop(e, item.folder!.id);
                     }}
                     onDoubleClick={() => {
-                      if (isMyFilesSection && item.type === "folder" && item.folder) navigateToFolder(item.folder);
+                      if ((isMyFilesSection || isTrashSection) && item.type === "folder" && item.folder) {
+                        navigateToFolder(item.folder);
+                      }
                       else if (!isTrashSection && item.type === "file" && item.file) {
                         if (isMyFilesSection && isEditableTextFile(item.file)) {
                           openTextEditor(item.file);
@@ -1359,9 +1586,11 @@ function CloudPageInner() {
                           <>
                             <div className="min-w-0">
                               <span
-                                className={`${item.type === "folder" && isMyFilesSection ? "cursor-pointer hover:underline " : ""}text-text-primary`}
+                                className={`${item.type === "folder" && (isMyFilesSection || isTrashSection) ? "cursor-pointer hover:underline " : ""}text-text-primary`}
                                 onClick={() => {
-                                  if (isMyFilesSection && item.type === "folder" && item.folder) navigateToFolder(item.folder);
+                                  if ((isMyFilesSection || isTrashSection) && item.type === "folder" && item.folder) {
+                                    navigateToFolder(item.folder);
+                                  }
                                 }}
                               >
                                 {name}
@@ -1392,9 +1621,16 @@ function CloudPageInner() {
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end">
                           {isTrashSection ? (
-                            <DropdownMenuItem onClick={() => handleRestore(item)}>
-                              <Undo2 size={14} /> 복원
-                            </DropdownMenuItem>
+                            <>
+                              {item.type === "folder" && item.folder ? (
+                                <DropdownMenuItem onClick={() => navigateToFolder(item.folder!)}>
+                                  <FolderOpen size={14} /> 열기
+                                </DropdownMenuItem>
+                              ) : null}
+                              <DropdownMenuItem onClick={() => handleRestore(item)}>
+                                <Undo2 size={14} /> 복원
+                              </DropdownMenuItem>
+                            </>
                           ) : isMyFilesSection ? (
                             <>
                               {item.type === "file" ? (

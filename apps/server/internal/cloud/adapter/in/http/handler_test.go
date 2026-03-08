@@ -31,9 +31,11 @@ type mockCloudUC struct {
 	listStarsItems  []portin.StarItem
 	searchItems     []*domain.File
 	lastUploadMime  string
+	lastTrashFolderID *string
 
 	createFolderErr error
 	getFolderErr    error
+	getTrashFolderErr error
 	listFolderErr   error
 	renameFolderErr error
 	moveFolderErr   error
@@ -72,6 +74,9 @@ func (m *mockCloudUC) RenameFolder(context.Context, string, string, string) erro
 func (m *mockCloudUC) MoveFolder(context.Context, string, string, *string) error   { return m.moveFolderErr }
 func (m *mockCloudUC) CopyFolder(context.Context, string, string, *string) error   { return m.copyFolderErr }
 func (m *mockCloudUC) DeleteFolder(context.Context, string, string) error          { return m.deleteFolderErr }
+func (m *mockCloudUC) GetTrashFolder(context.Context, string, string) (*domain.Folder, error) {
+	return m.folderRes, m.getTrashFolderErr
+}
 
 func (m *mockCloudUC) UploadFile(_ context.Context, _ string, _ *string, _ string, mimeType string, _ int64, _ []byte) (*domain.File, error) {
 	m.lastUploadMime = mimeType
@@ -92,7 +97,10 @@ func (m *mockCloudUC) MoveFile(context.Context, string, string, *string) error {
 func (m *mockCloudUC) CopyFile(context.Context, string, string, *string) error { return m.copyFileErr }
 func (m *mockCloudUC) DeleteFile(context.Context, string, string) error        { return m.deleteFileErr }
 
-func (m *mockCloudUC) ListTrash(context.Context, string) ([]portin.FolderItem, error) { return m.listTrashItems, m.listFolderErr }
+func (m *mockCloudUC) ListTrash(_ context.Context, _ string, folderID *string) ([]portin.FolderItem, error) {
+	m.lastTrashFolderID = folderID
+	return m.listTrashItems, m.listFolderErr
+}
 func (m *mockCloudUC) RestoreItem(context.Context, string, string, string) error       { return m.restoreErr }
 func (m *mockCloudUC) EmptyTrash(context.Context, string) error                         { return m.emptyTrashErr }
 
@@ -542,6 +550,17 @@ func TestCloudHandlerTrashViewsStarsAndSearch(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d", rec.Code)
 	}
+	if uc.lastTrashFolderID != nil {
+		t.Fatalf("expected nil trash folder id, got %v", *uc.lastTrashFolderID)
+	}
+	rec = httptest.NewRecorder()
+	h.ListTrash(rec, cloudReq(http.MethodGet, "/trash?folder_id=folder-1", ""))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200 for scoped trash list, got %d", rec.Code)
+	}
+	if uc.lastTrashFolderID == nil || *uc.lastTrashFolderID != "folder-1" {
+		t.Fatalf("expected folder-1 trash folder id, got %#v", uc.lastTrashFolderID)
+	}
 	uc.listFolderErr = errors.New("list fail")
 	rec = httptest.NewRecorder()
 	h.ListTrash(rec, cloudReq(http.MethodGet, "/trash", ""))
@@ -549,6 +568,20 @@ func TestCloudHandlerTrashViewsStarsAndSearch(t *testing.T) {
 		t.Fatalf("expected 500, got %d", rec.Code)
 	}
 	uc.listFolderErr = nil
+
+	rec = httptest.NewRecorder()
+	req := withParam(cloudReq(http.MethodGet, "/trash/folders/f1", ""), "folderID", "f1")
+	h.GetTrashFolder(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rec.Code)
+	}
+	uc.getTrashFolderErr = errors.New("not found")
+	rec = httptest.NewRecorder()
+	h.GetTrashFolder(rec, req)
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d", rec.Code)
+	}
+	uc.getTrashFolderErr = nil
 
 	rec = httptest.NewRecorder()
 	h.RestoreItem(rec, cloudReq(http.MethodPost, "/trash/restore", `{"id":"f1","type":"file"}`))

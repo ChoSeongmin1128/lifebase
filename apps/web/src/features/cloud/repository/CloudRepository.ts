@@ -9,6 +9,7 @@ import type {
 export interface CloudRepository {
   listItems(input: ListCloudItemsInput): Promise<FolderItem[]>;
   getFolder(folderId: string): Promise<FolderData>;
+  getTrashFolder(folderId: string): Promise<FolderData>;
   listStars(): Promise<StarItem[]>;
   uploadFile(file: File, folderId?: string | null): Promise<void>;
   createTextFile(

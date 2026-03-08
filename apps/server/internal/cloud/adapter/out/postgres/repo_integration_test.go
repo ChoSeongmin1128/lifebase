@@ -192,15 +192,30 @@ func TestFolderAndFileReposIntegration(t *testing.T) {
 	if _, err := folderRepo.FindByID(ctx, userID, childID); err == nil {
 		t.Fatal("expected soft deleted folder not found")
 	}
+	trashedFolder, err := folderRepo.FindTrashedByID(ctx, userID, childID)
+	if err != nil || trashedFolder.ID != childID {
+		t.Fatalf("find trashed folder by id failed: err=%v folder=%#v", err, trashedFolder)
+	}
+	if _, err := folderRepo.FindTrashedByID(ctx, userID, "ffffffff-ffff-ffff-ffff-ffffffffffff"); err == nil {
+		t.Fatal("expected missing trashed folder to return not found error")
+	}
 	trashedFolders, err := folderRepo.ListTrashed(ctx, userID)
 	if err != nil || len(trashedFolders) != 1 {
 		t.Fatalf("list trashed folders failed: err=%v folders=%#v", err, trashedFolders)
+	}
+	existsFolderName, err := folderRepo.ExistsByName(ctx, userID, nil, "Photos")
+	if err != nil || existsFolderName {
+		t.Fatalf("expected trashed folder name not to count as active: exists=%v err=%v", existsFolderName, err)
 	}
 	if err := folderRepo.Restore(ctx, userID, childID); err != nil {
 		t.Fatalf("restore folder: %v", err)
 	}
 	if _, err := folderRepo.FindByID(ctx, userID, childID); err != nil {
 		t.Fatalf("find restored folder: %v", err)
+	}
+	existsFolderName, err = folderRepo.ExistsByName(ctx, userID, nil, "Photos")
+	if err != nil || !existsFolderName {
+		t.Fatalf("expected restored folder name to count as active: exists=%v err=%v", existsFolderName, err)
 	}
 
 	if err := fileRepo.HardDelete(ctx, fileRootID); err != nil {

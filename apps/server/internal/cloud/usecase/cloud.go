@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -146,7 +147,35 @@ func (uc *cloudUseCase) CopyFolder(ctx context.Context, userID, folderID string,
 }
 
 func (uc *cloudUseCase) DeleteFolder(ctx context.Context, userID, folderID string) error {
-	return uc.folders.SoftDelete(ctx, userID, folderID)
+	root, err := uc.folders.FindByID(ctx, userID, folderID)
+	if err != nil || root == nil {
+		return fmt.Errorf("folder not found")
+	}
+
+	folders, files, err := uc.collectActiveFolderTree(ctx, userID, root)
+	if err != nil {
+		return err
+	}
+
+	for _, file := range files {
+		if err := uc.files.SoftDelete(ctx, userID, file.ID); err != nil {
+			return fmt.Errorf("delete file: %w", err)
+		}
+	}
+	for i := len(folders) - 1; i >= 0; i-- {
+		if err := uc.folders.SoftDelete(ctx, userID, folders[i].ID); err != nil {
+			return fmt.Errorf("delete folder: %w", err)
+		}
+	}
+	return nil
+}
+
+func (uc *cloudUseCase) GetTrashFolder(ctx context.Context, userID, folderID string) (*domain.Folder, error) {
+	folder, err := uc.findFolderInTrashScope(ctx, userID, folderID, nil)
+	if err != nil {
+		return nil, fmt.Errorf("folder not found in trash")
+	}
+	return folder, nil
 }
 
 // Files
@@ -176,6 +205,28 @@ func (uc *cloudUseCase) resolveFileName(ctx context.Context, userID string, fold
 		}
 	}
 	return "", fmt.Errorf("could not resolve unique filename for %q", name)
+}
+
+func (uc *cloudUseCase) resolveFolderName(ctx context.Context, userID string, parentID *string, name string) (string, error) {
+	exists, err := uc.folders.ExistsByName(ctx, userID, parentID, name)
+	if err != nil {
+		return "", err
+	}
+	if !exists {
+		return name, nil
+	}
+
+	for i := 1; i <= 10000; i++ {
+		candidate := fmt.Sprintf("%s (%d)", name, i)
+		exists, err := uc.folders.ExistsByName(ctx, userID, parentID, candidate)
+		if err != nil {
+			return "", err
+		}
+		if !exists {
+			return candidate, nil
+		}
+	}
+	return "", fmt.Errorf("could not resolve unique folder name for %q", name)
 }
 
 func (uc *cloudUseCase) UploadFile(ctx context.Context, userID string, folderID *string, name string, mimeType string, size int64, data []byte) (*domain.File, error) {
@@ -364,7 +415,7 @@ func (uc *cloudUseCase) DeleteFile(ctx context.Context, userID, fileID string) e
 
 // Trash
 
-func (uc *cloudUseCase) ListTrash(ctx context.Context, userID string) ([]portin.FolderItem, error) {
+func (uc *cloudUseCase) ListTrash(ctx context.Context, userID string, folderID *string) ([]portin.FolderItem, error) {
 	folders, err := uc.folders.ListTrashed(ctx, userID)
 	if err != nil {
 		return nil, err
@@ -375,12 +426,69 @@ func (uc *cloudUseCase) ListTrash(ctx context.Context, userID string) ([]portin.
 		return nil, err
 	}
 
+	trashedFolderIDs := make(map[string]struct{}, len(folders))
+	for _, folder := range folders {
+		trashedFolderIDs[folder.ID] = struct{}{}
+	}
+
+	if folderID != nil {
+		if _, err := uc.findFolderInTrashScope(ctx, userID, *folderID, trashedFolderIDs); err != nil {
+			return nil, fmt.Errorf("folder not found in trash")
+		}
+	}
+
 	items := make([]portin.FolderItem, 0, len(folders)+len(files))
+	folderSeen := make(map[string]struct{}, len(folders))
+	fileSeen := make(map[string]struct{}, len(files))
 	for _, f := range folders {
+		if folderID != nil {
+			if f.ParentID == nil || *f.ParentID != *folderID {
+				continue
+			}
+		} else if f.ParentID != nil {
+			if _, ok := trashedFolderIDs[*f.ParentID]; ok {
+				continue
+			}
+		}
 		items = append(items, portin.FolderItem{Type: "folder", Folder: f})
+		folderSeen[f.ID] = struct{}{}
 	}
 	for _, f := range files {
+		if folderID != nil {
+			if f.FolderID == nil || *f.FolderID != *folderID {
+				continue
+			}
+		} else if f.FolderID != nil {
+			if _, ok := trashedFolderIDs[*f.FolderID]; ok {
+				continue
+			}
+		}
 		items = append(items, portin.FolderItem{Type: "file", File: f})
+		fileSeen[f.ID] = struct{}{}
+	}
+
+	if folderID != nil {
+		activeFolders, err := uc.folders.ListByParent(ctx, userID, folderID)
+		if err != nil {
+			return nil, err
+		}
+		for _, folder := range activeFolders {
+			if _, ok := folderSeen[folder.ID]; ok {
+				continue
+			}
+			items = append(items, portin.FolderItem{Type: "folder", Folder: folder})
+		}
+
+		activeFiles, err := uc.files.ListByFolder(ctx, userID, folderID, "name", "asc")
+		if err != nil {
+			return nil, err
+		}
+		for _, file := range activeFiles {
+			if _, ok := fileSeen[file.ID]; ok {
+				continue
+			}
+			items = append(items, portin.FolderItem{Type: "file", File: file})
+		}
 	}
 	return items, nil
 }
@@ -388,11 +496,41 @@ func (uc *cloudUseCase) ListTrash(ctx context.Context, userID string) ([]portin.
 func (uc *cloudUseCase) RestoreItem(ctx context.Context, userID, itemID, itemType string) error {
 	switch itemType {
 	case "folder":
-		return uc.folders.Restore(ctx, userID, itemID)
+		folder, err := uc.folders.FindTrashedByID(ctx, userID, itemID)
+		if err != nil || folder == nil {
+			activeFolder, activeErr := uc.findFolderInTrashScope(ctx, userID, itemID, nil)
+			if activeErr != nil {
+				return fmt.Errorf("folder not found in trash")
+			}
+			return uc.restoreDeletedFolderPath(ctx, userID, activeFolder.ParentID)
+		}
+		if err := uc.restoreDeletedFolderPath(ctx, userID, folder.ParentID); err != nil {
+			return err
+		}
+		trashedFolders, err := uc.folders.ListTrashed(ctx, userID)
+		if err != nil {
+			return err
+		}
+		trashedFiles, err := uc.files.ListTrashed(ctx, userID)
+		if err != nil {
+			return err
+		}
+		return uc.restoreFolderSubtree(ctx, userID, itemID, trashedFolders, trashedFiles)
 	case "file":
 		file, err := uc.files.FindTrashedByID(ctx, userID, itemID)
 		if err != nil {
-			return fmt.Errorf("file not found in trash")
+			activeFile, activeErr := uc.files.FindByID(ctx, userID, itemID)
+			if activeErr != nil || activeFile == nil {
+				return fmt.Errorf("file not found in trash")
+			}
+			inTrash, trashErr := uc.hasTrashedAncestor(ctx, userID, activeFile.FolderID, nil)
+			if trashErr != nil || !inTrash {
+				return fmt.Errorf("file not found in trash")
+			}
+			return uc.restoreDeletedFolderPath(ctx, userID, activeFile.FolderID)
+		}
+		if err := uc.restoreDeletedFolderPath(ctx, userID, file.FolderID); err != nil {
+			return err
 		}
 		resolvedName, err := uc.resolveFileName(ctx, userID, file.FolderID, file.Name)
 		if err != nil {
@@ -417,18 +555,48 @@ func (uc *cloudUseCase) EmptyTrash(ctx context.Context, userID string) error {
 		return err
 	}
 
-	for _, f := range files {
-		_ = uc.storage.Delete(f.StoragePath)
-		_ = uc.files.HardDelete(ctx, f.ID)
-		_ = uc.files.UpdateStorageUsed(ctx, userID, -f.SizeBytes)
-	}
-
 	folders, err := uc.folders.ListTrashed(ctx, userID)
 	if err != nil {
 		return err
 	}
-	for _, f := range folders {
-		_ = uc.folders.HardDelete(ctx, f.ID)
+
+	fileMap := make(map[string]*domain.File, len(files))
+	for _, file := range files {
+		fileMap[file.ID] = file
+	}
+	folderMap := make(map[string]*domain.Folder, len(folders))
+	for _, folder := range folders {
+		folderMap[folder.ID] = folder
+	}
+
+	for _, folder := range folders {
+		activeFolders, activeFiles, collectErr := uc.collectActiveFolderTree(ctx, userID, folder)
+		if collectErr != nil {
+			return collectErr
+		}
+		for _, activeFolder := range activeFolders {
+			folderMap[activeFolder.ID] = activeFolder
+		}
+		for _, activeFile := range activeFiles {
+			fileMap[activeFile.ID] = activeFile
+		}
+	}
+
+	for _, file := range fileMap {
+		_ = uc.storage.Delete(file.StoragePath)
+		_ = uc.files.HardDelete(ctx, file.ID)
+		_ = uc.files.UpdateStorageUsed(ctx, userID, -file.SizeBytes)
+	}
+
+	folderList := make([]*domain.Folder, 0, len(folderMap))
+	for _, folder := range folderMap {
+		folderList = append(folderList, folder)
+	}
+	sort.SliceStable(folderList, func(i, j int) bool {
+		return folderDepth(folderList[i], folderMap) > folderDepth(folderList[j], folderMap)
+	})
+	for _, folder := range folderList {
+		_ = uc.folders.HardDelete(ctx, folder.ID)
 	}
 
 	return nil
@@ -555,6 +723,182 @@ func toFileItems(files []*domain.File) []portin.FolderItem {
 	return items
 }
 
+func (uc *cloudUseCase) collectActiveFolderTree(
+	ctx context.Context,
+	userID string,
+	root *domain.Folder,
+) ([]*domain.Folder, []*domain.File, error) {
+	folders := []*domain.Folder{root}
+	files, err := uc.files.ListByFolder(ctx, userID, &root.ID, "name", "asc")
+	if err != nil {
+		return nil, nil, err
+	}
+	children, err := uc.folders.ListByParent(ctx, userID, &root.ID)
+	if err != nil {
+		return nil, nil, err
+	}
+	collectedFiles := append([]*domain.File{}, files...)
+	for _, child := range children {
+		subFolders, subFiles, err := uc.collectActiveFolderTree(ctx, userID, child)
+		if err != nil {
+			return nil, nil, err
+		}
+		folders = append(folders, subFolders...)
+		collectedFiles = append(collectedFiles, subFiles...)
+	}
+	return folders, collectedFiles, nil
+}
+
+func (uc *cloudUseCase) findFolderInTrashScope(
+	ctx context.Context,
+	userID string,
+	folderID string,
+	trashedFolderIDs map[string]struct{},
+) (*domain.Folder, error) {
+	folder, err := uc.folders.FindTrashedByID(ctx, userID, folderID)
+	if err == nil && folder != nil {
+		return folder, nil
+	}
+
+	folder, err = uc.folders.FindByID(ctx, userID, folderID)
+	if err != nil || folder == nil {
+		return nil, fmt.Errorf("folder not found in trash")
+	}
+
+	inTrash, err := uc.hasTrashedAncestor(ctx, userID, folder.ParentID, trashedFolderIDs)
+	if err != nil || !inTrash {
+		return nil, fmt.Errorf("folder not found in trash")
+	}
+	return folder, nil
+}
+
+func (uc *cloudUseCase) hasTrashedAncestor(
+	ctx context.Context,
+	userID string,
+	folderID *string,
+	trashedFolderIDs map[string]struct{},
+) (bool, error) {
+	current := folderID
+	visited := map[string]bool{}
+	for current != nil && *current != "" {
+		if visited[*current] {
+			return false, fmt.Errorf("cycle detected in folder tree")
+		}
+		visited[*current] = true
+
+		if trashedFolderIDs != nil {
+			if _, ok := trashedFolderIDs[*current]; ok {
+				return true, nil
+			}
+		}
+
+		folder, err := uc.folders.FindTrashedByID(ctx, userID, *current)
+		if err == nil && folder != nil {
+			return true, nil
+		}
+
+		folder, err = uc.folders.FindByID(ctx, userID, *current)
+		if err != nil || folder == nil {
+			return false, fmt.Errorf("folder not found")
+		}
+		current = folder.ParentID
+	}
+	return false, nil
+}
+
+func (uc *cloudUseCase) restoreDeletedFolderPath(ctx context.Context, userID string, folderID *string) error {
+	if folderID == nil || *folderID == "" {
+		return nil
+	}
+	if folder, err := uc.folders.FindByID(ctx, userID, *folderID); err == nil && folder != nil {
+		return nil
+	}
+	folder, err := uc.folders.FindTrashedByID(ctx, userID, *folderID)
+	if err != nil || folder == nil {
+		return fmt.Errorf("folder not found in trash")
+	}
+	if err := uc.restoreDeletedFolderPath(ctx, userID, folder.ParentID); err != nil {
+		return err
+	}
+	return uc.restoreFolderSelf(ctx, userID, folder)
+}
+
+func (uc *cloudUseCase) restoreFolderSelf(ctx context.Context, userID string, folder *domain.Folder) error {
+	resolvedName, err := uc.resolveFolderName(ctx, userID, folder.ParentID, folder.Name)
+	if err != nil {
+		return fmt.Errorf("resolve folder name: %w", err)
+	}
+	if resolvedName != folder.Name {
+		folder.Name = resolvedName
+		folder.UpdatedAt = time.Now()
+		if err := uc.folders.Update(ctx, folder); err != nil {
+			return fmt.Errorf("rename folder on restore: %w", err)
+		}
+	}
+	if err := uc.folders.Restore(ctx, userID, folder.ID); err != nil {
+		return fmt.Errorf("restore folder: %w", err)
+	}
+	return nil
+}
+
+func (uc *cloudUseCase) restoreFolderSubtree(
+	ctx context.Context,
+	userID string,
+	rootID string,
+	trashedFolders []*domain.Folder,
+	trashedFiles []*domain.File,
+) error {
+	folderByID := make(map[string]*domain.Folder, len(trashedFolders))
+	foldersByParent := make(map[string][]*domain.Folder)
+	for _, folder := range trashedFolders {
+		folderByID[folder.ID] = folder
+		if folder.ParentID != nil {
+			foldersByParent[*folder.ParentID] = append(foldersByParent[*folder.ParentID], folder)
+		}
+	}
+	filesByFolder := make(map[string][]*domain.File)
+	for _, file := range trashedFiles {
+		if file.FolderID != nil {
+			filesByFolder[*file.FolderID] = append(filesByFolder[*file.FolderID], file)
+		}
+	}
+
+	var restore func(folderID string) error
+	restore = func(folderID string) error {
+		folder := folderByID[folderID]
+		if folder == nil {
+			return fmt.Errorf("folder not found in trash")
+		}
+		if err := uc.restoreFolderSelf(ctx, userID, folder); err != nil {
+			return err
+		}
+		for _, child := range foldersByParent[folderID] {
+			if err := restore(child.ID); err != nil {
+				return err
+			}
+		}
+		for _, file := range filesByFolder[folderID] {
+			resolvedName, err := uc.resolveFileName(ctx, userID, file.FolderID, file.Name)
+			if err != nil {
+				return fmt.Errorf("resolve filename: %w", err)
+			}
+			if resolvedName != file.Name {
+				file.Name = resolvedName
+				file.UpdatedAt = time.Now()
+				if err := uc.files.Update(ctx, file); err != nil {
+					return fmt.Errorf("rename on restore: %w", err)
+				}
+			}
+			if err := uc.files.Restore(ctx, userID, file.ID); err != nil {
+				return fmt.Errorf("restore file: %w", err)
+			}
+		}
+		return nil
+	}
+
+	return restore(rootID)
+}
+
 func (uc *cloudUseCase) buildFolderPath(
 	ctx context.Context,
 	userID string,
@@ -610,6 +954,25 @@ func (uc *cloudUseCase) isDescendantFolder(
 		current = f.ParentID
 	}
 	return false, nil
+}
+
+func folderDepth(folder *domain.Folder, folders map[string]*domain.Folder) int {
+	depth := 0
+	current := folder.ParentID
+	visited := map[string]bool{}
+	for current != nil && *current != "" {
+		if visited[*current] {
+			break
+		}
+		visited[*current] = true
+		depth++
+		parent, ok := folders[*current]
+		if !ok {
+			break
+		}
+		current = parent.ParentID
+	}
+	return depth
 }
 
 func (uc *cloudUseCase) copyFileToFolder(ctx context.Context, userID string, source *domain.File, targetFolderID *string) error {

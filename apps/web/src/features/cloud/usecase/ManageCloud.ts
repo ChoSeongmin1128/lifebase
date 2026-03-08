@@ -12,6 +12,10 @@ export class ManageCloudUseCase {
     return this.repo.getFolder(folderId);
   }
 
+  getTrashFolder(folderId: string) {
+    return this.repo.getTrashFolder(folderId);
+  }
+
   listStars() {
     return this.repo.listStars();
   }

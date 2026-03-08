@@ -14,6 +14,7 @@ export function useCloudActions() {
     () => ({
       listItems: (input: ListCloudItemsInput) => useCase.listItems(input),
       getFolder: (folderId: string) => useCase.getFolder(folderId),
+      getTrashFolder: (folderId: string) => useCase.getTrashFolder(folderId),
       listStars: () => useCase.listStars(),
       uploadFile: (file: File, folderId?: string | null) => useCase.uploadFile(file, folderId),
       createTextFile: (name: string, extension: "md" | "txt", folderId?: string | null) =>

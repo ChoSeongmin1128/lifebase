@@ -6,7 +6,7 @@ import { CheckCircle2, Info, TriangleAlert, X, XCircle } from "lucide-react";
 type ToastVariant = "success" | "info" | "warning" | "error";
 
 interface ToastOptions {
-  title: string;
+  title?: string;
   description?: string;
   variant?: ToastVariant;
   duration?: number;
@@ -14,8 +14,9 @@ interface ToastOptions {
   onAction?: () => void;
 }
 
-interface ToastRecord extends Required<Pick<ToastOptions, "title" | "variant">> {
+interface ToastRecord extends Required<Pick<ToastOptions, "variant">> {
   id: number;
+  title?: string;
   description?: string;
   duration: number;
   actionLabel?: string;
@@ -24,10 +25,10 @@ interface ToastRecord extends Required<Pick<ToastOptions, "title" | "variant">> 
 
 interface ToastApi {
   show: (options: ToastOptions) => void;
-  success: (title: string, description?: string) => void;
-  info: (title: string, description?: string) => void;
-  warning: (title: string, description?: string) => void;
-  error: (title: string, description?: string) => void;
+  success: (title?: string, description?: string) => void;
+  info: (title?: string, description?: string) => void;
+  warning: (title?: string, description?: string) => void;
+  error: (title?: string, description?: string) => void;
 }
 
 const ToastContext = createContext<ToastApi | null>(null);
@@ -58,7 +59,7 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
 
   const show = useCallback((options: ToastOptions) => {
     const variant = options.variant ?? "info";
-    const key = `${variant}:${options.title}:${options.description ?? ""}`;
+    const key = `${variant}:${options.title ?? ""}:${options.description ?? ""}:${options.actionLabel ?? ""}`;
     const now = Date.now();
     const last = dedupe.current.get(key) ?? 0;
     if (now-last < DEDUPE_WINDOW_MS) {
@@ -137,9 +138,11 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
             <div className="flex items-start gap-2">
               {getVariantIcon(toast.variant)}
               <div className="min-w-0 flex-1">
-                <p className="text-sm font-medium text-text-strong">{toast.title}</p>
+                {toast.title ? (
+                  <p className="text-sm font-medium text-text-strong">{toast.title}</p>
+                ) : null}
                 {toast.description ? (
-                  <p className="mt-0.5 text-xs text-text-secondary">{toast.description}</p>
+                  <p className={`${toast.title ? "mt-0.5 " : ""}text-xs text-text-secondary`}>{toast.description}</p>
                 ) : null}
                 {toast.actionLabel && toast.onAction ? (
                   <button
@@ -148,7 +151,7 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
                       toast.onAction?.();
                       dismiss(toast.id);
                     }}
-                    className="mt-2 text-xs font-medium text-primary hover:underline"
+                    className={`${toast.title || toast.description ? "mt-2 " : ""}text-xs font-medium text-primary hover:underline`}
                   >
                     {toast.actionLabel}
                   </button>

@@ -821,6 +821,7 @@ function TodoPageInner() {
       window.clearTimeout(timerID);
       pendingDeletionRef.current = null;
       restore();
+      toast.success("복원됨");
     };
 
     pendingDeletionRef.current = { cancel, flush: finalize };
@@ -831,7 +832,6 @@ function TodoPageInner() {
     toast.show({
       variant: "warning",
       title: "Todo 삭제됨",
-      description: "5초 안에 실행 취소할 수 있습니다.",
       duration: 5_000,
       actionLabel: "실행 취소",
       onAction: cancel,
@@ -990,9 +990,7 @@ function TodoPageInner() {
         await loadLists();
         void triggerTodoSync("page_action", PAGE_ACTION_SYNC_COOLDOWN_MS);
 
-        if (failed === 0) {
-          toast.success("완료 항목 정리 완료");
-        } else {
+        if (failed !== 0) {
           restore();
           toast.warning("일부 완료 항목 정리 실패", `${failed}개 항목을 삭제하지 못했습니다.`);
         }
@@ -1011,6 +1009,7 @@ function TodoPageInner() {
       window.clearTimeout(timerID);
       pendingDeletionRef.current = null;
       restore();
+      toast.success(`Todo ${removedTodos.length}개 복원됨`);
     };
 
     pendingDeletionRef.current = { cancel, flush: finalize };
@@ -1020,8 +1019,7 @@ function TodoPageInner() {
 
     toast.show({
       variant: "warning",
-      title: `완료 Todo ${removedTodos.length}건 삭제 예정`,
-      description: "5초 안에 실행 취소할 수 있습니다.",
+      title: `Todo ${removedTodos.length}개 삭제됨`,
       duration: 5_000,
       actionLabel: "실행 취소",
       onAction: cancel,

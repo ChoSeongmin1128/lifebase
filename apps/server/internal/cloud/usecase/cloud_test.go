@@ -14,20 +14,26 @@ import (
 type folderRepoStub struct {
 	byID       map[string]*domain.Folder
 	byParent   map[string][]*domain.Folder
-	trashed    []*domain.Folder
 	findErr    error
+	findTrashedErr error
 	listErr    error
 	createErr  error
 	updateErr  error
 	softErr    error
 	restoreErr error
 	hardErr    error
+	existsErr  error
+	existsByName map[string]bool
+	softDeleted []string
+	restored    []string
+	hardDeleted []string
 }
 
 func newFolderRepoStub() *folderRepoStub {
 	return &folderRepoStub{
-		byID:     map[string]*domain.Folder{},
-		byParent: map[string][]*domain.Folder{},
+		byID:         map[string]*domain.Folder{},
+		byParent:     map[string][]*domain.Folder{},
+		existsByName: map[string]bool{},
 	}
 }
 
@@ -51,7 +57,17 @@ func (m *folderRepoStub) FindByID(_ context.Context, userID, id string) (*domain
 		return nil, m.findErr
 	}
 	f, ok := m.byID[id]
-	if !ok || f.UserID != userID {
+	if !ok || f.UserID != userID || f.DeletedAt != nil {
+		return nil, errors.New("not found")
+	}
+	return f, nil
+}
+func (m *folderRepoStub) FindTrashedByID(_ context.Context, userID, id string) (*domain.Folder, error) {
+	if m.findTrashedErr != nil {
+		return nil, m.findTrashedErr
+	}
+	f, ok := m.byID[id]
+	if !ok || f.UserID != userID || f.DeletedAt == nil {
 		return nil, errors.New("not found")
 	}
 	return f, nil
@@ -62,7 +78,7 @@ func (m *folderRepoStub) ListByParent(_ context.Context, userID string, parentID
 	}
 	out := []*domain.Folder{}
 	for _, f := range m.byParent[parentKey(parentID)] {
-		if f.UserID == userID {
+		if f.UserID == userID && f.DeletedAt == nil {
 			out = append(out, f)
 		}
 	}
@@ -75,20 +91,61 @@ func (m *folderRepoStub) Update(_ context.Context, folder *domain.Folder) error 
 	m.byID[folder.ID] = folder
 	return nil
 }
-func (m *folderRepoStub) SoftDelete(context.Context, string, string) error { return m.softErr }
-func (m *folderRepoStub) Restore(context.Context, string, string) error    { return m.restoreErr }
-func (m *folderRepoStub) HardDelete(context.Context, string) error         { return m.hardErr }
+func (m *folderRepoStub) SoftDelete(_ context.Context, userID, id string) error {
+	if m.softErr != nil {
+		return m.softErr
+	}
+	f, ok := m.byID[id]
+	if !ok || f.UserID != userID || f.DeletedAt != nil {
+		return errors.New("not found")
+	}
+	now := time.Now()
+	f.DeletedAt = &now
+	m.softDeleted = append(m.softDeleted, id)
+	return nil
+}
+func (m *folderRepoStub) Restore(_ context.Context, userID, id string) error {
+	if m.restoreErr != nil {
+		return m.restoreErr
+	}
+	f, ok := m.byID[id]
+	if !ok || f.UserID != userID || f.DeletedAt == nil {
+		return errors.New("not found")
+	}
+	f.DeletedAt = nil
+	m.restored = append(m.restored, id)
+	return nil
+}
+func (m *folderRepoStub) HardDelete(_ context.Context, id string) error {
+	if m.hardErr != nil {
+		return m.hardErr
+	}
+	delete(m.byID, id)
+	m.hardDeleted = append(m.hardDeleted, id)
+	return nil
+}
 func (m *folderRepoStub) ListTrashed(context.Context, string) ([]*domain.Folder, error) {
 	if m.listErr != nil {
 		return nil, m.listErr
 	}
-	return m.trashed, nil
+	out := []*domain.Folder{}
+	for _, f := range m.byID {
+		if f.DeletedAt != nil {
+			out = append(out, f)
+		}
+	}
+	return out, nil
+}
+func (m *folderRepoStub) ExistsByName(_ context.Context, userID string, parentID *string, name string) (bool, error) {
+	if m.existsErr != nil {
+		return false, m.existsErr
+	}
+	return m.existsByName[fileNameKey(userID, parentID, name)], nil
 }
 
 type fileRepoStub struct {
 	byID             map[string]*domain.File
 	byFolder         map[string][]*domain.File
-	trashed          []*domain.File
 	recent           []*domain.File
 	searchResult     []*domain.File
 	findErr          error
@@ -104,6 +161,10 @@ type fileRepoStub struct {
 	existsErr        error
 	existsByNameFn   func(string, *string, string) (bool, error)
 	findTrashedErr   error
+	softDeleted      []string
+	restored         []string
+	hardDeleted      []string
+	storageDeltas    []int64
 }
 
 func newFileRepoStub() *fileRepoStub {
@@ -134,7 +195,7 @@ func (m *fileRepoStub) FindByID(_ context.Context, userID, id string) (*domain.F
 		return nil, m.findErr
 	}
 	f, ok := m.byID[id]
-	if !ok || f.UserID != userID {
+	if !ok || f.UserID != userID || f.DeletedAt != nil {
 		return nil, errors.New("not found")
 	}
 	return f, nil
@@ -145,7 +206,7 @@ func (m *fileRepoStub) ListByFolder(_ context.Context, userID string, folderID *
 	}
 	out := []*domain.File{}
 	for _, f := range m.byFolder[parentKey(folderID)] {
-		if f.UserID == userID {
+		if f.UserID == userID && f.DeletedAt == nil {
 			out = append(out, f)
 		}
 	}
@@ -154,6 +215,15 @@ func (m *fileRepoStub) ListByFolder(_ context.Context, userID string, folderID *
 func (m *fileRepoStub) ListRecent(context.Context, string, int) ([]*domain.File, error) {
 	if m.listErr != nil {
 		return nil, m.listErr
+	}
+	if m.recent == nil {
+		out := make([]*domain.File, 0, len(m.byID))
+		for _, f := range m.byID {
+			if f.DeletedAt == nil {
+				out = append(out, f)
+			}
+		}
+		return out, nil
 	}
 	return m.recent, nil
 }
@@ -164,16 +234,58 @@ func (m *fileRepoStub) Update(_ context.Context, file *domain.File) error {
 	m.byID[file.ID] = file
 	return nil
 }
-func (m *fileRepoStub) SoftDelete(context.Context, string, string) error { return m.softErr }
-func (m *fileRepoStub) Restore(context.Context, string, string) error    { return m.restoreErr }
-func (m *fileRepoStub) HardDelete(context.Context, string) error         { return m.hardErr }
+func (m *fileRepoStub) SoftDelete(_ context.Context, userID, id string) error {
+	if m.softErr != nil {
+		return m.softErr
+	}
+	f, ok := m.byID[id]
+	if !ok || f.UserID != userID || f.DeletedAt != nil {
+		return errors.New("not found")
+	}
+	now := time.Now()
+	f.DeletedAt = &now
+	m.softDeleted = append(m.softDeleted, id)
+	return nil
+}
+func (m *fileRepoStub) Restore(_ context.Context, userID, id string) error {
+	if m.restoreErr != nil {
+		return m.restoreErr
+	}
+	f, ok := m.byID[id]
+	if !ok || f.UserID != userID || f.DeletedAt == nil {
+		return errors.New("not found")
+	}
+	f.DeletedAt = nil
+	m.restored = append(m.restored, id)
+	return nil
+}
+func (m *fileRepoStub) HardDelete(_ context.Context, id string) error {
+	if m.hardErr != nil {
+		return m.hardErr
+	}
+	delete(m.byID, id)
+	m.hardDeleted = append(m.hardDeleted, id)
+	return nil
+}
 func (m *fileRepoStub) ListTrashed(context.Context, string) ([]*domain.File, error) {
 	if m.listErr != nil {
 		return nil, m.listErr
 	}
-	return m.trashed, nil
+	out := []*domain.File{}
+	for _, f := range m.byID {
+		if f.DeletedAt != nil {
+			out = append(out, f)
+		}
+	}
+	return out, nil
 }
-func (m *fileRepoStub) UpdateStorageUsed(context.Context, string, int64) error { return m.updateStorageErr }
+func (m *fileRepoStub) UpdateStorageUsed(_ context.Context, _ string, delta int64) error {
+	if m.updateStorageErr != nil {
+		return m.updateStorageErr
+	}
+	m.storageDeltas = append(m.storageDeltas, delta)
+	return nil
+}
 func (m *fileRepoStub) Search(context.Context, string, string, int) ([]*domain.File, error) {
 	if m.listErr != nil {
 		return nil, m.listErr
@@ -196,10 +308,9 @@ func (m *fileRepoStub) FindTrashedByID(_ context.Context, userID, id string) (*d
 	if m.findTrashedErr != nil {
 		return nil, m.findTrashedErr
 	}
-	for _, f := range m.trashed {
-		if f.ID == id && f.UserID == userID {
-			return f, nil
-		}
+	f, ok := m.byID[id]
+	if ok && f.UserID == userID && f.DeletedAt != nil {
+		return f, nil
 	}
 	return nil, errors.New("not found")
 }
@@ -308,6 +419,16 @@ func newCloudUCForTest() (*cloudUseCase, *folderRepoStub, *fileRepoStub, *shared
 	return uc, folders, files, shared, stars, storage, queue
 }
 
+func markFolderTrashed(folder *domain.Folder) {
+	now := time.Now()
+	folder.DeletedAt = &now
+}
+
+func markFileTrashed(file *domain.File) {
+	now := time.Now()
+	file.DeletedAt = &now
+}
+
 func TestCloudUseCaseFolderFlows(t *testing.T) {
 	ctx := context.Background()
 	uc, folders, files, _, _, _, _ := newCloudUCForTest()
@@ -374,6 +495,12 @@ func TestCloudUseCaseFolderFlows(t *testing.T) {
 
 	if err := uc.DeleteFolder(ctx, "u1", parent.ID); err != nil {
 		t.Fatalf("delete folder: %v", err)
+	}
+	if parent.DeletedAt == nil || child.DeletedAt == nil || grand.DeletedAt == nil {
+		t.Fatal("expected folder subtree to be soft deleted")
+	}
+	if len(files.softDeleted) != 1 || files.softDeleted[0] != "file1" {
+		t.Fatalf("expected child files to be soft deleted, got %#v", files.softDeleted)
 	}
 }
 
@@ -548,7 +675,7 @@ func TestCloudUseCaseFileFlows(t *testing.T) {
 		t.Fatalf("copy file: %v", err)
 	}
 
-	if err := uc.DeleteFile(ctx, "u1", "x"); err != nil {
+	if err := uc.DeleteFile(ctx, "u1", utf.ID); err != nil {
 		t.Fatalf("delete file: %v", err)
 	}
 }
@@ -559,23 +686,37 @@ func TestCloudUseCaseTrashViewsStarsSearchAndHelpers(t *testing.T) {
 
 	root := seedFolder(folders, "root", "u1", "Root", nil)
 	child := seedFolder(folders, "child", "u1", "Child", &root.ID)
+	grand := seedFolder(folders, "grand", "u1", "Grand", &child.ID)
 	file1 := seedFile(files, "f1", "u1", "a.txt", "text/plain", "u1/a", &child.ID, 10)
 	file2 := seedFile(files, "f2", "u1", "b.txt", "text/plain", "u1/b", nil, 20)
-	files.trashed = []*domain.File{file1}
-	folders.trashed = []*domain.Folder{child}
+	file3 := seedFile(files, "f3", "u1", "c.txt", "text/plain", "u1/c", &grand.ID, 30)
+	file4 := seedFile(files, "f4", "u1", "loose.txt", "text/plain", "u1/d", &root.ID, 40)
+	markFolderTrashed(child)
+	markFolderTrashed(grand)
+	markFileTrashed(file1)
+	markFileTrashed(file3)
+	markFileTrashed(file4)
 	storage.data["u1/a"] = []byte("a")
 	storage.data["u1/b"] = []byte("b")
+	storage.data["u1/c"] = []byte("c")
+	storage.data["u1/d"] = []byte("d")
 
-	if items, err := uc.ListTrash(ctx, "u1"); err != nil || len(items) != 2 {
+	if items, err := uc.ListTrash(ctx, "u1", nil); err != nil || len(items) != 2 {
 		t.Fatalf("list trash failed: %v len=%d", err, len(items))
 	}
+	if items, err := uc.ListTrash(ctx, "u1", &child.ID); err != nil || len(items) != 2 {
+		t.Fatalf("list trash folder contents failed: %v len=%d", err, len(items))
+	}
+	if _, err := uc.GetTrashFolder(ctx, "u1", child.ID); err != nil {
+		t.Fatalf("get trash folder failed: %v", err)
+	}
 	folders.listErr = errors.New("folder list fail")
-	if _, err := uc.ListTrash(ctx, "u1"); err == nil {
+	if _, err := uc.ListTrash(ctx, "u1", nil); err == nil {
 		t.Fatal("expected list trashed folders error")
 	}
 	folders.listErr = nil
 	files.listErr = errors.New("file list fail")
-	if _, err := uc.ListTrash(ctx, "u1"); err == nil {
+	if _, err := uc.ListTrash(ctx, "u1", nil); err == nil {
 		t.Fatal("expected list trashed files error")
 	}
 	files.listErr = nil
@@ -607,11 +748,34 @@ func TestCloudUseCaseTrashViewsStarsSearchAndHelpers(t *testing.T) {
 	if err := uc.RestoreItem(ctx, "u1", "f1", "file"); err != nil {
 		t.Fatalf("restore file: %v", err)
 	}
+	if child.DeletedAt != nil {
+		t.Fatal("expected parent folder path to restore with file restore")
+	}
+	files.existsByName[fileNameKey("u1", child.ParentID, child.Name)] = true
+	files.existsByName[fileNameKey("u1", &child.ID, "unused")] = false
 	folders.restoreErr = errors.New("restore folder fail")
 	if err := uc.RestoreItem(ctx, "u1", "child", "folder"); err == nil {
 		t.Fatal("expected restore folder error")
 	}
 	folders.restoreErr = nil
+	markFolderTrashed(child)
+	markFolderTrashed(grand)
+	markFileTrashed(file1)
+	markFileTrashed(file3)
+	folders.existsByName[fileNameKey("u1", root.ParentID, root.Name)] = false
+	folders.existsByName[fileNameKey("u1", child.ParentID, child.Name)] = true
+	folders.existsByName[fileNameKey("u1", child.ParentID, "Child (1)")] = false
+	files.existsByName[fileNameKey("u1", file1.FolderID, file1.Name)] = false
+	files.existsByName[fileNameKey("u1", file3.FolderID, file3.Name)] = false
+	if err := uc.RestoreItem(ctx, "u1", "child", "folder"); err != nil {
+		t.Fatalf("restore folder subtree: %v", err)
+	}
+	if child.DeletedAt != nil || grand.DeletedAt != nil || file1.DeletedAt != nil || file3.DeletedAt != nil {
+		t.Fatal("expected folder subtree to restore recursively")
+	}
+	if child.Name != "Child (1)" {
+		t.Fatalf("expected restored folder to resolve name conflict, got %q", child.Name)
+	}
 
 	files.listErr = errors.New("list fail")
 	if err := uc.EmptyTrash(ctx, "u1"); err == nil {
@@ -623,8 +787,16 @@ func TestCloudUseCaseTrashViewsStarsSearchAndHelpers(t *testing.T) {
 		t.Fatal("expected list trashed folders error")
 	}
 	folders.listErr = nil
+	markFolderTrashed(child)
+	markFolderTrashed(grand)
+	markFileTrashed(file1)
+	markFileTrashed(file3)
+	markFileTrashed(file4)
 	if err := uc.EmptyTrash(ctx, "u1"); err != nil {
 		t.Fatalf("empty trash: %v", err)
+	}
+	if len(files.hardDeleted) == 0 || len(folders.hardDeleted) == 0 {
+		t.Fatal("expected trashed subtree to be hard deleted")
 	}
 
 	files.recent = []*domain.File{file1, file2}
@@ -652,7 +824,7 @@ func TestCloudUseCaseTrashViewsStarsSearchAndHelpers(t *testing.T) {
 		{ItemID: file1.ID, ItemType: "file"},
 		{ItemID: "ignored", ItemType: "unknown"},
 	}
-	if items, err := uc.ListStarred(ctx, "u1"); err != nil || len(items) != 2 {
+	if items, err := uc.ListStarred(ctx, "u1"); err != nil || len(items) != 1 {
 		t.Fatalf("list starred failed: %v len=%d", err, len(items))
 	}
 	stars.listErr = errors.New("list stars fail")
@@ -709,8 +881,9 @@ func TestCloudUseCaseTrashViewsStarsSearchAndHelpers(t *testing.T) {
 		t.Fatal("folder/file item converters failed")
 	}
 
+	liveFolder := seedFolder(folders, "live", "u1", "Live", nil)
 	cache := map[string]string{}
-	if p, err := uc.buildFolderPath(ctx, "u1", &child.ID, cache); err != nil || p == "" {
+	if p, err := uc.buildFolderPath(ctx, "u1", &liveFolder.ID, cache); err != nil || p == "" {
 		t.Fatalf("build folder path failed: p=%q err=%v", p, err)
 	}
 	if p, err := uc.buildFolderPath(ctx, "u1", nil, cache); err != nil || p != "/" {
@@ -733,6 +906,75 @@ func TestCloudUseCaseTrashViewsStarsSearchAndHelpers(t *testing.T) {
 	files.existsAlways = false
 	if err := uc.MoveFolder(ctx, "u1", root.ID, strPtr("cycle-a")); err == nil {
 		t.Fatal("expected move folder validation error")
+	}
+}
+
+func TestCloudUseCaseTrashLegacySubtreeVisibilityAndCleanup(t *testing.T) {
+	ctx := context.Background()
+	uc, folders, files, _, _, storage, _ := newCloudUCForTest()
+
+	root := seedFolder(folders, "root", "u1", "Root", nil)
+	trashed := seedFolder(folders, "trashed", "u1", "Trashed", &root.ID)
+	nestedTrashed := seedFolder(folders, "nested-trashed", "u1", "Nested Trashed", &trashed.ID)
+	activeNested := seedFolder(folders, "active-nested", "u1", "Active Nested", &trashed.ID)
+	trashedFile := seedFile(files, "trashed-file", "u1", "trashed.txt", "text/plain", "u1/trashed", &trashed.ID, 10)
+	activeFile := seedFile(files, "active-file", "u1", "active.txt", "text/plain", "u1/active", &trashed.ID, 20)
+	activeDeepFile := seedFile(files, "active-deep-file", "u1", "deep.txt", "text/plain", "u1/deep", &activeNested.ID, 30)
+	markFolderTrashed(trashed)
+	markFolderTrashed(nestedTrashed)
+	markFileTrashed(trashedFile)
+	storage.data["u1/trashed"] = []byte("trashed")
+	storage.data["u1/active"] = []byte("active")
+	storage.data["u1/deep"] = []byte("deep")
+
+	items, err := uc.ListTrash(ctx, "u1", &trashed.ID)
+	if err != nil {
+		t.Fatalf("list legacy trash subtree failed: %v", err)
+	}
+	if len(items) != 4 {
+		t.Fatalf("expected 4 direct children in trash folder, got %d", len(items))
+	}
+	itemIDs := map[string]bool{}
+	for _, item := range items {
+		if item.Type == "folder" {
+			itemIDs[item.Folder.ID] = true
+		} else {
+			itemIDs[item.File.ID] = true
+		}
+	}
+	for _, id := range []string{nestedTrashed.ID, activeNested.ID, trashedFile.ID, activeFile.ID} {
+		if !itemIDs[id] {
+			t.Fatalf("expected trash folder to include %s", id)
+		}
+	}
+
+	if _, err := uc.GetTrashFolder(ctx, "u1", activeNested.ID); err != nil {
+		t.Fatalf("expected active descendant folder to resolve in trash: %v", err)
+	}
+
+	if err := uc.RestoreItem(ctx, "u1", activeFile.ID, "file"); err != nil {
+		t.Fatalf("restore active file under trashed ancestor: %v", err)
+	}
+	if trashed.DeletedAt != nil {
+		t.Fatal("expected trashed ancestor folder to restore when restoring active child file")
+	}
+
+	markFolderTrashed(trashed)
+	markFolderTrashed(nestedTrashed)
+	markFileTrashed(trashedFile)
+
+	if err := uc.EmptyTrash(ctx, "u1"); err != nil {
+		t.Fatalf("empty trash with legacy subtree failed: %v", err)
+	}
+	for _, id := range []string{trashed.ID, nestedTrashed.ID, activeNested.ID} {
+		if _, ok := folders.byID[id]; ok {
+			t.Fatalf("expected folder %s to be hard deleted", id)
+		}
+	}
+	for _, id := range []string{trashedFile.ID, activeFile.ID, activeDeepFile.ID} {
+		if _, ok := files.byID[id]; ok {
+			t.Fatalf("expected file %s to be hard deleted", id)
+		}
 	}
 }
 

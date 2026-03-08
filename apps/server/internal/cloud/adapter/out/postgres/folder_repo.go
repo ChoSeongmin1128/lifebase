@@ -42,6 +42,19 @@ func (r *folderRepo) FindByID(ctx context.Context, userID, id string) (*domain.F
 	return &f, err
 }
 
+func (r *folderRepo) FindTrashedByID(ctx context.Context, userID, id string) (*domain.Folder, error) {
+	var f domain.Folder
+	err := r.db.QueryRow(ctx,
+		`SELECT id, user_id, parent_id, name, created_at, updated_at, deleted_at
+		 FROM folders WHERE id = $1 AND user_id = $2 AND deleted_at IS NOT NULL`, id, userID,
+	).Scan(&f.ID, &f.UserID, &f.ParentID, &f.Name, &f.CreatedAt, &f.UpdatedAt, &f.DeletedAt)
+
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, fmt.Errorf("folder not found")
+	}
+	return &f, err
+}
+
 func (r *folderRepo) ListByParent(ctx context.Context, userID string, parentID *string) ([]*domain.Folder, error) {
 	var rows pgx.Rows
 	var err error
@@ -105,6 +118,23 @@ func (r *folderRepo) ListTrashed(ctx context.Context, userID string) ([]*domain.
 	defer rows.Close()
 
 	return scanFolders(rows)
+}
+
+func (r *folderRepo) ExistsByName(ctx context.Context, userID string, parentID *string, name string) (bool, error) {
+	var count int
+	var err error
+	if parentID == nil {
+		err = r.db.QueryRow(ctx,
+			`SELECT COUNT(*) FROM folders WHERE user_id = $1 AND parent_id IS NULL AND name = $2 AND deleted_at IS NULL`,
+			userID, name,
+		).Scan(&count)
+	} else {
+		err = r.db.QueryRow(ctx,
+			`SELECT COUNT(*) FROM folders WHERE user_id = $1 AND parent_id = $2 AND name = $3 AND deleted_at IS NULL`,
+			userID, *parentID, name,
+		).Scan(&count)
+	}
+	return count > 0, err
 }
 
 func scanFolders(rows pgx.Rows) ([]*domain.Folder, error) {
