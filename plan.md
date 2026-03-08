@@ -39,6 +39,13 @@
 ## 7. 작업 규칙
 - `CLAUDE.md`
 
+## 7-1. 로컬 개발/worktree 실행 규칙
+- 새 worktree를 만들면 `pnpm bootstrap:worktree`로 env 복사와 `pnpm install`을 먼저 수행한다.
+- 로컬 통합 실행은 루트에서 `pnpm dev`를 사용한다.
+- 실행 상태 확인은 `pnpm dev:status`, 종료는 `pnpm dev:stop`을 사용한다.
+- 기본 포트는 API `38117`, Web `39001`이며, 충돌 시 빈 포트로 자동 조정될 수 있다.
+- OAuth 로컬 로그인 검증이 필요하면 자동 조정된 포트와 Google redirect URI 구성이 일치하는지 확인한다.
+
 ## 8. 프론트 기능 구조 전환 현황 (진행중)
 1. 목표
 웹/모바일의 구현된 모든 프론트 기능을 화면 중심 구현에서 기능 중심 구조로 전환한다.

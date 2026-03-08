@@ -86,6 +86,33 @@ Go 서버(`apps/server`)는 아래 우선순위로 환경 변수를 읽는다.
 - 로컬 개발 권장: `SERVER_ENV=development` + `.env.development.local`
 - 운영 권장: `SERVER_ENV=production` + `.env.production.local` (또는 프로세스 환경 변수)
 
+### worktree bootstrap
+
+새 worktree에서는 초기화 단계를 별도로 한 번 수행한다.
+
+```bash
+pnpm bootstrap:worktree
+```
+
+- 원본 worktree의 루트/apps/web 환경 파일을 현재 worktree로 복사한다.
+- 현재 worktree에서 `pnpm install`을 실행한다.
+- 이미 있는 환경 파일은 기본적으로 덮어쓰지 않는다.
+- 덮어써야 하면 `pnpm bootstrap:worktree -- --force`를 사용한다.
+
+### 로컬 통합 개발 실행
+
+```bash
+pnpm dev
+pnpm dev:status
+pnpm dev:stop
+```
+
+- `pnpm dev`는 API 서버와 Web dev 서버를 함께 백그라운드로 올린다.
+- 로그는 `tmp/dev-stack/logs/server.log`, `tmp/dev-stack/logs/web.log`에 기록된다.
+- 기본 포트는 API `38117`, Web `39001`이고, 이미 사용 중이면 빈 포트를 찾아 자동으로 올린다.
+- 포트가 기본값이 아니면 Google OAuth 로컬 redirect URI를 같은 포트로 맞춰야 로그인 흐름이 동작한다.
+- 같은 worktree에서 이미 `next dev`를 수동으로 띄운 상태면 `.next/dev/lock` 때문에 `pnpm dev`가 실패하므로 먼저 기존 프로세스를 정리해야 한다.
+
 ### 서버 실행
 
 ```bash

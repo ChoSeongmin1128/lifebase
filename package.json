@@ -4,7 +4,11 @@
   "private": true,
   "packageManager": "pnpm@10.30.2",
   "scripts": {
-    "dev": "turbo dev",
+    "bootstrap:worktree": "bash ./scripts/bootstrap-worktree.sh",
+    "dev": "bash ./scripts/dev-stack.sh",
+    "dev:status": "bash ./scripts/dev-status.sh",
+    "dev:stop": "bash ./scripts/dev-stop.sh",
+    "dev:turbo": "turbo dev",
     "build": "turbo build",
     "lint": "turbo lint",
     "test": "turbo test",

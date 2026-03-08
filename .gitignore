@@ -35,6 +35,7 @@ Cargo.lock
 
 # Build outputs
 dist/
+tmp/
 scripts/lifebase.log
 
 # OS files

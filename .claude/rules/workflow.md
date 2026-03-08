@@ -67,6 +67,9 @@
 - Codex는 저장소 상위 디렉터리에서 시작해도 된다.
 - 에이전트는 먼저 원본 repo 경로를 확인한 뒤, 원본 repo에서 worktree를 생성해야 한다.
 - worktree 생성 후에는 생성된 worktree 경로를 작업 기준 경로로 전환하고, 원본 repo에서는 계속 구현하지 않는다.
+- worktree 생성 직후 `pnpm bootstrap:worktree`를 실행해 의존성과 env 파일을 현재 worktree 기준으로 준비한다.
+- 로컬 실행은 `pnpm dev`를 기본으로 사용하고, 정리는 `pnpm dev:stop`으로 수행한다.
+- 기본 포트(API `38117`, Web `39001`)가 점유 중이면 빈 포트로 자동 상승할 수 있음을 전제로 한다.
 - 브랜치 네이밍 기본 형식은 `task/<scope>-<platform>`이다.
 - 외부 작업 ID가 있을 때만 `task/<ticket>-<scope>-<platform>` 형식을 사용한다.
 - 브랜치는 `dev` 최신 상태를 기준으로 생성하고, 병합 전까지 수시로 `dev` 기준 rebase를 유지한다.

@@ -41,6 +41,8 @@
 - Codex는 저장소 상위 디렉터리에서 시작할 수 있다.
 - 이 경우 에이전트는 원본 repo 경로를 찾은 뒤 그 repo에서 worktree를 생성한다.
 - worktree 생성 후에는 생성된 worktree 경로에서만 구현, 검증, 커밋, PR 작업을 이어간다.
+- worktree 생성 직후 `pnpm bootstrap:worktree`로 의존성 설치와 env 파일 복사를 먼저 맞춘다.
+- 로컬 검증은 기본적으로 worktree 안에서 `pnpm dev`로 Web/API를 함께 올리고 `pnpm dev:stop`으로 정리한다.
 - worktree 디렉터리는 현재 작업 목적이 드러나는 이름으로 만든다.
 - worktree는 저장소 루트에서 생성해도 되고, 경로는 보통 저장소 상위 디렉터리의 형제 폴더로 둔다.
 - 예: `/Users/seongmin/project/lifebase`에서 `git worktree add ../lifebase-calendar-sync-web -b task/calendar-sync-web dev`
