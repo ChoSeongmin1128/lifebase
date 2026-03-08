@@ -124,6 +124,9 @@ goose -dir migrations postgres "$DATABASE_URL" up
 
 # 서버 시작 (기본 포트: 38117)
 go run ./cmd/server/
+
+# 기존 스토리지/썸네일 루트의 빈 디렉터리 정리
+go run ./cmd/cleanup-empty-dirs/
 ```
 
 ### 웹 실행
@@ -165,6 +168,7 @@ npx expo start
 
 ### Cloud
 - 파일 업로드/다운로드/삭제/이동/이름변경
+- 원본 파일 실제 삭제 시 비어 있는 UUID prefix/user 디렉터리를 즉시 정리
 - 폴더 CRUD + 계층 탐색
 - Web Cloud는 `/cloud/folders/{folderId}`를 canonical 폴더 URL로 사용하고, 기존 `?folder=` 진입은 canonical route로 정리한다
 - Web Cloud 폴더 화면은 상단 breadcrumb + 현재 폴더명 헤더를 기본으로 사용하고, 탐색 중 경로 전체가 새로고침되듯 흔들리지 않도록 로컬 경로 상태를 우선 사용한다
@@ -172,7 +176,7 @@ npx expo start
 - 휴지통 (복원/비우기)
 - Web Cloud 파일/폴더 삭제는 우측 하단 Undo 토스트 5초를 제공하고, 시간 경과 후 휴지통 이동을 확정한다
 - 폴더 삭제/복원/휴지통 비우기는 하위 폴더·파일까지 재귀로 함께 처리하고, 휴지통에서도 폴더 내부를 탐색할 수 있다
-- Web/Desktop Cloud 클립보드는 다중 파일 `copy/cut/paste`를 지원하고, `Esc`로 선택/클립보드 상태를 함께 해제한다
+- Web/Desktop Cloud는 `cmd/ctrl+a`로 현재 보이는 항목 전체 선택을 지원하고, 클립보드는 다중 파일 `copy/cut/paste`, `Esc` 선택/클립보드 해제를 지원한다
 - 파일 검색 (pg_trgm)
 - 정렬: 이름/크기/수정일/생성일
 - Web/Mobile 공통 파일 타입 아이콘 색상 토큰 적용

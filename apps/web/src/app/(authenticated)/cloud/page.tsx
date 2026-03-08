@@ -1003,7 +1003,7 @@ function CloudPageInner() {
     if (!isMyFilesSection) return;
     if (items.length === 0) return;
     if (mode === "copy" && items.some((item) => item.type === "folder")) {
-      toast.warning("폴더 복사는 지원하지 않습니다", "잘라내기 후 붙여넣기를 사용해 주세요.");
+      toast.warning("폴더 복사는 지원되지 않습니다");
       return;
     }
     const clipboardItems = items.map(toClipboardItem);
@@ -1095,7 +1095,7 @@ function CloudPageInner() {
   };
 
   useEffect(() => {
-    if (!isMyFilesSection) return;
+    if (!isSelectableSection) return;
 
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Escape" && !isTextInputTarget(e.target)) {
@@ -1110,6 +1110,17 @@ function CloudPageInner() {
       if (isTextInputTarget(e.target)) return;
 
       const key = e.key.toLowerCase();
+      const visibleItems: FolderItem[] = isMyFilesSection && searchResults
+        ? searchResults.map((f) => ({ type: "file" as const, file: f, path: undefined }))
+        : items;
+      if (key === "a") {
+        if (visibleItems.length === 0) return;
+        e.preventDefault();
+        setSelectedIds(new Set(visibleItems.map((item) => (item.type === "folder" ? item.folder!.id : item.file!.id))));
+        return;
+      }
+
+      if (!isMyFilesSection) return;
       if (key !== "c" && key !== "x" && key !== "v") return;
 
       const selectedText = window.getSelection()?.toString() || "";
@@ -1138,6 +1149,9 @@ function CloudPageInner() {
     currentFolderID,
     getSelectedItems,
     isMyFilesSection,
+    isSelectableSection,
+    items,
+    searchResults,
     selectedIds,
     setClipboardFromItems,
   ]);
