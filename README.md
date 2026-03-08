@@ -110,6 +110,7 @@ pnpm dev:stop
 - `pnpm dev`는 API 서버와 Web dev 서버를 함께 백그라운드로 올린다.
 - 로그는 `tmp/dev-stack/logs/server.log`, `tmp/dev-stack/logs/web.log`에 기록된다.
 - 기본 포트는 API `38117`, Web `39001`이고, 이미 사용 중이면 빈 포트를 찾아 자동으로 올린다.
+- `pnpm dev`는 현재 API 포트를 `NEXT_PUBLIC_API_URL`로 Web에 주입하므로, Web API 호출은 포트 자동 상승 상황에서도 같은 세션 안에서 유지된다.
 - 포트가 기본값이 아니면 Google OAuth 로컬 redirect URI를 같은 포트로 맞춰야 로그인 흐름이 동작한다.
 - 같은 worktree에서 이미 `next dev`를 수동으로 띄운 상태면 `.next/dev/lock` 때문에 `pnpm dev`가 실패하므로 먼저 기존 프로세스를 정리해야 한다.
 
@@ -132,6 +133,9 @@ pnpm install
 pnpm --filter @lifebase/web dev
 # http://localhost:39001
 ```
+
+- Web 클라이언트는 `NEXT_PUBLIC_API_URL`이 있으면 해당 origin을 직접 사용하고, 없으면 `/api/v1` 상대 경로를 사용한다.
+- 개발 모드에서는 Next rewrite가 `/api/v1/*`를 `NEXT_PUBLIC_API_URL` 또는 기본 `http://localhost:38117`로 프록시한다.
 
 ### 데스크탑 실행 (macOS)
 
@@ -189,6 +193,8 @@ npx expo start
 - due 모델: `due_date`(필수 날짜) + `due_time`(선택 시간)
 - Google Tasks 공개 API 제약상 동기화는 `due_date`만 왕복하고 `due_time`은 LifeBase 로컬 확장값으로 유지
 - 정렬: `manual` / `date` / `due` / `recent_starred` / `title`
+- Web Todo는 `전체`/목록 전환 시 기존 목록을 유지한 채 백그라운드 refresh로 갱신한다
+- Web Cloud/Gallery도 섹션·폴더·필터 전환 시 기존 목록을 유지한 채 백그라운드 refresh로 갱신한다
 
 ### 공유
 - 10분 만료 초대 토큰

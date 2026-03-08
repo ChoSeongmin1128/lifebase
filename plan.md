@@ -44,6 +44,8 @@
 - 로컬 통합 실행은 루트에서 `pnpm dev`를 사용한다.
 - 실행 상태 확인은 `pnpm dev:status`, 종료는 `pnpm dev:stop`을 사용한다.
 - 기본 포트는 API `38117`, Web `39001`이며, 충돌 시 빈 포트로 자동 조정될 수 있다.
+- `pnpm dev`는 현재 API origin을 `NEXT_PUBLIC_API_URL`로 Web에 주입한다.
+- Web API 호출은 `NEXT_PUBLIC_API_URL`이 없으면 `/api/v1` 상대 경로를 사용하고, 개발 모드에서는 Next rewrite로 로컬 API에 프록시한다.
 - OAuth 로컬 로그인 검증이 필요하면 자동 조정된 포트와 Google redirect URI 구성이 일치하는지 확인한다.
 
 ## 8. 프론트 기능 구조 전환 현황 (진행중)
@@ -74,6 +76,14 @@
 
 7. 현재 우선순위
 Todo 공통 패키지 패턴을 유지하되, Home/Calendar/Cloud처럼 플랫폼별 UI 차이가 큰 기능은 앱 내부 feature 구조를 먼저 안정화한 뒤 공유 범위를 좁혀 확장한다.
+
+10. Web Todo 로딩 UX
+- 첫 진입에서만 전체 로딩 상태를 표시한다.
+- `전체`/개별 목록 전환 시 기존 Todo 목록은 유지하고 백그라운드 refresh indicator만 노출한다.
+
+11. Web Cloud/Gallery 로딩 UX
+- 첫 진입에서만 전체 로딩 상태를 표시한다.
+- Cloud 섹션/폴더/정렬 전환과 Gallery 필터/정렬 전환 시 기존 목록은 유지하고 백그라운드 refresh indicator만 노출한다.
 
 8. 확장 순서
 2차 `calendar`, 3차 `cloud`, 4차 `settings`, 5차 `gallery`, 6차 `auth/admin` 순으로 전환한다.

@@ -1,6 +1,5 @@
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:38117";
-
 import { getValidToken, refreshAccessToken, clearTokens } from "@/features/auth/infrastructure/token-auth";
+import { getApiUrl } from "@/features/shared/infrastructure/api-url";
 
 interface ApiOptions {
   method?: string;
@@ -92,7 +91,7 @@ async function doFetch(path: string, method: string, body: unknown, token?: stri
   };
   if (token) headers["Authorization"] = `Bearer ${token}`;
 
-  return fetch(`${API_URL}/api/v1${path}`, {
+  return fetch(getApiUrl(path), {
     method,
     headers,
     body: body ? JSON.stringify(body) : undefined,
@@ -103,7 +102,7 @@ async function doUploadFetch(path: string, formData: FormData, token?: string): 
   const headers: Record<string, string> = {};
   if (token) headers["Authorization"] = `Bearer ${token}`;
 
-  return fetch(`${API_URL}/api/v1${path}`, {
+  return fetch(getApiUrl(path), {
     method: "POST",
     headers,
     body: formData,
@@ -114,7 +113,7 @@ async function doDownloadFetch(path: string, token?: string): Promise<Response> 
   const headers: Record<string, string> = {};
   if (token) headers["Authorization"] = `Bearer ${token}`;
 
-  return fetch(`${API_URL}/api/v1${path}`, {
+  return fetch(getApiUrl(path), {
     method: "GET",
     headers,
   });

@@ -4,7 +4,6 @@ import { useState, useEffect, useCallback, useMemo, useRef, Suspense } from "rea
 import { useRouter, useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Separator } from "@/components/ui/separator";
 import {
   Dialog,
   DialogContent,
@@ -36,7 +35,7 @@ import {
   useSensors,
 } from "@dnd-kit/core";
 import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
-import { ChevronRight, Plus } from "lucide-react";
+import { ChevronRight, Loader2, Plus } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { getGoogleAccountDisplayName } from "@/lib/google-account-preferences";
 import { normalizeDueDate, normalizeDueTime } from "@/features/todo/lib/formatDueDate";
@@ -203,6 +202,8 @@ function TodoPageInner() {
 
   const [todos, setTodos] = useState<TodoItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [hasLoadedTodos, setHasLoadedTodos] = useState(false);
   const [newListName, setNewListName] = useState("");
   const [newListTarget, setNewListTarget] = useState<"local" | "google">("local");
   const [newListGoogleAccountID, setNewListGoogleAccountID] = useState("");
@@ -359,9 +360,14 @@ function TodoPageInner() {
     if (!targetListID) {
       setTodos([]);
       setLoading(false);
+      setRefreshing(false);
       return;
     }
-    if (!silent) setLoading(true);
+    if (!silent) {
+      const showInitialLoading = !hasLoadedTodos;
+      setLoading(showInitialLoading);
+      setRefreshing(!showInitialLoading);
+    }
     try {
       // 완료 섹션 렌더링을 위해 완료 항목 포함 조회
       if (targetListID === ALL_LIST_ID) {
@@ -382,9 +388,13 @@ function TodoPageInner() {
     } catch {
       setTodos([]);
     } finally {
-      if (!silent) setLoading(false);
+      if (!silent) {
+        setLoading(false);
+        setRefreshing(false);
+      }
+      setHasLoadedTodos(true);
     }
-  }, [listTodos]);
+  }, [hasLoadedTodos, listTodos]);
 
   const applyListDoneDelta = useCallback((listID: string, nextDone: boolean) => {
     const doneDelta = nextDone ? 1 : -1;
@@ -1196,6 +1206,7 @@ function TodoPageInner() {
           onFilterChange={setFilter}
           lastSyncedAt={lastSyncedAt}
           syncingNow={syncingNow}
+          refreshing={refreshing}
           onManualSync={handleManualSync}
         />
 
@@ -1217,7 +1228,15 @@ function TodoPageInner() {
         </button>
 
         {/* Todo list */}
-        <div className="flex-1 overflow-auto">
+        <div className="relative flex-1 overflow-auto">
+          {refreshing ? (
+            <div className="pointer-events-none sticky top-0 z-10 flex justify-end px-4 py-2 md:px-6">
+              <div className="inline-flex items-center gap-1.5 rounded-full border border-border bg-background/90 px-2.5 py-1 text-xs text-primary shadow-sm backdrop-blur">
+                <Loader2 size={12} className="animate-spin" />
+                업데이트 중...
+              </div>
+            </div>
+          ) : null}
           {!settingsLoaded || loading ? (
             <div className="flex items-center justify-center py-20 text-text-muted">
               불러오는 중...

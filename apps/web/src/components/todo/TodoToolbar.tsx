@@ -9,7 +9,7 @@ import {
   DropdownMenuItem,
 } from "@/components/ui/dropdown-menu";
 import { PageToolbar, PageToolbarGroup } from "@/components/layout/PageToolbar";
-import { Search, ArrowUpDown, Filter, RefreshCw } from "lucide-react";
+import { Search, ArrowUpDown, Filter, RefreshCw, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 type SortBy = "manual" | "date" | "due" | "recent_starred" | "title";
@@ -40,6 +40,7 @@ interface TodoToolbarProps {
   onFilterChange: (f: FilterMode) => void;
   lastSyncedAt?: string;
   syncingNow?: boolean;
+  refreshing?: boolean;
   onManualSync?: () => void;
 }
 
@@ -53,6 +54,7 @@ export function TodoToolbar({
   onFilterChange,
   lastSyncedAt,
   syncingNow = false,
+  refreshing = false,
   onManualSync,
 }: TodoToolbarProps) {
   const activeFilterLabel =
@@ -94,6 +96,12 @@ export function TodoToolbar({
         </DropdownMenu>
 
         <div className="hidden items-center gap-2 text-xs text-text-muted md:flex">
+          {refreshing ? (
+            <span className="inline-flex items-center gap-1.5 text-primary">
+              <Loader2 size={12} className="animate-spin" />
+              업데이트 중
+            </span>
+          ) : null}
           <span>최근 동기화: {lastSyncedAt ? new Date(lastSyncedAt).toLocaleString("ko-KR") : "-"}</span>
         </div>
         <Button

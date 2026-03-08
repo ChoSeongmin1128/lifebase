@@ -55,6 +55,7 @@ import {
   Scissors,
   Star as StarIcon,
   Undo2,
+  Loader2,
 } from "lucide-react";
 
 type SortBy = "name" | "size" | "updated_at" | "created_at";
@@ -102,6 +103,8 @@ function CloudPageInner() {
   ]);
   const [knownFolderNames, setKnownFolderNames] = useState<Map<string, string>>(new Map());
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [hasLoadedItems, setHasLoadedItems] = useState(false);
   const [sortBy, setSortBy] = useState<SortBy>("name");
   const [sortDir, setSortDir] = useState<SortDir>("asc");
   const [renaming, setRenaming] = useState<{ id: string; type: "folder" | "file"; name: string } | null>(null);
@@ -180,10 +183,13 @@ function CloudPageInner() {
   const loadItems = useCallback(async () => {
     if (!authed) {
       setLoading(false);
+      setRefreshing(false);
       return;
     }
 
-    setLoading(true);
+    const showInitialLoading = !hasLoadedItems;
+    setLoading(showInitialLoading);
+    setRefreshing(!showInitialLoading);
     try {
       const nextItems = await cloud.listItems({
         section,
@@ -207,9 +213,12 @@ function CloudPageInner() {
       setItems([]);
     } finally {
       setLoading(false);
+      setRefreshing(false);
+      setHasLoadedItems(true);
     }
   }, [
     authed,
+    hasLoadedItems,
     currentFolderID,
     cloud,
     section,
@@ -859,6 +868,12 @@ function CloudPageInner() {
       {/* Toolbar Row 2: Actions */}
       <PageToolbar>
         <PageToolbarGroup className="gap-2">
+          {refreshing ? (
+            <div className="hidden items-center gap-1.5 text-xs text-primary md:flex">
+              <Loader2 size={12} className="animate-spin" />
+              업데이트 중
+            </div>
+          ) : null}
           {/* Search */}
           <div className="relative">
             <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-text-muted" />
@@ -1148,7 +1163,15 @@ function CloudPageInner() {
       )}
 
       {/* File list */}
-      <div className="flex-1 overflow-auto">
+      <div className="relative flex-1 overflow-auto">
+        {refreshing ? (
+          <div className="pointer-events-none sticky top-0 z-10 flex justify-end px-4 py-2 md:px-6">
+            <div className="inline-flex items-center gap-1.5 rounded-full border border-border bg-background/90 px-2.5 py-1 text-xs text-primary shadow-sm backdrop-blur">
+              <Loader2 size={12} className="animate-spin" />
+              업데이트 중...
+            </div>
+          </div>
+        ) : null}
         {loading ? (
           <div className="flex items-center justify-center py-20 text-text-muted">
             불러오는 중...

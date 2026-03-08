@@ -1,4 +1,5 @@
 import { api } from "@/features/shared/infrastructure/http-api";
+import { getApiUrl } from "@/features/shared/infrastructure/api-url";
 import { getAccessToken } from "@/features/auth/infrastructure/token-auth";
 import type { GalleryPage, GalleryQuery, MediaFile, ThumbSize } from "@/features/gallery/domain/MediaFile";
 import type { GalleryRepository } from "@/features/gallery/repository/GalleryRepository";
@@ -7,7 +8,6 @@ interface GalleryApiResponse {
   items?: MediaFile[];
   next_cursor?: string;
 }
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:38117";
 
 export class HttpGalleryRepository implements GalleryRepository {
   async listMedia(query: GalleryQuery): Promise<GalleryPage> {
@@ -43,7 +43,7 @@ export class HttpGalleryRepository implements GalleryRepository {
       throw new Error("인증이 필요합니다.");
     }
 
-    const res = await fetch(`${API_URL}/api/v1/gallery/thumbnails/${fileId}/${size}`, {
+    const res = await fetch(getApiUrl(`/gallery/thumbnails/${fileId}/${size}`), {
       headers: { Authorization: `Bearer ${token}` },
     });
 

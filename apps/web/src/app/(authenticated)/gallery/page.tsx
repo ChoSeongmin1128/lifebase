@@ -53,6 +53,8 @@ type SortBy = "taken_at" | "created_at" | "name" | "size";
 export default function GalleryPage() {
   const [items, setItems] = useState<MediaFile[]>([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [hasLoadedItems, setHasLoadedItems] = useState(false);
   const [viewMode, setViewMode] = useState<ViewMode>("grid");
   const [mediaType, setMediaType] = useState<MediaType>("all");
   const [sortBy, setSortBy] = useState<SortBy>("taken_at");
@@ -68,7 +70,11 @@ export default function GalleryPage() {
     async (cursor?: string) => {
       const isLoadMore = !!cursor;
       if (isLoadMore) setLoadingMore(true);
-      else setLoading(true);
+      else {
+        const showInitialLoading = !hasLoadedItems;
+        setLoading(showInitialLoading);
+        setRefreshing(!showInitialLoading);
+      }
 
       try {
         const data = await listMedia({
@@ -88,11 +94,15 @@ export default function GalleryPage() {
       } catch {
         if (!isLoadMore) setItems([]);
       } finally {
-        setLoading(false);
+        if (!isLoadMore) {
+          setLoading(false);
+          setRefreshing(false);
+          setHasLoadedItems(true);
+        }
         setLoadingMore(false);
       }
     },
-    [listMedia, mediaType, sortBy, sortDir]
+    [hasLoadedItems, listMedia, mediaType, sortBy, sortDir]
   );
 
   useEffect(() => { loadMedia(); }, [loadMedia]);
@@ -199,6 +209,12 @@ export default function GalleryPage() {
         <PageToolbar>
           <h1 className="text-lg font-semibold text-text-strong">갤러리</h1>
           <PageToolbarGroup>
+            {refreshing ? (
+              <div className="hidden items-center gap-1.5 text-xs text-primary md:flex">
+                <Loader2 size={12} className="animate-spin" />
+                업데이트 중
+              </div>
+            ) : null}
             {/* Media type filter */}
             <div className="flex rounded-lg border border-border">
               {mediaFilters.map((f) => (
@@ -262,7 +278,15 @@ export default function GalleryPage() {
         </PageToolbar>
 
         {/* Content */}
-        <div className="flex-1 overflow-auto p-4">
+        <div className="relative flex-1 overflow-auto p-4">
+          {refreshing ? (
+            <div className="pointer-events-none sticky top-0 z-10 mb-3 flex justify-end">
+              <div className="inline-flex items-center gap-1.5 rounded-full border border-border bg-background/90 px-2.5 py-1 text-xs text-primary shadow-sm backdrop-blur">
+                <Loader2 size={12} className="animate-spin" />
+                업데이트 중...
+              </div>
+            </div>
+          ) : null}
           {loading ? (
             <div className="flex items-center justify-center py-20 text-text-muted">불러오는 중...</div>
           ) : items.length === 0 ? (

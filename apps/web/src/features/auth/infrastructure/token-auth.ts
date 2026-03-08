@@ -1,6 +1,7 @@
+import { getApiUrl } from "@/features/shared/infrastructure/api-url";
+
 const TOKEN_KEY = "lifebase_access_token";
 const REFRESH_KEY = "lifebase_refresh_token";
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:38117";
 
 export function getAccessToken(): string | null {
   if (typeof window === "undefined") return null;
@@ -73,7 +74,7 @@ async function doRefresh(): Promise<string | null> {
   if (!refreshToken) return null;
 
   try {
-    const res = await fetch(`${API_URL}/api/v1/auth/refresh`, {
+    const res = await fetch(getApiUrl("/auth/refresh"), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ refresh_token: refreshToken }),
