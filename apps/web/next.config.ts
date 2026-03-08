@@ -2,6 +2,7 @@ import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   output: process.env.TAURI_ENV ? "export" : undefined,
+  transpilePackages: ["@lifebase/design-tokens"],
   images: {
     remotePatterns: [
       {
