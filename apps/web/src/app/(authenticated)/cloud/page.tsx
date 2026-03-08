@@ -122,6 +122,11 @@ const buildClipboardSummary = (items: CloudClipboardItem[]) => {
   return `항목 ${items.length}개`;
 };
 
+const arePathEntriesEqual = (a: CloudPathEntry[], b: CloudPathEntry[]) => (
+  a.length === b.length
+  && a.every((entry, index) => entry.id === b[index]?.id && entry.name === b[index]?.name)
+);
+
 function CloudPageInner() {
   const params = useParams<{ folderId?: string }>();
   const router = useRouter();
@@ -210,7 +215,7 @@ function CloudPageInner() {
   }, [resolvedFolderID]);
 
   const updatePathState = useCallback((nextPath: CloudPathEntry[], folderId: string | null = currentFolderID) => {
-    setPath(nextPath);
+    setPath((prev) => (arePathEntriesEqual(prev, nextPath) ? prev : nextPath));
     cloudPathCache.set(getCloudLocationKey(section, folderId), nextPath);
   }, [currentFolderID, section]);
 
