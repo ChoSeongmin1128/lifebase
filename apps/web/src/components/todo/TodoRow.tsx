@@ -132,6 +132,46 @@ function ExpandedTitleEditor({
   );
 }
 
+function ExpandableDetails({
+  open,
+  children,
+}: {
+  open: boolean;
+  children?: ReactNode;
+}) {
+  const bodyRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (!open || !bodyRef.current) return;
+    const body = bodyRef.current;
+    const measuredHeight = body.scrollHeight;
+    const animation = body.animate(
+      [
+        { opacity: 0, transform: "translateY(-6px)", maxHeight: "0px" },
+        { opacity: 1, transform: "translateY(0)", maxHeight: `${measuredHeight}px` },
+      ],
+      {
+        duration: 220,
+        easing: "cubic-bezier(0.22, 1, 0.36, 1)",
+      }
+    );
+    return () => animation.cancel();
+  }, [open, children]);
+
+  if (!open || !children) return null;
+
+  return (
+    <div className="overflow-hidden">
+      <div
+        ref={bodyRef}
+        className="mt-2 opacity-100"
+      >
+        {children}
+      </div>
+    </div>
+  );
+}
+
 export function TodoRow({
   todo,
   listLabel,
@@ -247,11 +287,9 @@ export function TodoRow({
               {todo.notes.trim()}
             </p>
           ) : null}
-          {isExpanded && expandedContent ? (
-            <div className="mt-2 animate-in slide-in-from-top-1 fade-in-0 duration-200">
-              {expandedContent}
-            </div>
-          ) : null}
+          <ExpandableDetails open={Boolean(isExpanded)}>
+            {expandedContent}
+          </ExpandableDetails>
         </div>
         {/* Child count badge when collapsed */}
         {!isExpanded && isCollapsed && childCount && childCount.total > 0 && (

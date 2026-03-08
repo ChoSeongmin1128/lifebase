@@ -198,10 +198,11 @@ npx expo start
 - 정렬: `manual` / `date` / `due` / `recent_starred` / `title`
 - Web Todo는 `전체`/목록 전환 시 기존 목록을 유지한 채 백그라운드 refresh로 갱신한다
 - Web/Desktop Todo는 제목을 최대 3줄까지 노출하고, 확장된 행 자체에서 제목을 바로 수정한다
-- 확장 영역은 메모, 일정, 우선순위만 보조 편집해 Google Tasks에 가까운 인라인 편집 흐름을 유지한다
+- 확장 영역은 메모, 일정, 우선순위를 LifeBase 톤의 칩/세그먼트 UI로 보조 편집해 Google Tasks에 가까운 인라인 편집 흐름을 유지한다
+- 선택된 Todo는 같은 행을 다시 누르거나 빈 영역/Esc를 누르면 접히고, 날짜·시간은 칩 + 빠른 선택 액션으로 조정한다
+- Todo 확장 편집은 즉시 펼쳐지지 않고, 높이/투명도 전환으로 부드럽게 열린다
 - Web Cloud/Gallery도 섹션·폴더·필터 전환 시 기존 목록을 유지한 채 백그라운드 refresh로 갱신한다
 
-- 선택된 Todo는 같은 행을 다시 누르거나 빈 영역/Esc를 누르면 접히고, 날짜·시간 칩 전체 클릭으로 picker를 연다
 ### 공유
 - 10분 만료 초대 토큰
 - ACL: viewer(읽기)/editor(수정)
