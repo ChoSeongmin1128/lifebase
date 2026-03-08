@@ -189,12 +189,14 @@ npx expo start
 
 ### Todo
 - 리스트 기반 관리
-- 2단계 계층 (부모-자식)
+- 1단계 계층 (부모-자식)
 - 우선순위 4단계 (urgent/high/normal/low)
 - 고정(Pin) 최대 5개
 - notes 미리보기 표시 (1~2줄)
 - due 모델: `due_date`(필수 날짜) + `due_time`(선택 시간)
 - Google Tasks 공개 API 제약상 동기화는 `due_date`만 왕복하고 `due_time`은 LifeBase 로컬 확장값으로 유지
+- Google Tasks parent/reorder는 `tasks.move`로 반영하고, 1단계를 넘는 원격 parent 체인은 최상위 부모 기준으로 정규화
+- 완료된 자식 Todo는 활성 부모 아래에서 계층을 유지해 Google Tasks와 같은 부모 체인으로 표시
 - 정렬: `manual` / `date` / `due` / `recent_starred` / `title`
 - Web Todo는 `전체`/목록 전환 시 기존 목록을 유지한 채 백그라운드 refresh로 갱신한다
 - Web/Desktop Todo는 제목을 최대 3줄까지 노출하고, 확장된 행 자체에서 제목을 바로 수정한다

@@ -203,9 +203,9 @@ func (s *googleAccountSyncer) syncCalendarsAndEvents(
 			}
 
 			for _, event := range page.Events {
-			if _, _, err := s.applyOAuthEvent(ctx, userID, localCalendarID, event, now); err != nil {
-				return err
-			}
+				if _, _, err := s.applyOAuthEvent(ctx, userID, localCalendarID, event, now); err != nil {
+					return err
+				}
 			}
 
 			if page.NextSyncToken != "" {
@@ -310,11 +310,11 @@ func (s *googleAccountSyncer) BackfillEvents(
 			return nil, acquireErr
 		}
 
-			locked, err := googleSyncTryAdvisoryLockFn(ctx, lockConn, lockKey)
-			if err != nil {
-				lockConn.Release()
-				return nil, err
-			}
+		locked, err := googleSyncTryAdvisoryLockFn(ctx, lockConn, lockKey)
+		if err != nil {
+			lockConn.Release()
+			return nil, err
+		}
 		if !locked {
 			lockConn.Release()
 			continue
@@ -396,7 +396,7 @@ func (s *googleAccountSyncer) applyOAuthEvent(
 		return false, true, nil
 	}
 
-		tag, err := execGoogleSyncFn(ctx, s.db,
+	tag, err := execGoogleSyncFn(ctx, s.db,
 		`UPDATE events
 		 SET title = $4, description = $5, location = $6, start_time = $7, end_time = $8,
 		     timezone = $9, is_all_day = $10, color_id = $11, recurrence_rule = $12, etag = $13,
@@ -413,7 +413,7 @@ func (s *googleAccountSyncer) applyOAuthEvent(
 		return true, false, nil
 	}
 
-		_, err = execGoogleSyncFn(ctx, s.db,
+	_, err = execGoogleSyncFn(ctx, s.db,
 		`INSERT INTO events (
 		   id, calendar_id, user_id, google_id, title, description, location,
 		   start_time, end_time, timezone, is_all_day, color_id, recurrence_rule, etag, created_at, updated_at
@@ -545,76 +545,20 @@ func (s *googleAccountSyncer) syncTaskListsAndTodos(
 		pageToken := ""
 		seenGoogleIDs := make([]string, 0, 128)
 		seenGoogleIDSet := make(map[string]struct{})
+		allTasks := make([]portout.OAuthTask, 0, 128)
 		for {
 			page, err := s.googleAuth.ListTasks(ctx, token, googleListID, pageToken)
 			if err != nil {
 				return fmt.Errorf("list google tasks: %w", err)
 			}
 
-			for idx, task := range page.Items {
+			for _, task := range page.Items {
+				allTasks = append(allTasks, task)
 				if task.GoogleID != "" {
 					if _, exists := seenGoogleIDSet[task.GoogleID]; !exists {
 						seenGoogleIDSet[task.GoogleID] = struct{}{}
 						seenGoogleIDs = append(seenGoogleIDs, task.GoogleID)
 					}
-				}
-
-				if task.IsDeleted {
-					_, _ = s.db.Exec(ctx,
-						`UPDATE todos
-						 SET deleted_at = $4, updated_at = $4
-						 WHERE user_id = $1 AND list_id = $2 AND google_id = $3`,
-						userID,
-						localListID,
-						task.GoogleID,
-						now,
-					)
-					continue
-				}
-
-				tag, err := execGoogleSyncFn(ctx, s.db,
-					`UPDATE todos
-					 SET title = $4, notes = $5, due_date = $6, due_time = NULL, is_done = $7, done_at = $8, deleted_at = NULL, sort_order = $9, updated_at = $10
-					 WHERE user_id = $1 AND list_id = $2 AND google_id = $3`,
-					userID,
-					localListID,
-					task.GoogleID,
-					task.Title,
-					task.Notes,
-					task.DueDate,
-					task.IsDone,
-					completedAt(task, now),
-					idx,
-					now,
-				)
-				if err != nil {
-					return fmt.Errorf("update todo: %w", err)
-				}
-				if tag.RowsAffected() > 0 {
-					continue
-				}
-
-				_, err = execGoogleSyncFn(ctx, s.db,
-					`INSERT INTO todos (
-					   id, list_id, user_id, parent_id, google_id, title, notes, due_date, due_time, priority, is_done, is_pinned, sort_order, done_at, created_at, updated_at
-					 ) VALUES (
-					   $1, $2, $3, NULL, $4, $5, $6, $7, NULL, 'normal', $8, FALSE, $9, $10, $11, $12
-					 )`,
-					uuid.New().String(),
-					localListID,
-					userID,
-					task.GoogleID,
-					task.Title,
-					task.Notes,
-					task.DueDate,
-					task.IsDone,
-					idx,
-					completedAt(task, now),
-					now,
-					now,
-				)
-				if err != nil {
-					return fmt.Errorf("insert todo: %w", err)
 				}
 			}
 
@@ -622,6 +566,107 @@ func (s *googleAccountSyncer) syncTaskListsAndTodos(
 				break
 			}
 			pageToken = page.NextPageToken
+		}
+
+		for _, task := range allTasks {
+			if task.IsDeleted {
+				_, _ = s.db.Exec(ctx,
+					`UPDATE todos
+					 SET deleted_at = $4, updated_at = $4
+					 WHERE user_id = $1 AND list_id = $2 AND google_id = $3`,
+					userID,
+					localListID,
+					task.GoogleID,
+					now,
+				)
+				continue
+			}
+
+			tag, err := execGoogleSyncFn(ctx, s.db,
+				`UPDATE todos
+				 SET title = $4, notes = $5, due_date = $6, due_time = NULL, is_done = $7, done_at = $8, deleted_at = NULL, updated_at = $9
+				 WHERE user_id = $1 AND list_id = $2 AND google_id = $3`,
+				userID,
+				localListID,
+				task.GoogleID,
+				task.Title,
+				task.Notes,
+				task.DueDate,
+				task.IsDone,
+				completedAt(task, now),
+				now,
+			)
+			if err != nil {
+				return fmt.Errorf("update todo: %w", err)
+			}
+			if tag.RowsAffected() > 0 {
+				continue
+			}
+
+			_, err = execGoogleSyncFn(ctx, s.db,
+				`INSERT INTO todos (
+				   id, list_id, user_id, parent_id, google_id, title, notes, due_date, due_time, priority, is_done, is_pinned, sort_order, done_at, created_at, updated_at
+				 ) VALUES (
+				   $1, $2, $3, NULL, $4, $5, $6, $7, NULL, 'normal', $8, FALSE, 0, $9, $10, $11
+				 )`,
+				uuid.New().String(),
+				localListID,
+				userID,
+				task.GoogleID,
+				task.Title,
+				task.Notes,
+				task.DueDate,
+				task.IsDone,
+				completedAt(task, now),
+				now,
+				now,
+			)
+			if err != nil {
+				return fmt.Errorf("insert todo: %w", err)
+			}
+		}
+
+		localTodoIDByGoogleID, err := s.loadLocalTodoIDsByGoogleID(ctx, userID, localListID)
+		if err != nil {
+			return err
+		}
+		sortOrderByParentKey := map[string]int{}
+		tasksByGoogleID := make(map[string]portout.OAuthTask, len(allTasks))
+		for _, task := range allTasks {
+			if task.GoogleID == "" || task.IsDeleted {
+				continue
+			}
+			tasksByGoogleID[task.GoogleID] = task
+		}
+		for _, task := range allTasks {
+			if task.GoogleID == "" || task.IsDeleted {
+				continue
+			}
+			localTodoID := localTodoIDByGoogleID[task.GoogleID]
+			if localTodoID == "" {
+				continue
+			}
+			parentID := normalizeGoogleTaskParent(task, tasksByGoogleID, localTodoIDByGoogleID)
+			parentKey := "__root__"
+			if parentID != nil {
+				parentKey = *parentID
+			}
+			sortOrder := sortOrderByParentKey[parentKey]
+			sortOrderByParentKey[parentKey] = sortOrder + 1
+
+			if _, err := execGoogleSyncFn(ctx, s.db,
+				`UPDATE todos
+				 SET parent_id = $4, sort_order = $5, deleted_at = NULL, updated_at = $6
+				 WHERE user_id = $1 AND list_id = $2 AND google_id = $3`,
+				userID,
+				localListID,
+				task.GoogleID,
+				parentID,
+				sortOrder,
+				now,
+			); err != nil {
+				return fmt.Errorf("update todo hierarchy: %w", err)
+			}
 		}
 
 		// Some Google Task deletions are not always returned as tombstones.
@@ -670,6 +715,77 @@ func (s *googleAccountSyncer) syncTaskListsAndTodos(
 	}
 
 	return nil
+}
+
+func (s *googleAccountSyncer) loadLocalTodoIDsByGoogleID(
+	ctx context.Context,
+	userID, localListID string,
+) (map[string]string, error) {
+	rows, err := queryGoogleSyncRowsFn(ctx, s.db,
+		`SELECT id, google_id
+		   FROM todos
+		  WHERE user_id = $1 AND list_id = $2 AND google_id IS NOT NULL`,
+		userID,
+		localListID,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("query todo google ids: %w", err)
+	}
+	defer rows.Close()
+
+	result := map[string]string{}
+	for rows.Next() {
+		var id string
+		var googleID *string
+		if err := rows.Scan(&id, &googleID); err != nil {
+			return nil, fmt.Errorf("scan todo google ids: %w", err)
+		}
+		if googleID != nil && *googleID != "" {
+			result[*googleID] = id
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate todo google ids: %w", err)
+	}
+	return result, nil
+}
+
+func normalizeGoogleTaskParent(
+	task portout.OAuthTask,
+	tasksByGoogleID map[string]portout.OAuthTask,
+	localTodoIDByGoogleID map[string]string,
+) *string {
+	if task.ParentGoogleID == nil || *task.ParentGoogleID == "" {
+		return nil
+	}
+
+	visited := map[string]struct{}{
+		task.GoogleID: {},
+	}
+	currentParentID := *task.ParentGoogleID
+	rootParentGoogleID := currentParentID
+	for {
+		if _, seen := visited[currentParentID]; seen {
+			return nil
+		}
+		visited[currentParentID] = struct{}{}
+
+		parentTask, ok := tasksByGoogleID[currentParentID]
+		if !ok || parentTask.IsDeleted {
+			return nil
+		}
+		rootParentGoogleID = currentParentID
+		if parentTask.ParentGoogleID == nil || *parentTask.ParentGoogleID == "" {
+			break
+		}
+		currentParentID = *parentTask.ParentGoogleID
+	}
+
+	localID, ok := localTodoIDByGoogleID[rootParentGoogleID]
+	if !ok || localID == "" {
+		return nil
+	}
+	return &localID
 }
 
 func (s *googleAccountSyncer) resolveTodoDoneRetentionCutoff(

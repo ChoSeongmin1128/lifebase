@@ -39,6 +39,25 @@ export interface ReorderChange {
   sort_order: number;
 }
 
+function compareForManualOrder(a: TodoItem, b: TodoItem): number {
+  const sortCmp = a.sort_order - b.sort_order;
+  if (sortCmp !== 0) return sortCmp;
+
+  const createdCmp = a.created_at.localeCompare(b.created_at);
+  if (createdCmp !== 0) return createdCmp;
+
+  return a.title.localeCompare(b.title, "ko");
+}
+
+function sortNodesForManualOrder(nodes: TodoNode[]): TodoNode[] {
+  return [...nodes]
+    .sort((a, b) => compareForManualOrder(a, b))
+    .map((node) => ({
+      ...node,
+      children: sortNodesForManualOrder(node.children),
+    }));
+}
+
 export function buildTree(todos: TodoItem[]): TodoNode[] {
   const map = new Map<string, TodoNode>();
   const roots: TodoNode[] = [];
@@ -56,7 +75,7 @@ export function buildTree(todos: TodoItem[]): TodoNode[] {
     }
   }
 
-  return roots;
+  return sortNodesForManualOrder(roots);
 }
 
 /**

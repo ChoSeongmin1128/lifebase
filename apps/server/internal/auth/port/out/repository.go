@@ -85,13 +85,14 @@ type OAuthCalendarEventsPage struct {
 }
 
 type OAuthTask struct {
-	GoogleID    string
-	Title       string
-	Notes       string
-	DueDate     *string
-	IsDone      bool
-	IsDeleted   bool
-	CompletedAt *time.Time
+	GoogleID       string
+	ParentGoogleID *string
+	Title          string
+	Notes          string
+	DueDate        *string
+	IsDone         bool
+	IsDeleted      bool
+	CompletedAt    *time.Time
 }
 
 type OAuthTasksPage struct {
@@ -150,6 +151,7 @@ type GoogleAuthClient interface {
 	DeleteTaskList(ctx context.Context, token OAuthToken, taskListID string) error
 	CreateTask(ctx context.Context, token OAuthToken, taskListID string, input TodoUpsertInput) (googleID string, err error)
 	UpdateTask(ctx context.Context, token OAuthToken, taskListID, taskID string, input TodoUpsertInput) error
+	MoveTask(ctx context.Context, token OAuthToken, taskListID, taskID string, parentTaskID, previousTaskID *string) error
 	DeleteTask(ctx context.Context, token OAuthToken, taskListID, taskID string) error
 }
 

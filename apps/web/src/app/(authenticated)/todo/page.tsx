@@ -761,9 +761,10 @@ function TodoPageInner() {
     return sortTodoNodes(roots, sortBy);
   };
 
-  // 완료 항목은 별도 섹션에 두고, 나머지는 선택한 정렬 기준을 각 형제 집합에 적용한다.
-  const activeRoots = buildSortedRoots(filteredTodos.filter((t) => !t.is_done));
-  const doneRoots = buildSortedRoots(filteredTodos.filter((t) => t.is_done));
+  // 루트 기준으로 섹션을 나눠 부모-자식 체인이 완료 상태 분리로 끊어지지 않게 유지한다.
+  const sectionRoots = buildSortedRoots(filteredTodos);
+  const activeRoots = sectionRoots.filter((root) => !root.is_done);
+  const doneRoots = sectionRoots.filter((root) => root.is_done);
   const showCompletedSection = filter === "done" || !doneCollapsed;
 
   const activeFlat = flattenTree(activeRoots, collapsed, dragActiveId);

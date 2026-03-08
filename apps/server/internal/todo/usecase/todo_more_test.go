@@ -250,12 +250,12 @@ func (m *googleAccountRepoStub) Create(context.Context, *authdomain.GoogleAccoun
 func (m *googleAccountRepoStub) Update(context.Context, *authdomain.GoogleAccount) error { return nil }
 
 type googleClientStub struct {
-	createTaskListID string
+	createTaskListID  string
 	createTaskListErr error
 	deleteTaskListErr error
 }
 
-func (m *googleClientStub) AuthURL(string) string { return "" }
+func (m *googleClientStub) AuthURL(string) string               { return "" }
 func (m *googleClientStub) AuthURLForApp(string, string) string { return "" }
 func (m *googleClientStub) ExchangeCode(context.Context, string) (*authportout.OAuthToken, error) {
 	return nil, errors.New("not implemented")
@@ -303,6 +303,9 @@ func (m *googleClientStub) CreateTask(context.Context, authportout.OAuthToken, s
 	return "", errors.New("not implemented")
 }
 func (m *googleClientStub) UpdateTask(context.Context, authportout.OAuthToken, string, string, authportout.TodoUpsertInput) error {
+	return errors.New("not implemented")
+}
+func (m *googleClientStub) MoveTask(context.Context, authportout.OAuthToken, string, string, *string, *string) error {
 	return errors.New("not implemented")
 }
 func (m *googleClientStub) DeleteTask(context.Context, authportout.OAuthToken, string, string) error {
@@ -569,6 +572,7 @@ func TestTodoUseCaseCreateUpdateAndReorderBranches(t *testing.T) {
 	todos.updateBatchErr = nil
 
 	rootSort := 10
+	reorderStart := outbox.updateCalls
 	if err := uc.ReorderTodos(ctx, "u1", []portin.ReorderItem{{ID: another.ID, SortOrder: rootSort}}); err != nil {
 		t.Fatalf("expected reorder root item success: %v", err)
 	}
@@ -585,6 +589,9 @@ func TestTodoUseCaseCreateUpdateAndReorderBranches(t *testing.T) {
 		{ID: child.ID, ParentID: &parent.ID, SortOrder: childSort},
 	}); err != nil {
 		t.Fatalf("expected reorder with parent included in batch success: %v", err)
+	}
+	if got := outbox.updateCalls - reorderStart; got != 4 {
+		t.Fatalf("expected reorder to enqueue 4 update events, got %d", got)
 	}
 
 	if err := uc.ReorderTodos(ctx, "u1", nil); err != nil {

@@ -77,11 +77,15 @@ type localCalendarEvent struct {
 
 type localTodo struct {
 	ID            string
+	UserID        string
+	ListID        string
+	ParentID      *string
 	GoogleID      *string
 	Title         string
 	Notes         string
 	DueDate       *string
 	IsDone        bool
+	SortOrder     int
 	UpdatedAt     time.Time
 	DeletedAt     *time.Time
 	ListGoogleID  *string
@@ -366,7 +370,7 @@ func (p *googlePushProcessor) processTodoPush(
 		if todo.GoogleID != nil && *todo.GoogleID != "" {
 			err := p.googleAuth.UpdateTask(ctx, token, *todo.ListGoogleID, *todo.GoogleID, input)
 			if err == nil {
-				return nil
+				return p.syncTodoPlacement(ctx, token, item.Op, todo)
 			}
 			if !isGoogleStatus(err, 404) {
 				return err
@@ -377,19 +381,27 @@ func (p *googlePushProcessor) processTodoPush(
 		if err != nil {
 			return err
 		}
-		return p.setTodoGoogleID(ctx, item.UserID, todo.ID, googleID)
+		if err := p.setTodoGoogleID(ctx, item.UserID, todo.ID, googleID); err != nil {
+			return err
+		}
+		todo.GoogleID = &googleID
+		return p.syncTodoPlacement(ctx, token, item.Op, todo)
 	case "update":
 		if todo.GoogleID == nil || *todo.GoogleID == "" {
 			googleID, err := p.googleAuth.CreateTask(ctx, token, *todo.ListGoogleID, input)
 			if err != nil {
 				return err
 			}
-			return p.setTodoGoogleID(ctx, item.UserID, todo.ID, googleID)
+			if err := p.setTodoGoogleID(ctx, item.UserID, todo.ID, googleID); err != nil {
+				return err
+			}
+			todo.GoogleID = &googleID
+			return p.syncTodoPlacement(ctx, token, item.Op, todo)
 		}
 
 		err := p.googleAuth.UpdateTask(ctx, token, *todo.ListGoogleID, *todo.GoogleID, input)
 		if err == nil {
-			return nil
+			return p.syncTodoPlacement(ctx, token, item.Op, todo)
 		}
 		if !isGoogleStatus(err, 404) {
 			return err
@@ -399,7 +411,11 @@ func (p *googlePushProcessor) processTodoPush(
 		if createErr != nil {
 			return createErr
 		}
-		return p.setTodoGoogleID(ctx, item.UserID, todo.ID, googleID)
+		if err := p.setTodoGoogleID(ctx, item.UserID, todo.ID, googleID); err != nil {
+			return err
+		}
+		todo.GoogleID = &googleID
+		return p.syncTodoPlacement(ctx, token, item.Op, todo)
 	default:
 		return fmt.Errorf("unsupported todo op: %s", item.Op)
 	}
@@ -458,9 +474,9 @@ func (p *googlePushProcessor) loadCalendarEvent(ctx context.Context, userID, eve
 func (p *googlePushProcessor) loadTodo(ctx context.Context, userID, todoID string) (*localTodo, error) {
 	var row localTodo
 	err := p.db.QueryRow(ctx,
-		`SELECT t.id, t.google_id, t.title, t.notes,
+		`SELECT t.id, t.user_id, t.list_id, t.parent_id, t.google_id, t.title, t.notes,
 		        CASE WHEN t.due_date IS NULL THEN NULL ELSE to_char(t.due_date, 'YYYY-MM-DD') END AS due_date,
-		        t.is_done, t.updated_at, t.deleted_at, l.google_id, l.google_account_id
+		        t.is_done, t.sort_order, t.updated_at, t.deleted_at, l.google_id, l.google_account_id
 		   FROM todos t
 		   JOIN todo_lists l ON l.id = t.list_id AND l.user_id = t.user_id
 		  WHERE t.user_id = $1 AND t.id = $2`,
@@ -468,11 +484,15 @@ func (p *googlePushProcessor) loadTodo(ctx context.Context, userID, todoID strin
 		todoID,
 	).Scan(
 		&row.ID,
+		&row.UserID,
+		&row.ListID,
+		&row.ParentID,
 		&row.GoogleID,
 		&row.Title,
 		&row.Notes,
 		&row.DueDate,
 		&row.IsDone,
+		&row.SortOrder,
 		&row.UpdatedAt,
 		&row.DeletedAt,
 		&row.ListGoogleID,
@@ -482,6 +502,81 @@ func (p *googlePushProcessor) loadTodo(ctx context.Context, userID, todoID strin
 		return nil, err
 	}
 	return &row, nil
+}
+
+func (p *googlePushProcessor) syncTodoPlacement(
+	ctx context.Context,
+	token portout.OAuthToken,
+	op string,
+	todo *localTodo,
+) error {
+	if todo == nil || todo.GoogleID == nil || *todo.GoogleID == "" || todo.ListGoogleID == nil || *todo.ListGoogleID == "" {
+		return nil
+	}
+
+	parentGoogleID, previousGoogleID, err := p.resolveTodoMoveTargets(ctx, todo)
+	if err != nil {
+		return err
+	}
+	if op == "create" && parentGoogleID == nil && previousGoogleID == nil {
+		return nil
+	}
+	return p.googleAuth.MoveTask(ctx, token, *todo.ListGoogleID, *todo.GoogleID, parentGoogleID, previousGoogleID)
+}
+
+func (p *googlePushProcessor) resolveTodoMoveTargets(
+	ctx context.Context,
+	todo *localTodo,
+) (*string, *string, error) {
+	var parentGoogleID *string
+	if todo.ParentID != nil && *todo.ParentID != "" {
+		err := p.db.QueryRow(ctx,
+			`SELECT google_id
+			   FROM todos
+			  WHERE user_id = $1 AND id = $2 AND deleted_at IS NULL`,
+			todo.UserID,
+			*todo.ParentID,
+		).Scan(&parentGoogleID)
+		if err != nil {
+			if errors.Is(err, pgx.ErrNoRows) {
+				return nil, nil, fmt.Errorf("parent todo missing during google move")
+			}
+			return nil, nil, err
+		}
+		if parentGoogleID == nil || *parentGoogleID == "" {
+			return nil, nil, fmt.Errorf("parent todo google id is not ready")
+		}
+	}
+
+	var previousGoogleID *string
+	err := p.db.QueryRow(ctx,
+		`SELECT google_id
+		   FROM todos
+		  WHERE user_id = $1
+		    AND list_id = $2
+		    AND id <> $3
+		    AND deleted_at IS NULL
+		    AND google_id IS NOT NULL
+		    AND (
+		      ($4::uuid IS NULL AND parent_id IS NULL) OR
+		      parent_id = $4
+		    )
+		    AND sort_order < $5
+		  ORDER BY sort_order DESC
+		  LIMIT 1`,
+		todo.UserID,
+		todo.ListID,
+		todo.ID,
+		todo.ParentID,
+		todo.SortOrder,
+	).Scan(&previousGoogleID)
+	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
+		return nil, nil, err
+	}
+	if errors.Is(err, pgx.ErrNoRows) {
+		previousGoogleID = nil
+	}
+	return parentGoogleID, previousGoogleID, nil
 }
 
 func (p *googlePushProcessor) setEventGoogleMeta(

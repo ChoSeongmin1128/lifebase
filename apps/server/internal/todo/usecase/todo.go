@@ -475,5 +475,13 @@ func (uc *todoUseCase) ReorderTodos(ctx context.Context, userID string, items []
 			UpdatedAt: now,
 		})
 	}
-	return uc.todos.UpdateBatch(ctx, todos)
+	if err := uc.todos.UpdateBatch(ctx, todos); err != nil {
+		return err
+	}
+	if uc.outbox != nil {
+		for _, todo := range todos {
+			_ = uc.outbox.EnqueueUpdate(ctx, userID, todo.ID, now)
+		}
+	}
+	return nil
 }

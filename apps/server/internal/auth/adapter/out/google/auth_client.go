@@ -453,6 +453,7 @@ func (c *oauthClient) ListTasks(
 	var payload struct {
 		Items []struct {
 			ID        string `json:"id"`
+			Parent    string `json:"parent"`
 			Title     string `json:"title"`
 			Notes     string `json:"notes"`
 			Status    string `json:"status"`
@@ -480,14 +481,19 @@ func (c *oauthClient) ListTasks(
 			day := item.Due[:10]
 			dueDate = &day
 		}
+		var parentGoogleID *string
+		if item.Parent != "" {
+			parentGoogleID = &item.Parent
+		}
 		items = append(items, portout.OAuthTask{
-			GoogleID:    item.ID,
-			Title:       item.Title,
-			Notes:       item.Notes,
-			DueDate:     dueDate,
-			IsDone:      item.Status == "completed" || item.Completed != "",
-			IsDeleted:   item.Deleted,
-			CompletedAt: parseOptionalRFC3339(item.Completed),
+			GoogleID:       item.ID,
+			ParentGoogleID: parentGoogleID,
+			Title:          item.Title,
+			Notes:          item.Notes,
+			DueDate:        dueDate,
+			IsDone:         item.Status == "completed" || item.Completed != "",
+			IsDeleted:      item.Deleted,
+			CompletedAt:    parseOptionalRFC3339(item.Completed),
 		})
 	}
 
@@ -676,6 +682,42 @@ func (c *oauthClient) UpdateTask(
 
 	if resp.StatusCode != http.StatusOK {
 		return parseGoogleAPIError(resp, "google update task")
+	}
+	return nil
+}
+
+func (c *oauthClient) MoveTask(
+	ctx context.Context,
+	token portout.OAuthToken,
+	taskListID, taskID string,
+	parentTaskID, previousTaskID *string,
+) error {
+	client := c.apiClient(ctx, token)
+	params := url.Values{}
+	if parentTaskID != nil && strings.TrimSpace(*parentTaskID) != "" {
+		params.Set("parent", strings.TrimSpace(*parentTaskID))
+	}
+	if previousTaskID != nil && strings.TrimSpace(*previousTaskID) != "" {
+		params.Set("previous", strings.TrimSpace(*previousTaskID))
+	}
+
+	endpoint := fmt.Sprintf(
+		"https://tasks.googleapis.com/tasks/v1/lists/%s/tasks/%s/move",
+		url.PathEscape(taskListID),
+		url.PathEscape(taskID),
+	)
+	if encoded := params.Encode(); encoded != "" {
+		endpoint += "?" + encoded
+	}
+
+	resp, err := doGoogleJSONRequest(ctx, client, http.MethodPost, endpoint, nil)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return parseGoogleAPIError(resp, "google move task")
 	}
 	return nil
 }

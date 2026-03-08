@@ -11,6 +11,12 @@ import (
 	"lifebase/internal/testutil/dbtest"
 )
 
+type moveTaskCall struct {
+	taskID         string
+	parentTaskID   *string
+	previousTaskID *string
+}
+
 type googleAuthStub struct {
 	listCalendarsFn       func(context.Context, portout.OAuthToken) ([]portout.OAuthCalendar, error)
 	listTaskListsFn       func(context.Context, portout.OAuthToken) ([]portout.OAuthTaskList, error)
@@ -21,10 +27,11 @@ type googleAuthStub struct {
 	deleteCalendarEventFn func(context.Context, portout.OAuthToken, string, string) error
 	createTaskFn          func(context.Context, portout.OAuthToken, string, portout.TodoUpsertInput) (string, error)
 	updateTaskFn          func(context.Context, portout.OAuthToken, string, string, portout.TodoUpsertInput) error
+	moveTaskFn            func(context.Context, portout.OAuthToken, string, string, *string, *string) error
 	deleteTaskFn          func(context.Context, portout.OAuthToken, string, string) error
 }
 
-func (s *googleAuthStub) AuthURL(string) string { return "" }
+func (s *googleAuthStub) AuthURL(string) string               { return "" }
 func (s *googleAuthStub) AuthURLForApp(string, string) string { return "" }
 func (s *googleAuthStub) ExchangeCode(context.Context, string) (*portout.OAuthToken, error) {
 	return nil, nil
@@ -85,8 +92,12 @@ func (s *googleAuthStub) DeleteCalendarEvent(ctx context.Context, token portout.
 	}
 	return nil
 }
-func (s *googleAuthStub) CreateTaskList(context.Context, portout.OAuthToken, string) (string, error) { return "", nil }
-func (s *googleAuthStub) DeleteTaskList(context.Context, portout.OAuthToken, string) error            { return nil }
+func (s *googleAuthStub) CreateTaskList(context.Context, portout.OAuthToken, string) (string, error) {
+	return "", nil
+}
+func (s *googleAuthStub) DeleteTaskList(context.Context, portout.OAuthToken, string) error {
+	return nil
+}
 func (s *googleAuthStub) CreateTask(ctx context.Context, token portout.OAuthToken, taskListID string, input portout.TodoUpsertInput) (string, error) {
 	if s.createTaskFn != nil {
 		return s.createTaskFn(ctx, token, taskListID, input)
@@ -96,6 +107,12 @@ func (s *googleAuthStub) CreateTask(ctx context.Context, token portout.OAuthToke
 func (s *googleAuthStub) UpdateTask(ctx context.Context, token portout.OAuthToken, taskListID, taskID string, input portout.TodoUpsertInput) error {
 	if s.updateTaskFn != nil {
 		return s.updateTaskFn(ctx, token, taskListID, taskID, input)
+	}
+	return nil
+}
+func (s *googleAuthStub) MoveTask(ctx context.Context, token portout.OAuthToken, taskListID, taskID string, parentTaskID, previousTaskID *string) error {
+	if s.moveTaskFn != nil {
+		return s.moveTaskFn(ctx, token, taskListID, taskID, parentTaskID, previousTaskID)
 	}
 	return nil
 }
@@ -117,6 +134,7 @@ func TestGooglePushProcessorProcessPendingIntegration(t *testing.T) {
 
 	seedPushProcessorFixtures(t, db, userID, accountID, now)
 
+	var moveCalls []moveTaskCall
 	processor := NewGooglePushProcessor(db, &googleAuthStub{
 		createCalendarEventFn: func(context.Context, portout.OAuthToken, string, portout.CalendarEventUpsertInput) (string, *string, error) {
 			etag := "etag-created"
@@ -124,6 +142,14 @@ func TestGooglePushProcessorProcessPendingIntegration(t *testing.T) {
 		},
 		createTaskFn: func(context.Context, portout.OAuthToken, string, portout.TodoUpsertInput) (string, error) {
 			return "g-task-created", nil
+		},
+		moveTaskFn: func(_ context.Context, _ portout.OAuthToken, _ string, taskID string, parentTaskID, previousTaskID *string) error {
+			moveCalls = append(moveCalls, moveTaskCall{
+				taskID:         taskID,
+				parentTaskID:   parentTaskID,
+				previousTaskID: previousTaskID,
+			})
+			return nil
 		},
 	})
 
@@ -164,6 +190,11 @@ func TestGooglePushProcessorProcessPendingIntegration(t *testing.T) {
 	if todoGoogleID == nil || *todoGoogleID != "g-task-created" {
 		t.Fatalf("expected todo google_id set, got %#v", todoGoogleID)
 	}
+	if len(moveCalls) < 2 {
+		t.Fatalf("expected move calls for todo create/update, got %#v", moveCalls)
+	}
+	assertMoveCall(t, moveCalls, "g-task-created", strPtr("g-parent"), nil)
+	assertMoveCall(t, moveCalls, "g-todo-update", nil, strPtr("g-prev"))
 }
 
 func TestGooglePushProcessorAuthErrorMarksAccountReauth(t *testing.T) {
@@ -249,12 +280,14 @@ func seedPushProcessorFixtures(t *testing.T, db *pgxpool.Pool, userID, accountID
 		t.Fatalf("insert todo list: %v", err)
 	}
 	_, err = db.Exec(context.Background(),
-		`INSERT INTO todos (id, list_id, user_id, google_id, title, notes, due, priority, is_done, is_pinned, sort_order, created_at, updated_at, deleted_at)
+		`INSERT INTO todos (id, list_id, user_id, parent_id, google_id, title, notes, due, priority, is_done, is_pinned, sort_order, created_at, updated_at, deleted_at)
 		 VALUES
-		    ('todo-create', 'list-1', $1, NULL, 'Create Todo', '', NULL, 'normal', false, false, 0, $2, $2, NULL),
-		    ('todo-update', 'list-1', $1, 'g-todo-update', 'Update Todo', '', NULL, 'normal', false, false, 1, $2, $2, NULL),
-		    ('todo-delete', 'list-1', $1, 'g-todo-delete', 'Delete Todo', '', NULL, 'normal', false, false, 2, $2, $2, $2),
-		    ('todo-dead', 'list-1', $1, 'g-todo-dead', 'Dead Todo', '', NULL, 'normal', false, false, 3, $2, $2, NULL)`,
+		    ('todo-parent', 'list-1', $1, NULL, 'g-parent', 'Parent Todo', '', NULL, 'normal', false, false, 0, $2, $2, NULL),
+		    ('todo-prev', 'list-1', $1, NULL, 'g-prev', 'Prev Todo', '', NULL, 'normal', false, false, 1, $2, $2, NULL),
+		    ('todo-create', 'list-1', $1, 'todo-parent', NULL, 'Create Todo', '', NULL, 'normal', false, false, 0, $2, $2, NULL),
+		    ('todo-update', 'list-1', $1, NULL, 'g-todo-update', 'Update Todo', '', NULL, 'normal', false, false, 2, $2, $2, NULL),
+		    ('todo-delete', 'list-1', $1, NULL, 'g-todo-delete', 'Delete Todo', '', NULL, 'normal', false, false, 3, $2, $2, $2),
+		    ('todo-dead', 'list-1', $1, NULL, 'g-todo-dead', 'Dead Todo', '', NULL, 'normal', false, false, 4, $2, $2, NULL)`,
 		userID, now,
 	)
 	if err != nil {
@@ -277,4 +310,29 @@ func seedPushProcessorFixtures(t *testing.T, db *pgxpool.Pool, userID, accountID
 	if err != nil {
 		t.Fatalf("insert outbox rows: %v", err)
 	}
+}
+
+func assertMoveCall(t *testing.T, calls []moveTaskCall, taskID string, parentTaskID, previousTaskID *string) {
+	t.Helper()
+	for _, call := range calls {
+		if call.taskID != taskID {
+			continue
+		}
+		if !sameOptionalString(call.parentTaskID, parentTaskID) || !sameOptionalString(call.previousTaskID, previousTaskID) {
+			t.Fatalf("unexpected move call for %s: %#v", taskID, call)
+		}
+		return
+	}
+	t.Fatalf("move call for %s not found: %#v", taskID, calls)
+}
+
+func sameOptionalString(a, b *string) bool {
+	if a == nil || b == nil {
+		return a == nil && b == nil
+	}
+	return *a == *b
+}
+
+func strPtr(value string) *string {
+	return &value
 }

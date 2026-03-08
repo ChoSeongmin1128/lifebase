@@ -173,13 +173,18 @@ func TestOAuthClientAPIFlows(t *testing.T) {
 		case strings.Contains(req.URL.Path, "/calendar/v3/calendars/cal1/events") && req.Method == http.MethodGet:
 			return jsonResp(http.StatusOK, `{"items":[{"id":"evt1","status":"confirmed","summary":"S","start":{"dateTime":"2026-03-05T01:00:00Z"},"end":{"dateTime":"2026-03-05T02:00:00Z"}}]}`), nil
 		case strings.Contains(req.URL.Path, "/tasks/v1/lists/list1/tasks") && req.Method == http.MethodGet:
-			return jsonResp(http.StatusOK, `{"items":[{"id":"task1","title":"T","status":"completed","completed":"2026-03-05T00:00:00Z","due":"2026-03-06T00:00:00.000Z"}]}`), nil
+			return jsonResp(http.StatusOK, `{"items":[{"id":"task1","parent":"parent-1","title":"T","status":"completed","completed":"2026-03-05T00:00:00Z","due":"2026-03-06T00:00:00.000Z"}]}`), nil
 		case strings.Contains(req.URL.Path, "/calendar/v3/calendars/cal1/events") && req.Method == http.MethodPost:
 			return jsonResp(http.StatusCreated, `{"id":"evt-created","etag":"etag1"}`), nil
 		case strings.Contains(req.URL.Path, "/calendar/v3/calendars/cal1/events/evt1") && req.Method == http.MethodPatch:
 			return jsonResp(http.StatusOK, `{"etag":"etag2"}`), nil
 		case strings.Contains(req.URL.Path, "/calendar/v3/calendars/cal1/events/evt1") && req.Method == http.MethodDelete:
 			return jsonResp(http.StatusNoContent, ``), nil
+		case strings.Contains(req.URL.Path, "/tasks/v1/lists/list1/tasks/task1/move") && req.Method == http.MethodPost:
+			if req.URL.Query().Get("parent") != "parent-1" || req.URL.Query().Get("previous") != "prev-1" {
+				t.Fatalf("unexpected move query: %s", req.URL.RawQuery)
+			}
+			return jsonResp(http.StatusOK, `{}`), nil
 		case strings.Contains(req.URL.Path, "/tasks/v1/lists/list1/tasks") && req.Method == http.MethodPost:
 			return jsonResp(http.StatusOK, `{"id":"task-created"}`), nil
 		case strings.Contains(req.URL.Path, "/tasks/v1/lists/list1/tasks/task1") && req.Method == http.MethodPatch:
@@ -228,6 +233,9 @@ func TestOAuthClientAPIFlows(t *testing.T) {
 	if err != nil || len(tasksPage.Items) != 1 || tasksPage.Items[0].DueDate == nil {
 		t.Fatalf("list tasks failed: %v %#v", err, tasksPage)
 	}
+	if tasksPage.Items[0].ParentGoogleID == nil || *tasksPage.Items[0].ParentGoogleID != "parent-1" {
+		t.Fatalf("expected task parent parsed, got %#v", tasksPage.Items[0])
+	}
 
 	color := "2"
 	rrule := "FREQ=DAILY"
@@ -256,6 +264,11 @@ func TestOAuthClientAPIFlows(t *testing.T) {
 	}
 	if err := c.UpdateTask(ctx, *token, "list1", "task1", todoInput); err != nil {
 		t.Fatalf("update task failed: %v", err)
+	}
+	parentID := "parent-1"
+	previousID := "prev-1"
+	if err := c.MoveTask(ctx, *token, "list1", "task1", &parentID, &previousID); err != nil {
+		t.Fatalf("move task failed: %v", err)
 	}
 	if err := c.DeleteTask(ctx, *token, "list1", "task1"); err != nil {
 		t.Fatalf("delete task failed: %v", err)
@@ -297,6 +310,9 @@ func TestGoogleClientErrorBranches(t *testing.T) {
 				return jsonResp(http.StatusBadRequest, `{"error":{"message":"bad"}}`), nil
 			}
 			if strings.Contains(req.URL.Path, "/tasks/v1/lists/list1/tasks/task1") && req.Method == http.MethodPatch {
+				return jsonResp(http.StatusBadRequest, `{"error":{"message":"bad"}}`), nil
+			}
+			if strings.Contains(req.URL.Path, "/tasks/v1/lists/list1/tasks/task1/move") && req.Method == http.MethodPost {
 				return jsonResp(http.StatusBadRequest, `{"error":{"message":"bad"}}`), nil
 			}
 			if strings.Contains(req.URL.Path, "/tasks/v1/lists/list1/tasks/task1") && req.Method == http.MethodDelete {
@@ -345,6 +361,9 @@ func TestGoogleClientErrorBranches(t *testing.T) {
 	}
 	if err := c.UpdateTask(ctx, token, "list1", "task1", portout.TodoUpsertInput{}); err == nil {
 		t.Fatal("expected update task error")
+	}
+	if err := c.MoveTask(ctx, token, "list1", "task1", nil, nil); err == nil {
+		t.Fatal("expected move task error")
 	}
 	if err := c.DeleteTask(ctx, token, "list1", "task1"); err == nil {
 		t.Fatal("expected delete task error")

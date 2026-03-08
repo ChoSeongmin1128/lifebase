@@ -24,8 +24,12 @@ type mockUserRepo struct {
 	updated         *domain.User
 }
 
-func (m *mockUserRepo) FindByEmail(context.Context, string) (*domain.User, error) { return m.findByEmailUser, m.findByEmailErr }
-func (m *mockUserRepo) FindByID(context.Context, string) (*domain.User, error)     { return nil, errors.New("not implemented") }
+func (m *mockUserRepo) FindByEmail(context.Context, string) (*domain.User, error) {
+	return m.findByEmailUser, m.findByEmailErr
+}
+func (m *mockUserRepo) FindByID(context.Context, string) (*domain.User, error) {
+	return nil, errors.New("not implemented")
+}
 func (m *mockUserRepo) ListUsers(context.Context, string, string, int) ([]*domain.User, string, error) {
 	return nil, "", errors.New("not implemented")
 }
@@ -43,8 +47,12 @@ func (m *mockUserRepo) Update(_ context.Context, user *domain.User) error {
 	m.updated = user
 	return nil
 }
-func (m *mockUserRepo) UpdateStorageQuota(context.Context, string, int64) error { return errors.New("not implemented") }
-func (m *mockUserRepo) UpdateStorageUsed(context.Context, string, int64) error  { return errors.New("not implemented") }
+func (m *mockUserRepo) UpdateStorageQuota(context.Context, string, int64) error {
+	return errors.New("not implemented")
+}
+func (m *mockUserRepo) UpdateStorageUsed(context.Context, string, int64) error {
+	return errors.New("not implemented")
+}
 
 type mockGoogleAccountRepo struct {
 	byGoogle       *domain.GoogleAccount
@@ -127,11 +135,11 @@ func (m *mockRefreshRepo) DeleteByHash(_ context.Context, tokenHash string) erro
 func (m *mockRefreshRepo) DeleteExpired(context.Context) error { return nil }
 
 type mockGoogleAuthClient struct {
-	url                 string
-	exchangeToken       *portout.OAuthToken
-	exchangeErr         error
-	userInfo            *portout.OAuthUserInfo
-	userInfoErr         error
+	url           string
+	exchangeToken *portout.OAuthToken
+	exchangeErr   error
+	userInfo      *portout.OAuthUserInfo
+	userInfoErr   error
 }
 
 func (m *mockGoogleAuthClient) AuthURL(state string) string { return m.url + state }
@@ -171,14 +179,21 @@ func (m *mockGoogleAuthClient) DeleteCalendarEvent(context.Context, portout.OAut
 func (m *mockGoogleAuthClient) CreateTaskList(context.Context, portout.OAuthToken, string) (string, error) {
 	return "", nil
 }
-func (m *mockGoogleAuthClient) DeleteTaskList(context.Context, portout.OAuthToken, string) error { return nil }
+func (m *mockGoogleAuthClient) DeleteTaskList(context.Context, portout.OAuthToken, string) error {
+	return nil
+}
 func (m *mockGoogleAuthClient) CreateTask(context.Context, portout.OAuthToken, string, portout.TodoUpsertInput) (string, error) {
 	return "", nil
 }
 func (m *mockGoogleAuthClient) UpdateTask(context.Context, portout.OAuthToken, string, string, portout.TodoUpsertInput) error {
 	return nil
 }
-func (m *mockGoogleAuthClient) DeleteTask(context.Context, portout.OAuthToken, string, string) error { return nil }
+func (m *mockGoogleAuthClient) MoveTask(context.Context, portout.OAuthToken, string, string, *string, *string) error {
+	return nil
+}
+func (m *mockGoogleAuthClient) DeleteTask(context.Context, portout.OAuthToken, string, string) error {
+	return nil
+}
 
 type mockSyncer struct {
 	err    error
@@ -203,7 +218,9 @@ func (m *mockSyncCoordinator) TriggerUserSync(_ context.Context, _ string, area,
 	m.area, m.reason = area, reason
 	return m.triggerCount, m.triggerErr
 }
-func (m *mockSyncCoordinator) RunHourlySync(context.Context) (int, error) { return m.hourlyCount, m.hourlyErr }
+func (m *mockSyncCoordinator) RunHourlySync(context.Context) (int, error) {
+	return m.hourlyCount, m.hourlyErr
+}
 
 type mockPushProcessor struct {
 	count int

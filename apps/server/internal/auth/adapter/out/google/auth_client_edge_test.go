@@ -177,6 +177,8 @@ func TestOAuthClientAdditionalBranches(t *testing.T) {
 				return jsonResp(http.StatusCreated, `{}`), nil
 			case strings.Contains(req.URL.Path, "/calendar/v3/calendars/cal/events/evt") && req.Method == http.MethodPatch:
 				return jsonResp(http.StatusOK, `{bad`), nil
+			case strings.Contains(req.URL.Path, "/tasks/v1/lists/list/tasks/task/move") && req.Method == http.MethodPost:
+				return nil, errors.New("move transport failed")
 			case strings.Contains(req.URL.Path, "/tasks/v1/lists/list/tasks") && req.Method == http.MethodPost:
 				return jsonResp(http.StatusOK, `{}`), nil
 			case strings.Contains(req.URL.Path, "/tasks/v1/lists/list/tasks/task") && req.Method == http.MethodPatch:
@@ -201,6 +203,9 @@ func TestOAuthClientAdditionalBranches(t *testing.T) {
 		}
 		if err := c.UpdateTask(ctx, token, "list", "task", portout.TodoUpsertInput{}); err == nil {
 			t.Fatal("expected update task transport error")
+		}
+		if err := c.MoveTask(ctx, token, "list", "task", nil, nil); err == nil {
+			t.Fatal("expected move task transport error")
 		}
 	})
 
@@ -377,6 +382,9 @@ func TestOAuthClientAdditionalBranches(t *testing.T) {
 		}
 		if _, err := c.CreateTask(ctx, token, "list1", portout.TodoUpsertInput{}); !errors.Is(err, transportErr) {
 			t.Fatalf("expected create task transport err, got %v", err)
+		}
+		if err := c.MoveTask(ctx, token, "list1", "task1", nil, nil); !errors.Is(err, transportErr) {
+			t.Fatalf("expected move task transport err, got %v", err)
 		}
 		if err := c.DeleteTask(ctx, token, "list1", "task1"); !errors.Is(err, transportErr) {
 			t.Fatalf("expected delete task transport err, got %v", err)

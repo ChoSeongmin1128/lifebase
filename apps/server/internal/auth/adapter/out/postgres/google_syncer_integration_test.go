@@ -189,9 +189,13 @@ func TestGoogleAccountSyncerSyncAccountIntegration(t *testing.T) {
 			case "g-list-2":
 				due := now.AddDate(0, 0, 3).Format("2006-01-02")
 				completed := now.Add(-time.Hour)
+				parentID := "gt-new"
+				childID := "gt-child"
 				return &portout.OAuthTasksPage{
 					Items: []portout.OAuthTask{
 						{GoogleID: "gt-new", Title: "New Todo", Notes: "n", DueDate: &due, IsDone: true, CompletedAt: &completed},
+						{GoogleID: "gt-child", ParentGoogleID: &parentID, Title: "Child Todo", Notes: "c", IsDone: false},
+						{GoogleID: "gt-grandchild", ParentGoogleID: &childID, Title: "Grandchild Todo", Notes: "gc", IsDone: false},
 					},
 				}, nil
 			default:
@@ -253,6 +257,24 @@ func TestGoogleAccountSyncerSyncAccountIntegration(t *testing.T) {
 	}
 	if newTodoTitle != "New Todo" {
 		t.Fatalf("expected inserted todo title, got %s", newTodoTitle)
+	}
+	var rootLocalID string
+	if err := db.QueryRow(ctx, `SELECT id FROM todos WHERE user_id = $1 AND google_id = 'gt-new'`, userID).Scan(&rootLocalID); err != nil {
+		t.Fatalf("read root todo id: %v", err)
+	}
+	var childParentID *string
+	if err := db.QueryRow(ctx, `SELECT parent_id FROM todos WHERE user_id = $1 AND google_id = 'gt-child'`, userID).Scan(&childParentID); err != nil {
+		t.Fatalf("read child parent id: %v", err)
+	}
+	if childParentID == nil || *childParentID != rootLocalID {
+		t.Fatalf("expected child parent to map to root local todo, got %#v want %s", childParentID, rootLocalID)
+	}
+	var grandchildParentID *string
+	if err := db.QueryRow(ctx, `SELECT parent_id FROM todos WHERE user_id = $1 AND google_id = 'gt-grandchild'`, userID).Scan(&grandchildParentID); err != nil {
+		t.Fatalf("read grandchild parent id: %v", err)
+	}
+	if grandchildParentID == nil || *grandchildParentID != rootLocalID {
+		t.Fatalf("expected grandchild to be normalized under root local todo, got %#v want %s", grandchildParentID, rootLocalID)
 	}
 
 	if err := db.QueryRow(ctx, `SELECT deleted_at FROM todos WHERE id = 'todo-delete'`).Scan(&deletedAt); err != nil {
@@ -394,13 +416,13 @@ func TestGoogleAccountSyncerApplyOAuthEventErrorBranches(t *testing.T) {
 	// Closed pool triggers update exec error path.
 	db.Close()
 	if _, _, err := syncer.applyOAuthEvent(ctx, userID, "cal-1", portout.OAuthCalendarEvent{
-		GoogleID:   "ge-1",
-		Status:     "confirmed",
-		Title:      "T",
-		StartTime:  &start,
-		EndTime:    &end,
-		Timezone:   "Asia/Seoul",
-		IsAllDay:   false,
+		GoogleID:  "ge-1",
+		Status:    "confirmed",
+		Title:     "T",
+		StartTime: &start,
+		EndTime:   &end,
+		Timezone:  "Asia/Seoul",
+		IsAllDay:  false,
 	}, now); err == nil || !strings.Contains(err.Error(), "update event") {
 		t.Fatalf("expected wrapped update event error, got %v", err)
 	}
