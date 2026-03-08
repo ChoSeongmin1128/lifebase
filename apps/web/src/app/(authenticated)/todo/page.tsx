@@ -916,7 +916,13 @@ function TodoPageInner() {
     const isDropTarget = isDndEnabled && dragActiveId && dragOverId === todo.id && dragActiveId !== todo.id;
 
     return (
-      <div key={todo.id}>
+      <div
+        key={todo.id}
+        className={cn(
+          "mx-2 rounded-xl transition-all",
+          editingTodoId === todo.id && "bg-surface-accent/70 ring-1 ring-border/70"
+        )}
+      >
         {isDropTarget && (
           <div
             className="h-0.5 bg-primary rounded-full mx-4 my-0"
@@ -933,6 +939,7 @@ function TodoPageInner() {
           childCount={childCount}
           showDragHandle={isDndEnabled}
           isDragging={isDragging}
+          isExpanded={editingTodoId === todo.id}
           lists={realLists}
           onToggleCollapse={() => toggleCollapse(todo.id)}
           onToggleDone={() => handleToggleDone(todo)}
@@ -946,7 +953,7 @@ function TodoPageInner() {
         {editingTodoId === todo.id ? (
           <div
             className="mb-3 mr-4 mt-1"
-            style={{ marginLeft: `${depth * 24 + 64}px` }}
+            style={{ marginLeft: `${depth * 24 + 42}px` }}
           >
             <TodoInlineEditor
               key={todo.id}

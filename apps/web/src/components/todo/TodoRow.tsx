@@ -63,6 +63,7 @@ interface TodoRowProps {
   showDragHandle?: boolean;
   isDragging?: boolean;
   isOverlay?: boolean;
+  isExpanded?: boolean;
   lists?: TodoList[];
   onToggleCollapse?: () => void;
   onToggleDone: () => void;
@@ -85,6 +86,7 @@ export function TodoRow({
   showDragHandle,
   isDragging,
   isOverlay,
+  isExpanded,
   lists,
   onToggleCollapse,
   onToggleDone,
@@ -110,9 +112,10 @@ export function TodoRow({
       ref={isOverlay ? undefined : sortable.setNodeRef}
       style={style}
       className={cn(
-        "group flex items-center gap-2 py-2 pr-4 transition-colors",
-        !isOverlay && "hover:bg-surface-accent/50",
-        todo.is_pinned && !todo.is_done && !isOverlay && "bg-surface-accent",
+        "group flex items-start gap-2 py-2 pr-4 transition-colors",
+        !isOverlay && !isExpanded && "hover:bg-surface-accent/50",
+        isExpanded && !isOverlay && "bg-transparent",
+        todo.is_pinned && !todo.is_done && !isOverlay && !isExpanded && "bg-surface-accent",
         todo.is_done && "opacity-60",
         isDragging && !isOverlay && "opacity-30",
         isOverlay && "rounded-lg bg-surface shadow-lg border border-border opacity-90",
@@ -162,12 +165,13 @@ export function TodoRow({
           <span
             className={cn(
               "block line-clamp-3 break-words text-sm leading-5 text-text-primary",
+              isExpanded && "line-clamp-none",
               todo.is_done && "text-text-muted line-through"
             )}
           >
             {todo.title}
           </span>
-          {todo.notes.trim() ? (
+          {todo.notes.trim() && !isExpanded ? (
             <p className="mt-0.5 line-clamp-1 text-xs text-text-muted">
               {todo.notes.trim()}
             </p>
@@ -217,7 +221,11 @@ export function TodoRow({
             onClick={onTogglePin}
             className={cn(
               "shrink-0 transition-opacity",
-              todo.is_pinned ? "text-primary" : "text-text-muted opacity-0 group-hover:opacity-100"
+              todo.is_pinned
+                ? "text-primary"
+                : isExpanded
+                  ? "text-text-muted"
+                  : "text-text-muted opacity-0 group-hover:opacity-100"
             )}
           >
             <Pin size={14} fill={todo.is_pinned ? "currentColor" : "none"} />

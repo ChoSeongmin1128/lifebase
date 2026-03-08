@@ -1,8 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { X } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { CalendarDays, Clock3, Flag, Trash2, X } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
@@ -43,134 +42,129 @@ export function TodoInlineEditor({
   onDelete,
   onUpdate,
 }: TodoInlineEditorProps) {
-  const [title, setTitle] = useState(todo.title);
-  const [notes, setNotes] = useState(todo.notes);
   const [dueDate, setDueDate] = useState(todo.due_date || "");
   const [dueTime, setDueTime] = useState(todo.due_time || "");
   const [priority, setPriority] = useState(todo.priority);
 
   return (
-    <div className={cn("rounded-xl border border-border bg-surface p-4 shadow-sm", className)}>
-      <div className="mb-4 flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <p className="text-sm font-medium text-text-strong">Todo 상세</p>
-          {listName ? <p className="mt-1 text-xs text-text-muted">{listName}</p> : null}
+    <div className={cn("space-y-3 border-t border-border/60 pt-3", className)}>
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex min-w-0 items-center gap-2">
+          {listName ? (
+            <span className="rounded-full bg-background px-2 py-0.5 text-[11px] text-text-muted">
+              {listName}
+            </span>
+          ) : null}
+          <span className="text-[11px] text-text-muted">세부 정보</span>
         </div>
-        <button
-          type="button"
-          onClick={onClose}
-          className="rounded-lg p-1 text-text-muted transition-colors hover:bg-surface-accent hover:text-text-primary"
-          aria-label="Todo 상세 닫기"
-        >
-          <X size={16} />
-        </button>
+        <div className="flex items-center gap-1">
+          <button
+            type="button"
+            onClick={onDelete}
+            className="rounded-md p-1 text-text-muted transition-colors hover:bg-background hover:text-error"
+            aria-label="Todo 삭제"
+          >
+            <Trash2 size={14} />
+          </button>
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-md p-1 text-text-muted transition-colors hover:bg-background hover:text-text-primary"
+            aria-label="Todo 상세 닫기"
+          >
+            <X size={14} />
+          </button>
+        </div>
       </div>
 
-      <div className="space-y-4">
-        <div>
-          <label className="mb-1.5 block text-xs text-text-muted">제목</label>
-          <Textarea
-            value={title}
-            rows={3}
-            className="min-h-[88px] resize-none"
-            onChange={(e) => setTitle(e.target.value)}
-            onBlur={() => {
-              const nextTitle = title.trim();
-              if (nextTitle && nextTitle !== todo.title) {
-                void onUpdate({ title: nextTitle });
-              } else if (!nextTitle) {
-                setTitle(todo.title);
+      <Textarea
+        defaultValue={todo.title}
+        rows={2}
+        className="min-h-[72px] resize-none border-0 bg-transparent px-0 text-sm font-medium leading-5 text-text-primary shadow-none focus-visible:ring-0"
+        onBlur={(e) => {
+          const nextTitle = e.target.value.trim();
+          if (nextTitle && nextTitle !== todo.title) {
+            void onUpdate({ title: nextTitle });
+          } else if (!nextTitle) {
+            e.target.value = todo.title;
+          }
+        }}
+      />
+
+      <div className="flex flex-wrap items-center gap-2">
+        <div className="flex items-center gap-1.5 rounded-full border border-border bg-background px-2.5 py-1">
+          <CalendarDays size={13} className="text-text-muted" />
+          <Input
+            type="date"
+            value={dueDate}
+            className="h-auto min-w-[132px] border-0 bg-transparent px-0 py-0 text-xs shadow-none focus-visible:ring-0"
+            onChange={(e) => {
+              const nextDate = e.target.value;
+              setDueDate(nextDate);
+              if (!nextDate) {
+                setDueTime("");
+                void onUpdate({ due_date: "", due_time: "" });
+                return;
               }
+              void onUpdate({
+                due_date: nextDate,
+                due_time: dueTime || "",
+              });
             }}
           />
         </div>
 
-        <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_112px_160px]">
-          <div>
-            <label className="mb-1.5 block text-xs text-text-muted">기한 날짜</label>
-            <Input
-              type="date"
-              value={dueDate}
-              onChange={(e) => {
-                const nextDate = e.target.value;
-                setDueDate(nextDate);
-                if (!nextDate) {
-                  setDueTime("");
-                  void onUpdate({ due_date: "", due_time: "" });
-                  return;
-                }
-                void onUpdate({
-                  due_date: nextDate,
-                  due_time: dueTime || "",
-                });
-              }}
-            />
-          </div>
-
-          <div>
-            <label className="mb-1.5 block text-xs text-text-muted">시간</label>
-            <Input
-              type="time"
-              value={dueTime}
-              disabled={!dueDate}
-              onChange={(e) => {
-                const nextTime = e.target.value;
-                setDueTime(nextTime);
-                void onUpdate({
-                  due_date: dueDate || "",
-                  due_time: nextTime || "",
-                });
-              }}
-            />
-          </div>
-
-          <div>
-            <label className="mb-1.5 block text-xs text-text-muted">우선순위</label>
-            <Select
-              value={priority}
-              onValueChange={(value) => {
-                setPriority(value);
-                void onUpdate({ priority: value });
-              }}
-            >
-              <SelectTrigger className="h-9">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="urgent">긴급</SelectItem>
-                <SelectItem value="high">높음</SelectItem>
-                <SelectItem value="normal">보통</SelectItem>
-                <SelectItem value="low">낮음</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-        </div>
-
-        <div>
-          <label className="mb-1.5 block text-xs text-text-muted">메모</label>
-          <Textarea
-            value={notes}
-            rows={5}
-            className="min-h-[140px] resize-y"
-            placeholder="메모"
-            onChange={(e) => setNotes(e.target.value)}
-            onBlur={() => {
-              if (notes !== todo.notes) {
-                void onUpdate({ notes });
-              }
+        <div className="flex items-center gap-1.5 rounded-full border border-border bg-background px-2.5 py-1">
+          <Clock3 size={13} className="text-text-muted" />
+          <Input
+            type="time"
+            value={dueTime}
+            disabled={!dueDate}
+            className="h-auto w-[84px] border-0 bg-transparent px-0 py-0 text-xs shadow-none focus-visible:ring-0"
+            onChange={(e) => {
+              const nextTime = e.target.value;
+              setDueTime(nextTime);
+              void onUpdate({
+                due_date: dueDate || "",
+                due_time: nextTime || "",
+              });
             }}
           />
         </div>
+
+        <div className="flex items-center gap-1.5 rounded-full border border-border bg-background px-2 py-0.5">
+          <Flag size={13} className="text-text-muted" />
+          <Select
+            value={priority}
+            onValueChange={(value) => {
+              setPriority(value);
+              void onUpdate({ priority: value });
+            }}
+          >
+            <SelectTrigger className="h-7 w-[104px] border-0 bg-transparent px-0 text-xs shadow-none focus:ring-0">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="urgent">긴급</SelectItem>
+              <SelectItem value="high">높음</SelectItem>
+              <SelectItem value="normal">보통</SelectItem>
+              <SelectItem value="low">낮음</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
       </div>
 
-      <div className="mt-4 flex items-center justify-between">
-        <Button variant="danger" size="sm" onClick={onDelete}>
-          삭제
-        </Button>
-        <Button variant="ghost" size="sm" onClick={onClose}>
-          닫기
-        </Button>
-      </div>
+      <Textarea
+        defaultValue={todo.notes}
+        rows={3}
+        className="min-h-[96px] resize-none border-0 bg-background/70 text-sm shadow-none focus-visible:ring-1"
+        placeholder="세부 설명 추가"
+        onBlur={(e) => {
+          if (e.target.value !== todo.notes) {
+            void onUpdate({ notes: e.target.value });
+          }
+        }}
+      />
     </div>
   );
 }
