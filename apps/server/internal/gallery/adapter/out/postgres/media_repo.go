@@ -14,6 +14,8 @@ type mediaRepo struct {
 	db *pgxpool.Pool
 }
 
+var scanMediaFilesFn = scanFiles
+
 func NewMediaRepo(db *pgxpool.Pool) *mediaRepo {
 	return &mediaRepo{db: db}
 }
@@ -73,7 +75,7 @@ func (r *mediaRepo) ListMedia(ctx context.Context, userID string, mimePrefix str
 	}
 	defer rows.Close()
 
-	return scanFiles(rows)
+	return scanMediaFilesFn(rows)
 }
 
 func scanFiles(rows pgx.Rows) ([]*domain.Media, error) {

@@ -113,14 +113,14 @@ func TestGooglePushProcessorCalendarAndTodoFallbackBranches(t *testing.T) {
 		t.Fatalf("insert todo list: %v", err)
 	}
 	_, err = db.Exec(ctx,
-		`INSERT INTO todos (id, list_id, user_id, google_id, title, notes, due, priority, is_done, is_pinned, sort_order, created_at, updated_at, deleted_at)
+		`INSERT INTO todos (id, list_id, user_id, google_id, title, notes, due_date, due_time, is_done, is_pinned, sort_order, created_at, updated_at, deleted_at)
 		 VALUES
-		    ('todo-delete-nil', 'list-1', $1, NULL, 'T0', '', NULL, 'normal', false, false, 0, $2, $2, $3),
-		    ('todo-delete-err', 'list-1', $1, 'g-todo-del', 'T1', '', NULL, 'normal', false, false, 1, $2, $2, $3),
-		    ('todo-create-fail', 'list-1', $1, 'g-todo-create-fail', 'T2', '', NULL, 'normal', false, false, 2, $2, $2, NULL),
-		    ('todo-update-create-fail', 'list-1', $1, NULL, 'T3', '', NULL, 'normal', false, false, 3, $2, $2, NULL),
-		    ('todo-update-success', 'list-1', $1, 'g-todo-update-success', 'T4', '', NULL, 'normal', false, false, 4, $2, $2, NULL),
-		    ('todo-update-fallback', 'list-1', $1, 'g-todo-update-fallback', 'T5', '', NULL, 'normal', false, false, 5, $2, $2, NULL)`,
+		    ('todo-delete-nil', 'list-1', $1, NULL, 'T0', '', NULL, NULL, false, false, 0, $2, $2, $3),
+		    ('todo-delete-err', 'list-1', $1, 'g-todo-del', 'T1', '', NULL, NULL, false, false, 1, $2, $2, $3),
+		    ('todo-create-fail', 'list-1', $1, 'g-todo-create-fail', 'T2', '', NULL, NULL, false, false, 2, $2, $2, NULL),
+		    ('todo-update-create-fail', 'list-1', $1, NULL, 'T3', '', NULL, NULL, false, false, 3, $2, $2, NULL),
+		    ('todo-update-success', 'list-1', $1, 'g-todo-update-success', 'T4', '', NULL, NULL, false, false, 4, $2, $2, NULL),
+		    ('todo-update-fallback', 'list-1', $1, 'g-todo-update-fallback', 'T5', '', NULL, NULL, false, false, 5, $2, $2, NULL)`,
 		userID, now, now.Add(time.Minute),
 	)
 	if err != nil {
@@ -464,8 +464,8 @@ func TestGoogleSyncerDirectErrorAndPaginationBranches(t *testing.T) {
 			t.Fatalf("insert todo list: %v", err)
 		}
 		_, err = db.Exec(ctx,
-			`INSERT INTO todos (id, list_id, user_id, google_id, title, notes, due, priority, is_done, is_pinned, sort_order, created_at, updated_at, deleted_at)
-			 VALUES ('todo-1', 'list-1', $1, 'gt-1', 'Todo', '', NULL, 'normal', false, false, 0, $2, $2, NULL)`,
+			`INSERT INTO todos (id, list_id, user_id, google_id, title, notes, due_date, due_time, is_done, is_pinned, sort_order, created_at, updated_at, deleted_at)
+			 VALUES ('todo-1', 'list-1', $1, 'gt-1', 'Todo', '', NULL, NULL, false, false, 0, $2, $2, NULL)`,
 			userID, now,
 		)
 		if err != nil {

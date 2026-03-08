@@ -17,6 +17,14 @@ type holidayRepo struct {
 	db *pgxpool.Pool
 }
 
+var scanHolidayRowsFn = scanHolidayRows
+var queryHolidayRowsFn = func(ctx context.Context, db *pgxpool.Pool, sql string, args ...any) (pgx.Rows, error) {
+	return db.Query(ctx, sql, args...)
+}
+var acquireHolidayConnFn = func(ctx context.Context, db *pgxpool.Pool) (*pgxpool.Conn, error) {
+	return db.Acquire(ctx)
+}
+
 var queryAdvisoryLock = func(ctx context.Context, conn *pgxpool.Conn, lockKey int64) (bool, error) {
 	var locked bool
 	if err := conn.QueryRow(ctx, `SELECT pg_try_advisory_lock($1)`, lockKey).Scan(&locked); err != nil {
@@ -36,7 +44,7 @@ func NewHolidayRepo(db *pgxpool.Pool) *holidayRepo {
 }
 
 func (r *holidayRepo) ListByDateRange(ctx context.Context, start, end time.Time) ([]domain.Holiday, error) {
-	rows, err := r.db.Query(ctx,
+	rows, err := queryHolidayRowsFn(ctx, r.db,
 		`SELECT locdate, name, year, month, date_kind, is_holiday, fetched_at
 		   FROM public_holidays_kr
 		  WHERE locdate BETWEEN $1 AND $2
@@ -47,7 +55,7 @@ func (r *holidayRepo) ListByDateRange(ctx context.Context, start, end time.Time)
 		return nil, err
 	}
 	defer rows.Close()
-	return scanHolidayRows(rows)
+	return scanHolidayRowsFn(rows)
 }
 
 func (r *holidayRepo) GetMonthSyncState(ctx context.Context, year, month int) (*domain.MonthSyncState, error) {
@@ -141,7 +149,7 @@ func replaceMonthTx(
 }
 
 func (r *holidayRepo) TryAdvisoryMonthLock(ctx context.Context, year, month int) (bool, portout.UnlockFunc, error) {
-	conn, err := r.db.Acquire(ctx)
+	conn, err := acquireHolidayConnFn(ctx, r.db)
 	if err != nil {
 		return false, nil, err
 	}

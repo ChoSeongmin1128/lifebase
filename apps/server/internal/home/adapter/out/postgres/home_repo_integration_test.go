@@ -14,6 +14,7 @@ import (
 )
 
 func TestHomeRepoIntegration(t *testing.T) {
+	ensureHomeTestDSN(t)
 	db := dbtest.Open(t)
 	dbtest.Reset(t, db)
 	ctx := context.Background()
@@ -63,12 +64,12 @@ func TestHomeRepoIntegration(t *testing.T) {
 		t.Fatalf("insert todo lists: %v", err)
 	}
 	_, err = db.Exec(ctx,
-		`INSERT INTO todos (id, list_id, user_id, title, due, priority, is_done, is_pinned, sort_order, created_at, updated_at)
+		`INSERT INTO todos (id, list_id, user_id, title, due_date, is_done, is_pinned, sort_order, created_at, updated_at)
 		 VALUES
-		 ('td1','list1',$1,'overdue',$2::date - INTERVAL '1 day','high',false,true,1,$3,$3),
-		 ('td2','list1',$1,'today',$2::date,'normal',false,false,2,$3,$3),
-		 ('td3','list1',$1,'done',$2::date,'low',true,false,3,$3,$3),
-		 ('td4','list2',$4,'other-user',$2::date,'low',false,false,1,$3,$3)`,
+		 ('td1','list1',$1,'overdue',$2::date - 1,false,true,1,$3,$3),
+		 ('td2','list1',$1,'today',$2::date,false,false,2,$3,$3),
+		 ('td3','list1',$1,'done',$2::date,true,false,3,$3,$3),
+		 ('td4','list2',$4,'other-user',$2::date,false,false,1,$3,$3)`,
 		userID, today, now, otherUser,
 	)
 	if err != nil {
@@ -145,6 +146,7 @@ func TestHomeRepoIntegration(t *testing.T) {
 }
 
 func TestHomeRepoErrorPaths(t *testing.T) {
+	ensureHomeTestDSN(t)
 	db := dbtest.Open(t)
 	dbtest.Reset(t, db)
 	ctx := context.Background()
@@ -158,6 +160,9 @@ func TestHomeRepoErrorPaths(t *testing.T) {
 	if _, _, err := repo.ListOverdueTodos(ctx, "u1", time.Now().Format("2006-01-02"), 10); err == nil {
 		t.Fatal("expected ListOverdueTodos query error on closed pool")
 	}
+	if _, _, err := repo.ListTodayTodos(ctx, "u1", time.Now().Format("2006-01-02"), 10); err == nil {
+		t.Fatal("expected ListTodayTodos query error on closed pool")
+	}
 	if _, _, err := repo.ListRecentFiles(ctx, "u1", 10); err == nil {
 		t.Fatal("expected ListRecentFiles query error on closed pool")
 	}
@@ -170,6 +175,7 @@ func TestHomeRepoErrorPaths(t *testing.T) {
 }
 
 func TestHomeRepoInputValidationErrors(t *testing.T) {
+	ensureHomeTestDSN(t)
 	db := dbtest.Open(t)
 	dbtest.Reset(t, db)
 	ctx := context.Background()
@@ -187,6 +193,7 @@ func TestHomeRepoInputValidationErrors(t *testing.T) {
 }
 
 func TestHomeRepoListQueryAndScannerErrorBranches(t *testing.T) {
+	ensureHomeTestDSN(t)
 	db := dbtest.Open(t)
 	dbtest.Reset(t, db)
 	ctx := context.Background()
@@ -213,11 +220,13 @@ func TestHomeRepoListQueryAndScannerErrorBranches(t *testing.T) {
 	prevEventScan := scanEventSummariesFn
 	prevTodoScan := scanTodoSummariesFn
 	prevRecentScan := scanRecentFileSummariesFn
+	prevStorageScan := scanStorageTypeUsageFn
 	t.Cleanup(func() {
 		queryHomeRowsFn = prevQuery
 		scanEventSummariesFn = prevEventScan
 		scanTodoSummariesFn = prevTodoScan
 		scanRecentFileSummariesFn = prevRecentScan
+		scanStorageTypeUsageFn = prevStorageScan
 	})
 
 	t.Run("events_query_error", func(t *testing.T) {
@@ -290,5 +299,19 @@ func TestHomeRepoListQueryAndScannerErrorBranches(t *testing.T) {
 		}
 		queryHomeRowsFn = prevQuery
 		scanRecentFileSummariesFn = prevRecentScan
+	})
+
+	t.Run("storage_usage_scan_error", func(t *testing.T) {
+		queryHomeRowsFn = func(context.Context, *pgxpool.Pool, string, ...any) (pgx.Rows, error) {
+			return &fakeRows{}, nil
+		}
+		scanStorageTypeUsageFn = func(pgx.Rows) ([]domain.StorageTypeUsage, error) {
+			return nil, errors.New("storage usage scan failed")
+		}
+		if _, err := repoImpl.ListStorageTypeUsage(ctx, userID); err == nil {
+			t.Fatal("expected storage usage scan error")
+		}
+		queryHomeRowsFn = prevQuery
+		scanStorageTypeUsageFn = prevStorageScan
 	})
 }

@@ -5,7 +5,6 @@ export type MobileTodoItem = {
   notes: string;
   done: boolean;
   is_done?: boolean;
-  priority: string;
   due?: string | null;
   due_date?: string | null;
   due_time?: string | null;

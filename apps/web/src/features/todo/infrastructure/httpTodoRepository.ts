@@ -1,6 +1,5 @@
 import {
   type Todo,
-  type TodoPriority,
   type TodoRepository,
   type CreateTodoParams,
   type CreateTodoRequestContext,
@@ -17,7 +16,6 @@ interface ApiTodoResponse {
   notes: string;
   due_date: string | null;
   due_time: string | null;
-  priority: string;
   is_done: boolean;
   is_pinned: boolean;
   starred_at?: string | null;
@@ -36,7 +34,6 @@ function toDomainTodo(data: ApiTodoResponse): Todo {
     notes: data.notes,
     dueDate: data.due_date,
     dueTime: data.due_time,
-    priority: data.priority as TodoPriority,
     isDone: data.is_done,
     isPinned: data.is_pinned,
     starredAt: data.starred_at ?? null,
@@ -60,7 +57,6 @@ export class HttpTodoRepository implements TodoRepository {
       notes: params.notes || "",
       due_date: params.dueDate ?? null,
       due_time: params.dueDate ? (params.dueTime ?? null) : null,
-      priority: params.priority || "normal",
       ...(params.parentId ? { parent_id: params.parentId } : {}),
     };
 

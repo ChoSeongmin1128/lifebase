@@ -280,14 +280,14 @@ func seedPushProcessorFixtures(t *testing.T, db *pgxpool.Pool, userID, accountID
 		t.Fatalf("insert todo list: %v", err)
 	}
 	_, err = db.Exec(context.Background(),
-		`INSERT INTO todos (id, list_id, user_id, parent_id, google_id, title, notes, due, priority, is_done, is_pinned, sort_order, created_at, updated_at, deleted_at)
+		`INSERT INTO todos (id, list_id, user_id, parent_id, google_id, title, notes, due_date, due_time, is_done, is_pinned, sort_order, created_at, updated_at, deleted_at)
 		 VALUES
-		    ('todo-parent', 'list-1', $1, NULL, 'g-parent', 'Parent Todo', '', NULL, 'normal', false, false, 0, $2, $2, NULL),
-		    ('todo-prev', 'list-1', $1, NULL, 'g-prev', 'Prev Todo', '', NULL, 'normal', false, false, 1, $2, $2, NULL),
-		    ('todo-create', 'list-1', $1, 'todo-parent', NULL, 'Create Todo', '', NULL, 'normal', false, false, 0, $2, $2, NULL),
-		    ('todo-update', 'list-1', $1, NULL, 'g-todo-update', 'Update Todo', '', NULL, 'normal', false, false, 2, $2, $2, NULL),
-		    ('todo-delete', 'list-1', $1, NULL, 'g-todo-delete', 'Delete Todo', '', NULL, 'normal', false, false, 3, $2, $2, $2),
-		    ('todo-dead', 'list-1', $1, NULL, 'g-todo-dead', 'Dead Todo', '', NULL, 'normal', false, false, 4, $2, $2, NULL)`,
+		    ('todo-parent', 'list-1', $1, NULL, 'g-parent', 'Parent Todo', '', NULL, NULL, false, false, 0, $2, $2, NULL),
+		    ('todo-prev', 'list-1', $1, NULL, 'g-prev', 'Prev Todo', '', NULL, NULL, false, false, 1, $2, $2, NULL),
+		    ('todo-create', 'list-1', $1, 'todo-parent', NULL, 'Create Todo', '', NULL, NULL, false, false, 0, $2, $2, NULL),
+		    ('todo-update', 'list-1', $1, NULL, 'g-todo-update', 'Update Todo', '', NULL, NULL, false, false, 2, $2, $2, NULL),
+		    ('todo-delete', 'list-1', $1, NULL, 'g-todo-delete', 'Delete Todo', '', NULL, NULL, false, false, 3, $2, $2, $2),
+		    ('todo-dead', 'list-1', $1, NULL, 'g-todo-dead', 'Dead Todo', '', NULL, NULL, false, false, 4, $2, $2, NULL)`,
 		userID, now,
 	)
 	if err != nil {

@@ -8,25 +8,35 @@ import (
 	"lifebase/internal/shared/fsutil"
 )
 
-func main() {
-	cfg, err := config.Load()
+var (
+	loadConfigFn      = config.Load
+	removeEmptyDirsFn = fsutil.RemoveEmptyDirs
+)
+
+func run() error {
+	cfg, err := loadConfigFn()
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "load config: %v\n", err)
-		os.Exit(1)
+		return fmt.Errorf("load config: %w", err)
 	}
 
-	dataRemoved, err := fsutil.RemoveEmptyDirs(cfg.Storage.DataPath)
+	dataRemoved, err := removeEmptyDirsFn(cfg.Storage.DataPath)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "cleanup data dirs: %v\n", err)
-		os.Exit(1)
+		return fmt.Errorf("cleanup data dirs: %w", err)
 	}
 
-	thumbRemoved, err := fsutil.RemoveEmptyDirs(cfg.Storage.ThumbPath)
+	thumbRemoved, err := removeEmptyDirsFn(cfg.Storage.ThumbPath)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "cleanup thumb dirs: %v\n", err)
-		os.Exit(1)
+		return fmt.Errorf("cleanup thumb dirs: %w", err)
 	}
 
 	fmt.Printf("data_empty_dirs_removed=%d\n", dataRemoved)
 	fmt.Printf("thumb_empty_dirs_removed=%d\n", thumbRemoved)
+	return nil
+}
+
+func main() {
+	if err := run(); err != nil {
+		fmt.Fprintf(os.Stderr, "%v\n", err)
+		os.Exit(1)
+	}
 }

@@ -6,7 +6,6 @@ export interface TodoItem {
   notes: string;
   due_date: string | null;
   due_time: string | null;
-  priority: string;
   is_done: boolean;
   is_pinned: boolean;
   starred_at?: string | null;

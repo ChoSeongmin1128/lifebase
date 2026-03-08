@@ -1,4 +1,4 @@
-import { normalizeTodoPriority, normalizeTodoTitle, type Todo } from "../domain/Todo";
+import { normalizeTodoTitle, type Todo } from "../domain/Todo";
 import type { CreateTodoParams, TodoRepository } from "../repository/TodoRepository";
 
 export interface Clock {
@@ -31,7 +31,6 @@ export class CreateTodoUseCase {
       ...input,
       listId,
       title: normalizeTodoTitle(input.title),
-      priority: normalizeTodoPriority(input.priority),
     };
 
     return this.deps.todoRepo.createTodo(normalizedInput, {

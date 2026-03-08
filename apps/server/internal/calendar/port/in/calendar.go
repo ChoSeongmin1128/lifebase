@@ -72,7 +72,6 @@ type DaySummaryTodo struct {
 	Title    string  `json:"title"`
 	DueDate  *string `json:"due_date"`
 	DueTime  *string `json:"due_time"`
-	Priority string  `json:"priority"`
 	IsDone   bool    `json:"is_done"`
 }
 

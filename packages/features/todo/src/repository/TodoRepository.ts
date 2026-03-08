@@ -1,4 +1,4 @@
-import type { Todo, TodoPriority } from "../domain/Todo";
+import type { Todo } from "../domain/Todo";
 
 export interface CreateTodoParams {
   listId: string;
@@ -7,7 +7,6 @@ export interface CreateTodoParams {
   notes?: string;
   dueDate?: string | null;
   dueTime?: string | null;
-  priority?: TodoPriority;
 }
 
 export interface CreateTodoRequestContext {

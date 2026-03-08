@@ -67,11 +67,11 @@ func TestGoogleAccountSyncerSyncAccountIntegration(t *testing.T) {
 	}
 	_, err = db.Exec(ctx,
 		`INSERT INTO todos
-		    (id, list_id, user_id, google_id, title, notes, due, priority, is_done, is_pinned, sort_order, done_at, created_at, updated_at, deleted_at)
+		    (id, list_id, user_id, google_id, title, notes, due_date, due_time, is_done, is_pinned, sort_order, done_at, created_at, updated_at, deleted_at)
 		 VALUES
-		    ('todo-existing', $1, $2, 'gt-1', 'Old Todo', 'old', NULL, 'normal', false, false, 5, NULL, $3, $3, NULL),
-		    ('todo-delete', $1, $2, 'gt-del', 'Delete Todo', '', NULL, 'normal', false, false, 6, NULL, $3, $3, NULL),
-		    ('todo-done-old', $1, $2, 'gt-old-done', 'Old Done', '', NULL, 'normal', true, false, 7, $4, $3, $3, NULL)`,
+		    ('todo-existing', $1, $2, 'gt-1', 'Old Todo', '', NULL, NULL, false, false, 5, NULL, $3, $3, NULL),
+		    ('todo-delete', $1, $2, 'gt-del', 'Delete Todo', '', NULL, NULL, false, false, 6, NULL, $3, $3, NULL),
+		    ('todo-done-old', $1, $2, 'gt-old-done', 'Old Done', '', NULL, NULL, true, false, 7, $4, $3, $3, NULL)`,
 		existingListID, userID, now, now.AddDate(-2, 0, 0),
 	)
 	if err != nil {
@@ -419,8 +419,8 @@ func TestGoogleAccountSyncerSyncAccountKeepsLocallyDeletedTodoWhenDeletePushPend
 	deletedAt := now.Add(-time.Minute)
 	_, err = db.Exec(ctx,
 		`INSERT INTO todos
-		    (id, list_id, user_id, google_id, title, notes, due, priority, is_done, is_pinned, sort_order, done_at, created_at, updated_at, deleted_at)
-		 VALUES ($1, $2, $3, 'gt-keep-deleted', 'Delete Me', '', NULL, 'normal', false, false, 0, NULL, $4, $5, $6)`,
+		    (id, list_id, user_id, google_id, title, notes, due_date, due_time, is_done, is_pinned, sort_order, done_at, created_at, updated_at, deleted_at)
+		 VALUES ($1, $2, $3, 'gt-keep-deleted', 'Delete Me', '', NULL, NULL, false, false, 0, NULL, $4, $5, $6)`,
 		todoID, listID, userID, now.Add(-time.Hour), deletedAt, deletedAt,
 	)
 	if err != nil {

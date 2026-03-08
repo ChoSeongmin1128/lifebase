@@ -229,10 +229,10 @@ func TestCalendarEventReminderAndDaySummaryReposIntegration(t *testing.T) {
 		t.Fatalf("insert todo list: %v", err)
 	}
 	_, err = db.Exec(ctx,
-		`INSERT INTO todos (id, list_id, user_id, title, due, priority, is_done, is_pinned, sort_order, created_at, updated_at)
+		`INSERT INTO todos (id, list_id, user_id, title, due_date, is_done, is_pinned, sort_order, created_at, updated_at)
 		 VALUES
-		   ('todo-1', 'list-1', $1, 'Urgent', $2::date, 'urgent', false, false, 0, $3, $3),
-		   ('todo-2', 'list-1', $1, 'Done high', $2::date, 'high', true, false, 1, $3, $3)`,
+		   ('todo-1', 'list-1', $1, 'Urgent', $2::date, false, false, 0, $3, $3),
+		   ('todo-2', 'list-1', $1, 'Done high', $2::date, true, false, 1, $3, $3)`,
 		userID, now.Format("2006-01-02"), now,
 	)
 	if err != nil {

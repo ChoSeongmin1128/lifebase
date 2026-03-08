@@ -19,7 +19,6 @@ interface ApiTodoItemResponse {
   due?: string | null;
   due_date?: string | null;
   due_time?: string | null;
-  priority: string;
   is_done?: boolean;
   done?: boolean;
   is_pinned: boolean;
@@ -55,7 +54,6 @@ function toMobileTodoItem(item: ApiTodoItemResponse): MobileTodoItem {
     notes: item.notes || "",
     done,
     is_done: done,
-    priority: item.priority || "normal",
     due,
     due_date: dueDate,
     due_time: dueTime,

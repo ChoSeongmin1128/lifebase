@@ -11,7 +11,7 @@ import {
   DialogTitle,
   DialogFooter,
 } from "@/components/ui/dialog";
-import { TodoToolbar, type TodoSortBy, type TodoFilterMode } from "@/components/todo/TodoToolbar";
+import { TodoToolbar, type TodoSortBy } from "@/components/todo/TodoToolbar";
 import { TodoRow } from "@/components/todo/TodoRow";
 import { TodoInlineEditor } from "@/components/todo/TodoInlineEditor";
 import { CreateTodoDialog } from "@/components/todo/CreateTodoDialog";
@@ -34,9 +34,8 @@ import {
   useSensors,
 } from "@dnd-kit/core";
 import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
-import { ChevronRight, Plus, Trash2 } from "lucide-react";
+import { ChevronRight, Plus } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { getGoogleAccountDisplayName } from "@/lib/google-account-preferences";
 import { normalizeDueDate, normalizeDueTime } from "@/features/todo/lib/formatDueDate";
 import {
   buildTree,
@@ -214,9 +213,7 @@ function TodoPageInner() {
   const [editingTodoId, setEditingTodoId] = useState<string | null>(null);
   const [closingTodoId, setClosingTodoId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
-  const [filter, setFilter] = useState<TodoFilterMode>("all");
   const [doneCollapsed, setDoneCollapsed] = useState(true);
-  const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const [showCreateDialog, setShowCreateDialog] = useState(false);
   const [createParentId, setCreateParentId] = useState<string | undefined>();
   const [listDeleteTarget, setListDeleteTarget] = useState<TodoList | null>(null);
@@ -242,6 +239,10 @@ function TodoPageInner() {
   const { listGoogleAccounts, triggerGoogleSync } = useAuthFlow();
   const toast = useToast();
   const isAllView = activeListId === ALL_LIST_ID;
+  const activeList = useMemo(
+    () => lists.find((list) => list.id === activeListId) ?? null,
+    [activeListId, lists],
+  );
   const realLists = useMemo(() => lists.filter((list) => !list.is_virtual), [lists]);
   const realListsRef = useRef<TodoList[]>([]);
   const realListIDsKey = useMemo(() => realLists.map((list) => list.id).join(","), [realLists]);
@@ -350,23 +351,6 @@ function TodoPageInner() {
       }),
     );
   }, [getListActiveCount, getListDoneCount]);
-
-  const getListSourceLabel = useCallback((list: TodoList) => {
-    if (list.is_virtual) return "통합";
-    const displayName = getGoogleAccountDisplayName(
-      settings,
-      list.google_account_id ?? null,
-      list.google_account_email ?? null,
-    );
-    if (list.source === "google") {
-      return `Google · ${displayName}`;
-    }
-    if (list.source === "local") return "로컬";
-    if (list.google_account_id) {
-      return `Google · ${displayName}`;
-    }
-    return "로컬";
-  }, [settings]);
 
   const isTodoAccountEnabled = useCallback((accountID: string | null | undefined) => {
     if (!accountID) return true;
@@ -701,7 +685,6 @@ function TodoPageInner() {
     title: string;
     dueDate: string | null;
     dueTime: string | null;
-    priority: string;
     notes: string;
     parentId?: string;
   }) => {
@@ -713,16 +696,8 @@ function TodoPageInner() {
         notes: data.notes,
         dueDate: data.dueDate,
         dueTime: data.dueTime,
-        priority: data.priority as "urgent" | "high" | "normal" | "low",
         parentId: data.parentId,
       });
-      if (data.parentId) {
-        setCollapsed((prev) => {
-          const next = new Set(prev);
-          next.delete(data.parentId!);
-          return next;
-        });
-      }
       setShowCreateDialog(false);
       setCreateParentId(undefined);
       await loadTodos();
@@ -885,7 +860,6 @@ function TodoPageInner() {
   };
 
   const handleToggleDoneSection = async () => {
-    if (filter === "done") return;
     const next = !doneCollapsed;
     setDoneCollapsed(next);
     setSettings((prev) => ({ ...prev, [TODO_DONE_COLLAPSED_SETTING_KEY]: next ? "true" : "false" }));
@@ -895,15 +869,6 @@ function TodoPageInner() {
       console.error("Persist done section state failed:", err);
       toast.warning("완료 섹션 상태 저장 실패", "다음 새로고침 시 상태가 초기화될 수 있습니다.");
     }
-  };
-
-  const toggleCollapse = (todoId: string) => {
-    setCollapsed((prev) => {
-      const next = new Set(prev);
-      if (next.has(todoId)) next.delete(todoId);
-      else next.add(todoId);
-      return next;
-    });
   };
 
   const sensors = useSensors(
@@ -918,10 +883,6 @@ function TodoPageInner() {
       (t) => t.title.toLowerCase().includes(q) || t.notes.toLowerCase().includes(q),
     );
   }
-  if (filter === "has_due") filteredTodos = filteredTodos.filter((t) => t.due_date);
-  if (filter === "has_priority") filteredTodos = filteredTodos.filter((t) => t.priority !== "normal");
-  if (filter === "done") filteredTodos = filteredTodos.filter((t) => t.is_done);
-
   const buildSortedRoots = (items: TodoItem[]) => {
     const roots = buildTree(items);
     if (sortBy === "manual" && isAllView) {
@@ -934,10 +895,10 @@ function TodoPageInner() {
   const sectionRoots = buildSortedRoots(filteredTodos);
   const activeRoots = sectionRoots.filter((root) => !root.is_done);
   const doneRoots = sectionRoots.filter((root) => root.is_done);
-  const showCompletedSection = filter === "done" || !doneCollapsed;
+  const showCompletedSection = !doneCollapsed;
 
-  const activeFlat = flattenTree(activeRoots, collapsed, dragActiveId);
-  const doneFlat = flattenTree(doneRoots, collapsed, dragActiveId);
+  const activeFlat = flattenTree(activeRoots, new Set(), dragActiveId);
+  const doneFlat = flattenTree(doneRoots, new Set(), dragActiveId);
   const doneDeleteRootIDs = useMemo(() => {
     const doneIDSet = new Set(todos.filter((todo) => todo.is_done).map((todo) => todo.id));
     return todos
@@ -1109,17 +1070,6 @@ function TodoPageInner() {
     }
   }, []);
 
-  // Count children for collapsed parents
-  const childCountMap = new Map<string, { total: number; done: number }>();
-  for (const todo of todos) {
-    if (todo.parent_id) {
-      const existing = childCountMap.get(todo.parent_id) || { total: 0, done: 0 };
-      existing.total++;
-      if (todo.is_done) existing.done++;
-      childCountMap.set(todo.parent_id, existing);
-    }
-  }
-
   // Find active todo for DragOverlay
   const activeTodo = useMemo(() => {
     if (!dragActiveId) return null;
@@ -1150,9 +1100,6 @@ function TodoPageInner() {
 
   const renderTodoRow = (item: FlattenedItem) => {
     const { todo, depth } = item;
-    const hasChildren = todo.children.length > 0 || childCountMap.has(todo.id);
-    const isCollapsed = collapsed.has(todo.id);
-    const childCount = childCountMap.get(todo.id);
     const isDragging = todo.id === dragActiveId;
     const isExpanded = editingTodoId === todo.id;
     const isClosing = closingTodoId === todo.id;
@@ -1180,19 +1127,14 @@ function TodoPageInner() {
           listLabel={isAllView ? listNameByID.get(todo.list_id) : undefined}
           depth={depth}
           isOverdue={isOverdueTodo(todo)}
-          hasChildren={hasChildren}
-          isCollapsed={isCollapsed}
-          childCount={childCount}
           showDragHandle={isDndEnabled}
           isDragging={isDragging}
           isExpanded={isExpanded}
           lists={realLists}
-          onToggleCollapse={() => toggleCollapse(todo.id)}
           onToggleDone={() => handleToggleDone(todo)}
           onTogglePin={() => handleTogglePin(todo)}
           onEdit={() => toggleEditingTodo(todo.id)}
           onDelete={() => handleDeleteTodo(todo.id)}
-          onChangePriority={(p) => handleUpdateTodo(todo.id, { priority: p })}
           onUpdateTitle={(title) => handleUpdateTodo(todo.id, { title })}
           expandedContent={
             shouldKeepExpandedContent ? (
@@ -1258,79 +1200,31 @@ function TodoPageInner() {
   );
 
   return (
-    <div className="flex h-full flex-col md:flex-row">
-      {/* Left: Lists — desktop */}
-      <div className="hidden md:block w-56 shrink-0 border-r border-border overflow-auto">
-        <div className="p-3">
-          <div className="mb-3 flex items-center justify-between">
-            <h2 className="text-xs font-medium uppercase tracking-[0.18em] text-text-muted">목록</h2>
-            <span className="rounded-full border border-border/70 bg-background px-2 py-0.5 text-[10px] text-text-muted">
-              {lists.length}
-            </span>
-          </div>
-          {lists.map((list) => (
-            <div key={list.id} className="group/list relative">
-              <div
-                role="button"
-                tabIndex={0}
-                onClick={() => setActiveListId(list.id)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" || e.key === " ") {
-                    e.preventDefault();
-                    setActiveListId(list.id);
-                  }
-                }}
-                className={cn(
-                  "mb-1 flex w-full items-start justify-between rounded-2xl border px-3 py-3 transition-[background-color,border-color,box-shadow]",
-                  activeListId === list.id
-                    ? "border-primary/25 bg-primary/[0.06] text-text-strong shadow-sm"
-                    : "border-transparent bg-transparent text-text-secondary hover:border-border/70 hover:bg-surface/70"
-                )}
-              >
-                <div className="min-w-0 flex-1 text-left">
-                  <div className="flex items-center gap-2">
-                    <p className="min-w-0 flex-1 truncate text-sm font-semibold">{list.name}</p>
-                    <span
-                      className={cn(
-                        "shrink-0 rounded-full px-2 py-0.5 text-[10px] font-medium tabular-nums",
-                        activeListId === list.id
-                          ? "bg-primary/12 text-primary"
-                          : "bg-surface-accent text-text-muted"
-                      )}
-                    >
-                      {getListActiveCount(list)}
-                    </span>
-                  </div>
-                  <div
-                    className={cn(
-                      "mt-1.5 flex items-center justify-between gap-2 text-[11px]",
-                      activeListId === list.id ? "text-text-secondary" : "text-text-muted"
-                    )}
-                  >
-                    <span className="min-w-0 truncate">{getListSourceLabel(list)}</span>
-                    <span className="shrink-0 tabular-nums">완료 {getListDoneCount(list)}</span>
-                  </div>
-                </div>
-                <div className="ml-2 flex h-7 w-7 shrink-0 items-center justify-center">
-                  {!list.is_virtual ? (
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setListDeleteTarget(list);
-                      }}
-                      className="inline-flex h-7 w-7 items-center justify-center rounded-lg text-text-muted opacity-0 transition-[opacity,color,background-color] group-hover/list:opacity-100 hover:bg-surface-accent hover:text-error"
-                      aria-label={`${list.name} 목록 삭제`}
-                    >
-                      <Trash2 size={13} />
-                    </button>
-                  ) : null}
-                </div>
-              </div>
-            </div>
-          ))}
-          {showNewList ? (
-            <div className="mt-1 space-y-1">
+    <div className="flex h-full min-w-0 flex-col">
+      <div className="flex min-w-0 flex-1 flex-col">
+        <TodoToolbar
+          currentListName={activeList?.name || "Todo"}
+          lists={lists.map((list) => ({
+            id: list.id,
+            name: list.name,
+            activeCount: getListActiveCount(list),
+          }))}
+          activeListId={activeListId}
+          onActiveListChange={setActiveListId}
+          onCreateList={() => setShowNewList(true)}
+          onDeleteCurrentList={!activeList?.is_virtual && activeList ? () => setListDeleteTarget(activeList) : undefined}
+          searchQuery={searchQuery}
+          onSearchChange={setSearchQuery}
+          sortBy={sortBy}
+          onSortChange={setSortBy}
+          lastSyncedAt={lastSyncedAt}
+          syncingNow={syncingNow}
+          onManualSync={handleManualSync}
+        />
+
+        {showNewList && (
+          <div className="border-b border-border px-4 py-3 md:px-6">
+            <div className="flex flex-col gap-2 md:flex-row md:items-center">
               <Input
                 autoFocus
                 placeholder="목록 이름"
@@ -1345,13 +1239,13 @@ function TodoPageInner() {
                     setNewListGoogleAccountID("");
                   }
                 }}
-                className="h-8 flex-1"
+                className="h-9 flex-1"
               />
-              <div className="flex gap-1">
+              <div className="flex gap-2 md:w-[22rem]">
                 <select
                   value={newListTarget}
                   onChange={(e) => setNewListTarget(e.target.value as "local" | "google")}
-                  className="h-8 flex-1 rounded-md border border-border bg-background px-2 text-xs"
+                  className="h-9 flex-1 rounded-md border border-border bg-background px-2 text-xs"
                 >
                   <option value="local">로컬 목록</option>
                   <option value="google">Google 목록</option>
@@ -1360,7 +1254,7 @@ function TodoPageInner() {
                   <select
                     value={newListGoogleAccountID}
                     onChange={(e) => setNewListGoogleAccountID(e.target.value)}
-                    className="h-8 flex-1 rounded-md border border-border bg-background px-2 text-xs"
+                    className="h-9 flex-1 rounded-md border border-border bg-background px-2 text-xs"
                   >
                     <option value="">계정 선택</option>
                     {googleAccounts.map((account) => (
@@ -1371,10 +1265,10 @@ function TodoPageInner() {
                   </select>
                 )}
               </div>
-              <div className="flex gap-1">
+              <div className="flex gap-2">
                 <Button
                   size="sm"
-                  className="h-8 flex-1"
+                  className="flex-1 md:flex-none"
                   onClick={handleCreateList}
                   disabled={!newListName.trim() || (newListTarget === "google" && !newListGoogleAccountID)}
                 >
@@ -1383,7 +1277,6 @@ function TodoPageInner() {
                 <Button
                   size="sm"
                   variant="ghost"
-                  className="h-8"
                   onClick={() => {
                     setShowNewList(false);
                     setNewListName("");
@@ -1395,118 +1288,8 @@ function TodoPageInner() {
                 </Button>
               </div>
             </div>
-          ) : (
-            <button
-              onClick={() => setShowNewList(true)}
-              className="mt-2 flex w-full items-center gap-2 rounded-2xl border border-dashed border-border/80 px-3 py-2.5 text-left text-sm text-text-muted transition-colors hover:border-primary/25 hover:bg-surface/70 hover:text-text-secondary"
-            >
-              <Plus size={14} />
-              새 목록
-            </button>
-          )}
-        </div>
-      </div>
-
-      {/* Mobile: Horizontal chip bar */}
-      <div className="flex md:hidden overflow-x-auto gap-2 px-4 py-2 border-b border-border">
-        {lists.map((list) => (
-          <button
-            key={list.id}
-            onClick={() => setActiveListId(list.id)}
-            className={cn(
-              "flex shrink-0 items-center gap-1.5 rounded-full px-3 py-1 text-sm transition-colors",
-              activeListId === list.id
-                ? "bg-primary text-white font-medium"
-                : "bg-surface-accent text-text-secondary"
-            )}
-          >
-            <span className="max-w-[9rem] truncate">{list.name}</span>
-            <span className={cn(
-              "rounded-full px-1.5 py-0.5 text-[10px] tabular-nums",
-              activeListId === list.id ? "bg-white/20 text-white" : "bg-surface text-text-muted",
-            )}>
-              진행 {getListActiveCount(list)}
-            </span>
-          </button>
-        ))}
-        <button
-          onClick={() => setShowNewList(true)}
-          className="shrink-0 rounded-full bg-surface-accent px-3 py-1 text-sm text-text-muted"
-        >
-          +
-        </button>
-      </div>
-      {showNewList && (
-        <div className="md:hidden border-b border-border px-4 py-2 space-y-2">
-          <Input
-            placeholder="목록 이름"
-            value={newListName}
-            onChange={(e) => setNewListName(e.target.value)}
-            className="h-9"
-          />
-          <div className="flex gap-2">
-            <select
-              value={newListTarget}
-              onChange={(e) => setNewListTarget(e.target.value as "local" | "google")}
-              className="h-9 flex-1 rounded-md border border-border bg-background px-2 text-xs"
-            >
-              <option value="local">로컬 목록</option>
-              <option value="google">Google 목록</option>
-            </select>
-            {newListTarget === "google" && (
-              <select
-                value={newListGoogleAccountID}
-                onChange={(e) => setNewListGoogleAccountID(e.target.value)}
-                className="h-9 flex-1 rounded-md border border-border bg-background px-2 text-xs"
-              >
-                <option value="">계정 선택</option>
-                {googleAccounts.map((account) => (
-                  <option key={account.id} value={account.id}>
-                    {account.google_email}
-                  </option>
-                ))}
-              </select>
-            )}
           </div>
-          <div className="flex gap-2">
-            <Button
-              size="sm"
-              className="flex-1"
-              onClick={handleCreateList}
-              disabled={!newListName.trim() || (newListTarget === "google" && !newListGoogleAccountID)}
-            >
-              생성
-            </Button>
-            <Button
-              size="sm"
-              variant="ghost"
-              onClick={() => {
-                setShowNewList(false);
-                setNewListName("");
-                setNewListTarget("local");
-                setNewListGoogleAccountID("");
-              }}
-            >
-              취소
-            </Button>
-          </div>
-        </div>
-      )}
-
-      {/* Right: Todos */}
-      <div className="flex flex-1 flex-col min-w-0">
-        <TodoToolbar
-          listName={lists.find((l) => l.id === activeListId)?.name || "Todo"}
-          searchQuery={searchQuery}
-          onSearchChange={setSearchQuery}
-          sortBy={sortBy}
-          onSortChange={setSortBy}
-          filter={filter}
-          onFilterChange={setFilter}
-          lastSyncedAt={lastSyncedAt}
-          syncingNow={syncingNow}
-          onManualSync={handleManualSync}
-        />
+        )}
 
         {/* Add todo button */}
         <button
@@ -1555,16 +1338,12 @@ function TodoPageInner() {
                     listLabel={isAllView ? listNameByID.get(activeTodo.list_id) : undefined}
                     depth={projectedDepth}
                     isOverdue={isOverdueTodo(activeTodo)}
-                    hasChildren={activeTodo.children.length > 0}
-                    isCollapsed={false}
                     showDragHandle
                     isOverlay
-                    onToggleCollapse={() => {}}
                     onToggleDone={() => {}}
                     onTogglePin={() => {}}
                     onEdit={() => {}}
                     onDelete={() => {}}
-                    onChangePriority={() => {}}
                   />
                 )}
               </DragOverlay>

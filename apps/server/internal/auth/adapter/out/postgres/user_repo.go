@@ -16,6 +16,10 @@ type userRepo struct {
 	db *pgxpool.Pool
 }
 
+var queryUserRowsFn = func(ctx context.Context, db *pgxpool.Pool, sql string, args ...any) (pgx.Rows, error) {
+	return db.Query(ctx, sql, args...)
+}
+
 func NewUserRepo(db *pgxpool.Pool) *userRepo {
 	return &userRepo{db: db}
 }
@@ -78,7 +82,7 @@ func (r *userRepo) ListUsers(ctx context.Context, search, cursor string, limit i
 	query += fmt.Sprintf(" ORDER BY id ASC LIMIT $%d", argPos)
 	args = append(args, limit+1)
 
-	rows, err := r.db.Query(ctx, query, args...)
+	rows, err := queryUserRowsFn(ctx, r.db, query, args...)
 	if err != nil {
 		return nil, "", err
 	}

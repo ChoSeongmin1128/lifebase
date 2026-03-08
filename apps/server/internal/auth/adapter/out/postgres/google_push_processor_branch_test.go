@@ -122,11 +122,11 @@ func TestGooglePushProcessorCalendarAndTodoBranches(t *testing.T) {
 		t.Fatalf("insert todo list: %v", err)
 	}
 	_, err = db.Exec(ctx,
-		`INSERT INTO todos (id, list_id, user_id, google_id, title, notes, due, priority, is_done, is_pinned, sort_order, created_at, updated_at, deleted_at)
+		`INSERT INTO todos (id, list_id, user_id, google_id, title, notes, due_date, due_time, is_done, is_pinned, sort_order, created_at, updated_at, deleted_at)
 		 VALUES
-		    ('todo-existing', 'list-1', $1, 'g-todo-existing', 'T', '', NULL, 'normal', false, false, 0, $2, $2, NULL),
-		    ('todo-nogid', 'list-1', $1, NULL, 'T2', '', NULL, 'normal', false, false, 1, $2, $2, NULL),
-		    ('todo-late', 'list-1', $1, 'g-todo-late', 'TL', '', NULL, 'normal', false, false, 2, $2, $3, NULL)`,
+		    ('todo-existing', 'list-1', $1, 'g-todo-existing', 'T', '', NULL, NULL, false, false, 0, $2, $2, NULL),
+		    ('todo-nogid', 'list-1', $1, NULL, 'T2', '', NULL, NULL, false, false, 1, $2, $2, NULL),
+		    ('todo-late', 'list-1', $1, 'g-todo-late', 'TL', '', NULL, NULL, false, false, 2, $2, $3, NULL)`,
 		userID, now, now.Add(2*time.Hour),
 	)
 	if err != nil {

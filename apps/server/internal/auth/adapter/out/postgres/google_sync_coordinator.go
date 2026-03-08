@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"lifebase/internal/auth/domain"
@@ -18,6 +19,12 @@ import (
 type googleSyncCoordinator struct {
 	db     *pgxpool.Pool
 	syncer portout.GoogleAccountSyncer
+}
+
+type googleSyncConn interface {
+	QueryRow(ctx context.Context, sql string, args ...any) pgx.Row
+	Exec(ctx context.Context, sql string, args ...any) (pgconn.CommandTag, error)
+	Release()
 }
 
 var (
@@ -33,12 +40,24 @@ var (
 	coordinatorUpdateSyncSuccessFn = func(c *googleSyncCoordinator, ctx context.Context, accountID string, now time.Time) error {
 		return c.updateSyncSuccess(ctx, accountID, now)
 	}
-	coordinatorTryAdvisoryLockFn = func(ctx context.Context, conn *pgxpool.Conn, lockKey int64) (bool, error) {
+	acquireGoogleSyncConnFn = func(ctx context.Context, db *pgxpool.Pool) (googleSyncConn, error) {
+		return db.Acquire(ctx)
+	}
+	coordinatorTryAdvisoryLockFn = func(ctx context.Context, conn googleSyncConn, lockKey int64) (bool, error) {
 		var locked bool
 		if err := conn.QueryRow(ctx, `SELECT pg_try_advisory_lock($1)`, lockKey).Scan(&locked); err != nil {
 			return false, err
 		}
 		return locked, nil
+	}
+	queryGoogleSyncCoordinatorRowFn = func(ctx context.Context, db *pgxpool.Pool, sql string, args ...any) googleSyncRow {
+		return db.QueryRow(ctx, sql, args...)
+	}
+	queryGoogleSyncCoordinatorRowsFn = func(ctx context.Context, db *pgxpool.Pool, sql string, args ...any) (pgx.Rows, error) {
+		return db.Query(ctx, sql, args...)
+	}
+	execGoogleSyncCoordinatorFn = func(ctx context.Context, db *pgxpool.Pool, sql string, args ...any) (pgconn.CommandTag, error) {
+		return db.Exec(ctx, sql, args...)
 	}
 )
 
@@ -124,7 +143,7 @@ func (c *googleSyncCoordinator) syncAccountIfDue(
 	}
 
 	lockKey := advisoryLockKey(account.ID)
-	lockConn, err := c.db.Acquire(ctx)
+	lockConn, err := acquireGoogleSyncConnFn(ctx, c.db)
 	if err != nil {
 		return false, err
 	}
@@ -218,7 +237,7 @@ func (c *googleSyncCoordinator) resolveSyncOptions(
 
 func (c *googleSyncCoordinator) getSettingBool(ctx context.Context, userID, key string, fallback bool) (bool, error) {
 	var value string
-	err := c.db.QueryRow(ctx,
+	err := queryGoogleSyncCoordinatorRowFn(ctx, c.db,
 		`SELECT value FROM user_settings WHERE user_id = $1 AND key = $2`,
 		userID,
 		key,
@@ -256,7 +275,7 @@ func (c *googleSyncCoordinator) lastSyncAt(ctx context.Context, accountID, reaso
 		query = `SELECT last_action_sync_at FROM google_sync_state WHERE account_id = $1`
 	}
 
-	err := c.db.QueryRow(ctx, query, accountID).Scan(&t)
+	err := queryGoogleSyncCoordinatorRowFn(ctx, c.db, query, accountID).Scan(&t)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return time.Time{}, nil
@@ -272,7 +291,7 @@ func (c *googleSyncCoordinator) lastSyncAt(ctx context.Context, accountID, reaso
 func (c *googleSyncCoordinator) touchSyncReason(ctx context.Context, accountID, userID, reason string, now time.Time) error {
 	switch reason {
 	case "hourly", "background":
-		_, err := c.db.Exec(ctx,
+		_, err := execGoogleSyncCoordinatorFn(ctx, c.db,
 			`INSERT INTO google_sync_state (account_id, user_id, last_hourly_sync_at, updated_at)
 			 VALUES ($1, $2, $3, $3)
 			 ON CONFLICT (account_id)
@@ -281,7 +300,7 @@ func (c *googleSyncCoordinator) touchSyncReason(ctx context.Context, accountID, 
 		)
 		return err
 	case "tab_heartbeat":
-		_, err := c.db.Exec(ctx,
+		_, err := execGoogleSyncCoordinatorFn(ctx, c.db,
 			`INSERT INTO google_sync_state (account_id, user_id, last_tab_sync_at, updated_at)
 			 VALUES ($1, $2, $3, $3)
 			 ON CONFLICT (account_id)
@@ -290,7 +309,7 @@ func (c *googleSyncCoordinator) touchSyncReason(ctx context.Context, accountID, 
 		)
 		return err
 	case "page_enter":
-		_, err := c.db.Exec(ctx,
+		_, err := execGoogleSyncCoordinatorFn(ctx, c.db,
 			`INSERT INTO google_sync_state (account_id, user_id, last_nav_sync_at, updated_at)
 			 VALUES ($1, $2, $3, $3)
 			 ON CONFLICT (account_id)
@@ -299,7 +318,7 @@ func (c *googleSyncCoordinator) touchSyncReason(ctx context.Context, accountID, 
 		)
 		return err
 	default:
-		_, err := c.db.Exec(ctx,
+		_, err := execGoogleSyncCoordinatorFn(ctx, c.db,
 			`INSERT INTO google_sync_state (account_id, user_id, last_action_sync_at, updated_at)
 			 VALUES ($1, $2, $3, $3)
 			 ON CONFLICT (account_id)
@@ -311,7 +330,7 @@ func (c *googleSyncCoordinator) touchSyncReason(ctx context.Context, accountID, 
 }
 
 func (c *googleSyncCoordinator) updateSyncSuccess(ctx context.Context, accountID string, now time.Time) error {
-	_, err := c.db.Exec(ctx,
+	_, err := execGoogleSyncCoordinatorFn(ctx, c.db,
 		`UPDATE google_sync_state
 		 SET last_success_at = $2, last_error = NULL, updated_at = $2
 		 WHERE account_id = $1`,
@@ -321,7 +340,7 @@ func (c *googleSyncCoordinator) updateSyncSuccess(ctx context.Context, accountID
 }
 
 func (c *googleSyncCoordinator) updateSyncError(ctx context.Context, accountID, message string, now time.Time) error {
-	_, err := c.db.Exec(ctx,
+	_, err := execGoogleSyncCoordinatorFn(ctx, c.db,
 		`UPDATE google_sync_state
 		 SET last_error = $2, updated_at = $3
 		 WHERE account_id = $1`,
@@ -331,7 +350,7 @@ func (c *googleSyncCoordinator) updateSyncError(ctx context.Context, accountID, 
 }
 
 func (c *googleSyncCoordinator) markAccountReauthRequired(ctx context.Context, accountID string) error {
-	_, err := c.db.Exec(ctx,
+	_, err := execGoogleSyncCoordinatorFn(ctx, c.db,
 		`UPDATE user_google_accounts
 		    SET status = 'reauth_required',
 		        updated_at = NOW()
@@ -342,7 +361,7 @@ func (c *googleSyncCoordinator) markAccountReauthRequired(ctx context.Context, a
 }
 
 func (c *googleSyncCoordinator) listActiveAccountsByUser(ctx context.Context, userID string) ([]*domain.GoogleAccount, error) {
-	rows, err := c.db.Query(ctx,
+	rows, err := queryGoogleSyncCoordinatorRowsFn(ctx, c.db,
 		`SELECT id, user_id, google_email, google_id, access_token, refresh_token, token_expires_at,
 		        scopes, status, is_primary, connected_at, created_at, updated_at
 		 FROM user_google_accounts
@@ -358,7 +377,7 @@ func (c *googleSyncCoordinator) listActiveAccountsByUser(ctx context.Context, us
 }
 
 func (c *googleSyncCoordinator) listActiveAccounts(ctx context.Context) ([]*domain.GoogleAccount, error) {
-	rows, err := c.db.Query(ctx,
+	rows, err := queryGoogleSyncCoordinatorRowsFn(ctx, c.db,
 		`SELECT id, user_id, google_email, google_id, access_token, refresh_token, token_expires_at,
 		        scopes, status, is_primary, connected_at, created_at, updated_at
 		 FROM user_google_accounts

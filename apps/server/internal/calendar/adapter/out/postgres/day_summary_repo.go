@@ -14,6 +14,14 @@ type daySummaryHolidayRepo struct {
 	db *pgxpool.Pool
 }
 
+var (
+	scanDaySummaryHolidayRowsFn = scanDaySummaryHolidayRows
+	scanDaySummaryTodoRowsFn    = scanDaySummaryTodoRows
+	queryDaySummaryRowsFn       = func(ctx context.Context, db *pgxpool.Pool, sql string, args ...any) (pgx.Rows, error) {
+		return db.Query(ctx, sql, args...)
+	}
+)
+
 func NewDaySummaryHolidayRepo(db *pgxpool.Pool) *daySummaryHolidayRepo {
 	return &daySummaryHolidayRepo{db: db}
 }
@@ -23,7 +31,7 @@ func (r *daySummaryHolidayRepo) ListByDateRange(
 	start,
 	end time.Time,
 ) ([]calendarportout.DaySummaryHoliday, error) {
-	rows, err := r.db.Query(ctx,
+	rows, err := queryDaySummaryRowsFn(ctx, r.db,
 		`SELECT locdate, name
 		   FROM public_holidays_kr
 		  WHERE locdate >= $1::date
@@ -36,7 +44,7 @@ func (r *daySummaryHolidayRepo) ListByDateRange(
 		return nil, err
 	}
 	defer rows.Close()
-	return scanDaySummaryHolidayRows(rows)
+	return scanDaySummaryHolidayRowsFn(rows)
 }
 
 type daySummaryTodoRepo struct {
@@ -56,7 +64,7 @@ func (r *daySummaryTodoRepo) ListByDueDate(
 	query := `SELECT id, list_id, title,
 	                 CASE WHEN due_date IS NULL THEN NULL ELSE to_char(due_date, 'YYYY-MM-DD') END AS due_date,
 	                 CASE WHEN due_time IS NULL THEN NULL ELSE to_char(due_time, 'HH24:MI') END AS due_time,
-	                 priority, is_done
+	                 is_done
 	            FROM todos
 	           WHERE user_id = $1
 	             AND deleted_at IS NULL
@@ -67,23 +75,16 @@ func (r *daySummaryTodoRepo) ListByDueDate(
 	query += ` ORDER BY
 	             due_time IS NULL ASC,
 	             due_time ASC,
-	             CASE priority
-	               WHEN 'urgent' THEN 0
-	               WHEN 'high' THEN 1
-	               WHEN 'normal' THEN 2
-	               WHEN 'low' THEN 3
-	               ELSE 4
-	             END ASC,
 	             is_done ASC,
 	             sort_order ASC,
 	             created_at ASC`
 
-	rows, err := r.db.Query(ctx, query, userID, date)
+	rows, err := queryDaySummaryRowsFn(ctx, r.db, query, userID, date)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	return scanDaySummaryTodoRows(rows)
+	return scanDaySummaryTodoRowsFn(rows)
 }
 
 var _ calendarportout.DaySummaryHolidayRepository = (*daySummaryHolidayRepo)(nil)
@@ -114,7 +115,6 @@ func scanDaySummaryTodoRows(rows pgx.Rows) ([]calendarportout.DaySummaryTodo, er
 			&item.Title,
 			&item.DueDate,
 			&item.DueTime,
-			&item.Priority,
 			&item.IsDone,
 		); err != nil {
 			return nil, err

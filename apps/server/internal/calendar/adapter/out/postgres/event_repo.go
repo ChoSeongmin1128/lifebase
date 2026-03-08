@@ -17,6 +17,14 @@ type eventRepo struct {
 	db *pgxpool.Pool
 }
 
+var (
+	scanEventRowsFn    = scanEventRows
+	scanReminderRowsFn = scanReminderRows
+	queryEventRowsFn   = func(ctx context.Context, db *pgxpool.Pool, sql string, args ...any) (pgx.Rows, error) {
+		return db.Query(ctx, sql, args...)
+	}
+)
+
 func NewEventRepo(db *pgxpool.Pool) *eventRepo {
 	return &eventRepo{db: db}
 }
@@ -64,12 +72,12 @@ func (r *eventRepo) ListByRange(ctx context.Context, userID string, calendarIDs 
 
 	query += " ORDER BY start_time ASC, end_time DESC"
 
-	rows, err := r.db.Query(ctx, query, args...)
+	rows, err := queryEventRowsFn(ctx, r.db, query, args...)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	return scanEventRows(rows)
+	return scanEventRowsFn(rows)
 }
 
 func (r *eventRepo) Update(ctx context.Context, event *domain.Event) error {
@@ -118,14 +126,14 @@ func (r *reminderRepo) CreateBatch(ctx context.Context, reminders []domain.Event
 }
 
 func (r *reminderRepo) ListByEvent(ctx context.Context, eventID string) ([]domain.EventReminder, error) {
-	rows, err := r.db.Query(ctx,
+	rows, err := queryEventRowsFn(ctx, r.db,
 		`SELECT id, event_id, method, minutes, created_at
 		 FROM event_reminders WHERE event_id = $1 ORDER BY minutes ASC`, eventID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	return scanReminderRows(rows)
+	return scanReminderRowsFn(rows)
 }
 
 func (r *reminderRepo) DeleteByEvent(ctx context.Context, eventID string) error {

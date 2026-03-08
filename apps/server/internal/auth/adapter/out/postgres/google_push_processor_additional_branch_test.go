@@ -111,8 +111,8 @@ func TestGooglePushProcessorProcessOneInactiveAndMaxAttemptsBranches(t *testing.
 		t.Fatalf("insert todo list: %v", err)
 	}
 	_, err = db.Exec(ctx,
-		`INSERT INTO todos (id, list_id, user_id, google_id, title, notes, due, priority, is_done, is_pinned, sort_order, created_at, updated_at, deleted_at)
-		 VALUES ('todo-1', 'list-1', $1, 'g-todo-1', 'Todo', '', NULL, 'normal', false, false, 0, $2, $2, NULL)`,
+		`INSERT INTO todos (id, list_id, user_id, google_id, title, notes, due_date, due_time, is_done, is_pinned, sort_order, created_at, updated_at, deleted_at)
+		 VALUES ('todo-1', 'list-1', $1, 'g-todo-1', 'Todo', '', NULL, NULL, false, false, 0, $2, $2, NULL)`,
 		userID, now,
 	)
 	if err != nil {
@@ -277,11 +277,11 @@ func TestGooglePushProcessorProcessTodoPushAdditionalBranches(t *testing.T) {
 		t.Fatalf("insert lists: %v", err)
 	}
 	_, err = db.Exec(ctx,
-		`INSERT INTO todos (id, list_id, user_id, google_id, title, notes, due, priority, is_done, is_pinned, sort_order, created_at, updated_at, deleted_at)
+		`INSERT INTO todos (id, list_id, user_id, google_id, title, notes, due_date, due_time, is_done, is_pinned, sort_order, created_at, updated_at, deleted_at)
 		 VALUES
-		    ('todo-main', 'list-main', $1, 'g-todo-main', 'Main', '', NULL, 'normal', false, false, 0, $2, $2, NULL),
-		    ('todo-other', 'list-other', $1, 'g-todo-other', 'Other', '', NULL, 'normal', false, false, 1, $2, $2, NULL),
-		    ('todo-no-list-gid', 'list-no-google', $1, 'g-todo-x', 'NoListGoogle', '', NULL, 'normal', false, false, 2, $2, $2, NULL)`,
+		    ('todo-main', 'list-main', $1, 'g-todo-main', 'Main', '', NULL, NULL, false, false, 0, $2, $2, NULL),
+		    ('todo-other', 'list-other', $1, 'g-todo-other', 'Other', '', NULL, NULL, false, false, 1, $2, $2, NULL),
+		    ('todo-no-list-gid', 'list-no-google', $1, 'g-todo-x', 'NoListGoogle', '', NULL, NULL, false, false, 2, $2, $2, NULL)`,
 		userID, now,
 	)
 	if err != nil {

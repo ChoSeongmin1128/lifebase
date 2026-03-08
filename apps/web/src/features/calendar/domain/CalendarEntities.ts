@@ -75,7 +75,6 @@ export interface DaySummaryTodo {
   title: string;
   due_date: string | null;
   due_time: string | null;
-  priority: string;
   is_done: boolean;
 }
 

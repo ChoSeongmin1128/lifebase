@@ -236,11 +236,6 @@ func (uc *todoUseCase) CreateTodo(ctx context.Context, userID string, input port
 		}
 	}
 
-	priority := input.Priority
-	if priority == "" {
-		priority = "normal"
-	}
-
 	sortOrder, err := uc.todos.NextSortOrder(ctx, userID, input.ListID, parentID)
 	if err != nil {
 		sortOrder = 0
@@ -256,7 +251,6 @@ func (uc *todoUseCase) CreateTodo(ctx context.Context, userID string, input port
 		Notes:     input.Notes,
 		DueDate:   normalizeOptionalString(input.DueDate),
 		DueTime:   normalizeOptionalString(input.DueTime),
-		Priority:  priority,
 		IsDone:    false,
 		IsPinned:  false,
 		SortOrder: sortOrder,
@@ -332,9 +326,6 @@ func (uc *todoUseCase) UpdateTodo(ctx context.Context, userID, todoID string, in
 	}
 	if todo.DueTime != nil && todo.DueDate == nil {
 		return nil, fmt.Errorf("due_time requires due_date")
-	}
-	if input.Priority != nil {
-		todo.Priority = *input.Priority
 	}
 	if input.IsDone != nil {
 		todo.IsDone = *input.IsDone

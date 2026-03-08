@@ -296,13 +296,12 @@ func (uc *calendarUseCase) GetDaySummary(
 		todoItems = make([]portin.DaySummaryTodo, 0, len(rows))
 		for _, row := range rows {
 			todoItems = append(todoItems, portin.DaySummaryTodo{
-				ID:       row.ID,
-				ListID:   row.ListID,
-				Title:    row.Title,
-				DueDate:  row.DueDate,
-				DueTime:  row.DueTime,
-				Priority: row.Priority,
-				IsDone:   row.IsDone,
+				ID:      row.ID,
+				ListID:  row.ListID,
+				Title:   row.Title,
+				DueDate: row.DueDate,
+				DueTime: row.DueTime,
+				IsDone:  row.IsDone,
 			})
 		}
 	}

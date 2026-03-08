@@ -58,7 +58,6 @@ type DaySummaryTodo struct {
 	Title    string
 	DueDate  *string
 	DueTime  *string
-	Priority string
 	IsDone   bool
 }
 

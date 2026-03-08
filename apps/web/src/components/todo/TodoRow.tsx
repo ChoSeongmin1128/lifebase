@@ -18,12 +18,9 @@ import { Textarea } from "@/components/ui/textarea";
 import {
   MoreVertical,
   Pencil,
-  Flag,
   Trash2,
   GripVertical,
   Pin,
-  ChevronRight,
-  ChevronDown,
   Plus,
   ArrowRightLeft,
 } from "lucide-react";
@@ -38,7 +35,6 @@ interface TodoItem {
   notes: string;
   due_date: string | null;
   due_time: string | null;
-  priority: string;
   is_done: boolean;
   is_pinned: boolean;
   starred_at?: string | null;
@@ -58,20 +54,15 @@ interface TodoRowProps {
   listLabel?: string;
   depth?: number;
   isOverdue: boolean;
-  hasChildren?: boolean;
-  isCollapsed?: boolean;
-  childCount?: { total: number; done: number };
   showDragHandle?: boolean;
   isDragging?: boolean;
   isOverlay?: boolean;
   isExpanded?: boolean;
   lists?: TodoList[];
-  onToggleCollapse?: () => void;
   onToggleDone: () => void;
   onTogglePin: () => void;
   onEdit: () => void;
   onDelete: () => void;
-  onChangePriority: (priority: string) => void;
   onUpdateTitle?: (title: string) => void;
   expandedContent?: ReactNode;
   onAddSubtask?: () => void;
@@ -163,39 +154,21 @@ export function TodoRow({
   listLabel,
   depth = 0,
   isOverdue,
-  hasChildren,
-  isCollapsed,
-  childCount,
   showDragHandle,
   isDragging,
   isOverlay,
   isExpanded,
   lists,
-  onToggleCollapse,
   onToggleDone,
   onTogglePin,
   onEdit,
   onDelete,
-  onChangePriority,
   onUpdateTitle,
   expandedContent,
   onAddSubtask,
   onMoveToList,
 }: TodoRowProps) {
   const sortable = useSortable({ id: todo.id, disabled: !showDragHandle || isOverlay });
-  const priorityMeta = (() => {
-    if (todo.priority === "urgent") {
-      return { label: "긴급", className: "border-error/20 bg-error/8 text-error" };
-    }
-    if (todo.priority === "high") {
-      return { label: "높음", className: "border-caution/20 bg-caution/8 text-caution" };
-    }
-    if (todo.priority === "low") {
-      return { label: "낮음", className: "border-border/70 bg-background text-text-muted" };
-    }
-    return null;
-  })();
-
   const style = isOverlay
     ? { paddingLeft: `${depth * 24 + 16}px` }
     : {
@@ -210,7 +183,7 @@ export function TodoRow({
       style={style}
       data-todo-row-id={todo.id}
       className={cn(
-        "group flex items-start gap-3 rounded-2xl border border-transparent py-2.5 pr-4 transition-[background-color,border-color,box-shadow,opacity]",
+        "group flex items-start gap-2.5 rounded-2xl border border-transparent py-2 pr-4 transition-[background-color,border-color,box-shadow,opacity]",
         !isOverlay && !isExpanded && "hover:border-border/60 hover:bg-surface/70",
         isExpanded && !isOverlay && "border-border/70 bg-surface shadow-sm",
         todo.is_pinned && !todo.is_done && !isOverlay && !isExpanded && "border-primary/15 bg-primary/[0.04]",
@@ -232,19 +205,7 @@ export function TodoRow({
           <GripVertical size={14} />
         </button>
       ) : (
-        <div className="w-[14px] shrink-0" />
-      )}
-
-      {/* Collapse chevron (for parents) */}
-      {hasChildren ? (
-        <button
-          onClick={onToggleCollapse}
-          className="mt-0.5 shrink-0 rounded-md p-0.5 text-text-muted transition-colors hover:bg-surface-accent hover:text-text-primary"
-        >
-          {isCollapsed ? <ChevronRight size={14} /> : <ChevronDown size={14} />}
-        </button>
-      ) : (
-        <div className="w-[14px] shrink-0" />
+        <div className="w-[8px] shrink-0" />
       )}
 
       {/* Checkbox */}
@@ -282,8 +243,8 @@ export function TodoRow({
               {todo.notes.trim()}
             </p>
           ) : null}
-          {!isExpanded && (listLabel || todo.due_date || priorityMeta || (isCollapsed && childCount && childCount.total > 0)) ? (
-            <div className="mt-2 flex flex-wrap items-center gap-1.5">
+          {!isExpanded && (listLabel || todo.due_date) ? (
+            <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
               {listLabel ? (
                 <span className="inline-flex items-center rounded-full border border-border/70 bg-background px-2 py-1 text-[11px] text-text-muted">
                   {listLabel}
@@ -299,17 +260,6 @@ export function TodoRow({
                   )}
                 >
                   {formatDueLabel(todo.due_date, todo.due_time)}
-                </span>
-              ) : null}
-              {priorityMeta ? (
-                <span className={cn("inline-flex items-center gap-1 rounded-full border px-2 py-1 text-[11px]", priorityMeta.className)}>
-                  <Flag size={11} />
-                  {priorityMeta.label}
-                </span>
-              ) : null}
-              {isCollapsed && childCount && childCount.total > 0 ? (
-                <span className="inline-flex items-center rounded-full border border-border/70 bg-background px-2 py-1 text-[11px] text-text-muted">
-                  하위 {childCount.done}/{childCount.total}
                 </span>
               ) : null}
             </div>
@@ -375,19 +325,6 @@ export function TodoRow({
                   </DropdownMenuSubContent>
                 </DropdownMenuSub>
               )}
-              <DropdownMenuSeparator />
-              <DropdownMenuItem onClick={() => onChangePriority("urgent")} className="text-error">
-                <Flag size={14} /> 긴급
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => onChangePriority("high")} className="text-caution">
-                <Flag size={14} /> 높음
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => onChangePriority("normal")}>
-                <Flag size={14} /> 보통
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => onChangePriority("low")} className="text-text-muted">
-                <Flag size={14} /> 낮음
-              </DropdownMenuItem>
               <DropdownMenuSeparator />
               <DropdownMenuItem onClick={onDelete} className="text-error focus:text-error">
                 <Trash2 size={14} /> 삭제

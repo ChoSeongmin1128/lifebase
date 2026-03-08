@@ -194,13 +194,6 @@ export default function TodoScreen() {
     }
   };
 
-  const priorityColor: Record<string, string> = {
-    urgent: "#DC2626",
-    high: "#F97316",
-    normal: "#666",
-    low: "#9CA3AF",
-  };
-
   const sortedTodos = useMemo(() => sortTodos(todos, sortBy), [sortBy, todos]);
 
   const getListSourceLabel = useCallback((list: TodoList) => {
@@ -386,12 +379,6 @@ export default function TodoScreen() {
                 <Text style={styles.dueDate}>{formatDueLabel(item.due_date, item.due_time)}</Text>
               ) : null}
             </View>
-            <View
-              style={[
-                styles.priorityDot,
-                { backgroundColor: priorityColor[item.priority] || "#666" },
-              ]}
-            />
           </TouchableOpacity>
         )}
       />
@@ -558,6 +545,5 @@ const styles = StyleSheet.create({
   todoTitleDone: { textDecorationLine: "line-through", color: "#999" },
   todoNotes: { fontSize: 12, color: "#6b7280", marginTop: 3, lineHeight: 17 },
   dueDate: { fontSize: 11, color: "#999", marginTop: 2 },
-  priorityDot: { width: 8, height: 8, borderRadius: 4 },
   empty: { textAlign: "center", marginTop: 60, color: "#999", fontSize: 14 },
 });

@@ -21,6 +21,23 @@ var (
 	readDirFn   = os.ReadDir
 	readFileFn  = os.ReadFile
 	callerFn    = runtime.Caller
+	openPoolFn  = openPool
+	resetTablesFn = resetTables
+	applyMigrationsFn = applyMigrations
+	usersTableExistsFn = func(ctx context.Context, db *pgxpool.Pool) (bool, error) {
+		var usersTableExists bool
+		err := db.QueryRow(ctx,
+			`SELECT EXISTS (
+				SELECT 1
+				FROM information_schema.tables
+				WHERE table_schema = 'public' AND table_name = 'users'
+			)`,
+		).Scan(&usersTableExists)
+		if err != nil {
+			return false, err
+		}
+		return usersTableExists, nil
+	}
 	queryTablesFn = func(ctx context.Context, db *pgxpool.Pool) (pgx.Rows, error) {
 		return db.Query(ctx, `SELECT tablename FROM pg_tables WHERE schemaname='public' ORDER BY tablename`)
 	}
@@ -41,7 +58,7 @@ type testingT interface {
 func Open(t testingT) *pgxpool.Pool {
 	t.Helper()
 
-	db, skip, err := openPool(context.Background(), strings.TrimSpace(os.Getenv("LIFEBASE_TEST_DATABASE_URL")))
+	db, skip, err := openPoolFn(context.Background(), strings.TrimSpace(os.Getenv("LIFEBASE_TEST_DATABASE_URL")))
 	if skip {
 		t.Skip("skip integration DB test: LIFEBASE_TEST_DATABASE_URL is empty")
 		return nil
@@ -52,7 +69,7 @@ func Open(t testingT) *pgxpool.Pool {
 	}
 
 	migrateOnce.Do(func() {
-		migrateErr = applyMigrations(context.Background(), db)
+		migrateErr = applyMigrationsFn(context.Background(), db)
 	})
 	if migrateErr != nil {
 		db.Close()
@@ -66,7 +83,7 @@ func Open(t testingT) *pgxpool.Pool {
 // Reset truncates all public tables to isolate each test.
 func Reset(t testingT, db *pgxpool.Pool) {
 	t.Helper()
-	if err := resetTables(context.Background(), db); err != nil {
+	if err := resetTablesFn(context.Background(), db); err != nil {
 		t.Fatalf("%v", err)
 		return
 	}
@@ -127,14 +144,8 @@ func resetTables(ctx context.Context, db *pgxpool.Pool) error {
 }
 
 func applyMigrations(ctx context.Context, db *pgxpool.Pool) error {
-	var usersTableExists bool
-	if err := db.QueryRow(ctx,
-		`SELECT EXISTS (
-			SELECT 1
-			FROM information_schema.tables
-			WHERE table_schema = 'public' AND table_name = 'users'
-		)`,
-	).Scan(&usersTableExists); err != nil {
+	usersTableExists, err := usersTableExistsFn(ctx, db)
+	if err != nil {
 		return err
 	}
 	if usersTableExists {

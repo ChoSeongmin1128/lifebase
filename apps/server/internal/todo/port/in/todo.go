@@ -13,7 +13,6 @@ type CreateTodoInput struct {
 	Notes    string  `json:"notes"`
 	DueDate  *string `json:"due_date"`
 	DueTime  *string `json:"due_time"`
-	Priority string  `json:"priority"`
 }
 
 type CreateListInput struct {
@@ -27,7 +26,6 @@ type UpdateTodoInput struct {
 	Notes     *string `json:"notes"`
 	DueDate   *string `json:"due_date"`
 	DueTime   *string `json:"due_time"`
-	Priority  *string `json:"priority"`
 	IsDone    *bool   `json:"is_done"`
 	IsPinned  *bool   `json:"is_pinned"`
 	ParentID  *string `json:"parent_id"`

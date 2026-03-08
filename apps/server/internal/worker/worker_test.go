@@ -251,4 +251,24 @@ func TestThumbnailHandlerProcessTaskHookedBranches(t *testing.T) {
 			t.Fatalf("expected no thumb dir for non-media, stat err=%v", err)
 		}
 	})
+
+	t.Run("video_thumb_dir_create_error", func(t *testing.T) {
+		prevExec := execThumbnailSQL
+		prevMkdir := mkdirAll
+		execThumbnailSQL = func(context.Context, *pgxpool.Pool, string, ...any) error { return nil }
+		mkdirAll = func(string, os.FileMode) error { return errors.New("mkdir fail") }
+		t.Cleanup(func() {
+			execThumbnailSQL = prevExec
+			mkdirAll = prevMkdir
+		})
+
+		task, err := NewThumbnailTask("f1", "u1", "u1/f1", "video/mp4")
+		if err != nil {
+			t.Fatalf("new video task: %v", err)
+		}
+		h := NewThumbnailHandler(nil, t.TempDir(), t.TempDir())
+		if err := h.ProcessTask(context.Background(), task); err == nil || !strings.Contains(err.Error(), "create thumb dir") {
+			t.Fatalf("expected create thumb dir error for video, got %v", err)
+		}
+	})
 }

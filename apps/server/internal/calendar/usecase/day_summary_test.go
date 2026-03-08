@@ -142,12 +142,11 @@ func TestGetDaySummary_Success(t *testing.T) {
 	todoRepo := &mockDaySummaryTodoRepo{
 		rows: []portout.DaySummaryTodo{
 			{
-				ID:       "todo-1",
-				ListID:   "list-1",
-				Title:    "서류 제출",
-				DueDate:  &due,
-				Priority: "high",
-				IsDone:   false,
+				ID:      "todo-1",
+				ListID:  "list-1",
+				Title:   "서류 제출",
+				DueDate: &due,
+				IsDone:  false,
 			},
 		},
 	}

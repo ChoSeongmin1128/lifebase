@@ -11,7 +11,6 @@ import {
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { cn } from "@/lib/utils";
 
 interface CreateTodoDialogProps {
   open: boolean;
@@ -20,20 +19,12 @@ interface CreateTodoDialogProps {
     title: string;
     dueDate: string | null;
     dueTime: string | null;
-    priority: string;
     notes: string;
     parentId?: string;
   }) => void;
   parentId?: string;
   disabled?: boolean;
 }
-
-const PRIORITIES = [
-  { value: "urgent", label: "긴급", className: "text-error border-error" },
-  { value: "high", label: "높음", className: "text-caution border-caution" },
-  { value: "normal", label: "보통", className: "text-text-primary border-border" },
-  { value: "low", label: "낮음", className: "text-text-muted border-border" },
-] as const;
 
 export function CreateTodoDialog({
   open,
@@ -45,14 +36,12 @@ export function CreateTodoDialog({
   const [title, setTitle] = useState("");
   const [dueDate, setDueDate] = useState("");
   const [dueTime, setDueTime] = useState("");
-  const [priority, setPriority] = useState("normal");
   const [notes, setNotes] = useState("");
 
   const reset = () => {
     setTitle("");
     setDueDate("");
     setDueTime("");
-    setPriority("normal");
     setNotes("");
   };
 
@@ -62,7 +51,6 @@ export function CreateTodoDialog({
       title: title.trim(),
       dueDate: dueDate || null,
       dueTime: dueDate ? (dueTime || null) : null,
-      priority,
       notes,
       parentId,
     });
@@ -116,26 +104,6 @@ export function CreateTodoDialog({
                 disabled={!dueDate}
                 onChange={(e) => setDueTime(e.target.value)}
               />
-            </div>
-            <div className="flex-1">
-              <label className="mb-1 block text-xs text-text-muted">우선순위</label>
-              <div className="flex gap-1">
-                {PRIORITIES.map((p) => (
-                  <button
-                    key={p.value}
-                    type="button"
-                    onClick={() => setPriority(p.value)}
-                    className={cn(
-                      "flex-1 rounded-md border px-2 py-1.5 text-xs font-medium transition-colors",
-                      priority === p.value
-                        ? cn(p.className, "bg-surface-accent")
-                        : "border-border text-text-muted hover:bg-surface-accent/50"
-                    )}
-                  >
-                    {p.label}
-                  </button>
-                ))}
-              </div>
             </div>
           </div>
           <div>

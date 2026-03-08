@@ -354,7 +354,7 @@
     text-decoration: line-through;
     color: var(--text-muted);
   }
-  .todo-priority {
+  .todo-meta-badge {
     font-size: 10px;
     padding: 1px 6px;
     border-radius: 4px;
@@ -362,9 +362,9 @@
     margin-left: auto;
     flex-shrink: 0;
   }
-  .todo-priority.high { background: rgba(239,68,68,0.12); color: #dc2626; }
-  .todo-priority.medium { background: rgba(245,158,11,0.12); color: #d97706; }
-  .todo-priority.low { background: rgba(34,197,94,0.12); color: #16a34a; }
+  .todo-meta-badge.overdue { background: rgba(239,68,68,0.12); color: #dc2626; }
+  .todo-meta-badge.today { background: rgba(245,158,11,0.12); color: #d97706; }
+  .todo-meta-badge.scheduled { background: rgba(34,197,94,0.12); color: #16a34a; }
 
   /* Badge */
   .sync-badge {
@@ -546,32 +546,32 @@
       <div class="todo-item">
         <div class="todo-check"></div>
         <div class="todo-text">API 엔드포인트 설계서 작성<span class="due">Due today</span></div>
-        <span class="todo-priority high">High</span>
+        <span class="todo-meta-badge overdue">Overdue</span>
       </div>
       <div class="todo-item">
         <div class="todo-check"></div>
         <div class="todo-text">캘린더 동기화 테스트<span class="due">Due tomorrow</span></div>
-        <span class="todo-priority medium">Mid</span>
+        <span class="todo-meta-badge today">Today</span>
       </div>
       <div class="todo-item">
         <div class="todo-check checked"></div>
         <div class="todo-text done">디자인 토큰 정리<span class="due">Completed</span></div>
-        <span class="todo-priority low">Low</span>
+        <span class="todo-meta-badge scheduled">Scheduled</span>
       </div>
       <div class="todo-item">
         <div class="todo-check"></div>
         <div class="todo-text">OAuth 리프레시 로직 구현<span class="due overdue">Overdue: Feb 22</span></div>
-        <span class="todo-priority high">High</span>
+        <span class="todo-meta-badge overdue">Overdue</span>
       </div>
       <div class="todo-item">
         <div class="todo-check"></div>
         <div class="todo-text">파일 업로드 청크 처리<span class="due">Due Feb 28</span></div>
-        <span class="todo-priority medium">Mid</span>
+        <span class="todo-meta-badge today">Today</span>
       </div>
       <div class="todo-item">
         <div class="todo-check checked"></div>
         <div class="todo-text done">DB 스키마 초안 작성<span class="due">Completed</span></div>
-        <span class="todo-priority low">Low</span>
+        <span class="todo-meta-badge scheduled">Scheduled</span>
       </div>
     </div>
   </div>

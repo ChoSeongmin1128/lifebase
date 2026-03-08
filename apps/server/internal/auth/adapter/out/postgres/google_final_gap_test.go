@@ -32,7 +32,19 @@ func (r *fakeGoogleSyncRow) Scan(dest ...any) error {
 			dv.Elem().Set(reflect.Zero(dv.Elem().Type()))
 			continue
 		}
-		dv.Elem().Set(reflect.ValueOf(r.values[i]))
+		src := reflect.ValueOf(r.values[i])
+		target := dv.Elem()
+		if src.Type().AssignableTo(target.Type()) {
+			target.Set(src)
+			continue
+		}
+		if target.Kind() == reflect.Ptr && src.Type().AssignableTo(target.Type().Elem()) {
+			ptr := reflect.New(target.Type().Elem())
+			ptr.Elem().Set(src)
+			target.Set(ptr)
+			continue
+		}
+		target.Set(src.Convert(target.Type()))
 	}
 	return nil
 }
@@ -58,7 +70,7 @@ func TestGooglePushProcessorFinalBranches(t *testing.T) {
 			t.Fatalf("insert outbox: %v", err)
 		}
 
-		googlePushTryAdvisoryLockFn = func(context.Context, *pgxpool.Conn, int64) (bool, error) {
+		googlePushTryAdvisoryLockFn = func(context.Context, googlePushConn, int64) (bool, error) {
 			return false, errors.New("lock scan fail")
 		}
 
@@ -76,7 +88,7 @@ func TestGooglePushProcessorFinalBranches(t *testing.T) {
 		db := dbtest.Open(t)
 		dbtest.Reset(t, db)
 
-		googlePushTryAdvisoryLockFn = func(context.Context, *pgxpool.Conn, int64) (bool, error) {
+		googlePushTryAdvisoryLockFn = func(context.Context, googlePushConn, int64) (bool, error) {
 			return true, nil
 		}
 		googlePushLoadAccountTokenFn = func(*googlePushProcessor, context.Context, string, string) (*accountToken, error) {
@@ -211,7 +223,7 @@ func TestGoogleSyncCoordinatorFinalBranches(t *testing.T) {
 		db := dbtest.Open(t)
 		dbtest.Reset(t, db)
 
-		coordinatorTryAdvisoryLockFn = func(context.Context, *pgxpool.Conn, int64) (bool, error) {
+		coordinatorTryAdvisoryLockFn = func(context.Context, googleSyncConn, int64) (bool, error) {
 			return false, errors.New("lock scan failed")
 		}
 
@@ -432,7 +444,7 @@ func TestGoogleAccountSyncerFinalBranches(t *testing.T) {
 		queryGoogleSyncRowsFn = func(context.Context, *pgxpool.Pool, string, ...any) (pgx.Rows, error) {
 			return &fakePushRows{data: [][]any{{"cal-1", "g-cal-1", "acc-1", "at", "rt", (*time.Time)(nil)}}}, nil
 		}
-		googleSyncTryAdvisoryLockFn = func(context.Context, *pgxpool.Conn, int64) (bool, error) {
+		googleSyncTryAdvisoryLockFn = func(context.Context, googleSyncConn, int64) (bool, error) {
 			return false, errors.New("backfill lock scan failed")
 		}
 
@@ -453,7 +465,7 @@ func TestGoogleAccountSyncerFinalBranches(t *testing.T) {
 		queryGoogleSyncRowsFn = func(context.Context, *pgxpool.Pool, string, ...any) (pgx.Rows, error) {
 			return &fakePushRows{data: [][]any{{"cal-1", "g-cal-1", "acc-1", "at", "rt", (*time.Time)(nil)}}}, nil
 		}
-		googleSyncTryAdvisoryLockFn = func(context.Context, *pgxpool.Conn, int64) (bool, error) {
+		googleSyncTryAdvisoryLockFn = func(context.Context, googleSyncConn, int64) (bool, error) {
 			return true, nil
 		}
 		execGoogleSyncFn = func(ctx context.Context, db *pgxpool.Pool, sql string, args ...any) (pgconn.CommandTag, error) {
@@ -487,7 +499,7 @@ func TestGoogleAccountSyncerFinalBranches(t *testing.T) {
 		queryGoogleSyncRowsFn = func(context.Context, *pgxpool.Pool, string, ...any) (pgx.Rows, error) {
 			return &fakePushRows{data: [][]any{{"cal-1", "g-cal-1", "acc-1", "at", "rt", (*time.Time)(nil)}}}, nil
 		}
-		googleSyncTryAdvisoryLockFn = func(context.Context, *pgxpool.Conn, int64) (bool, error) {
+		googleSyncTryAdvisoryLockFn = func(context.Context, googleSyncConn, int64) (bool, error) {
 			return true, nil
 		}
 		execGoogleSyncFn = prevExec

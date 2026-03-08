@@ -730,21 +730,17 @@ var activeTodoFilters = [];
 var todoCollapsedParents = {};
 var todoDoneSectionOpen = false;
 
-var priorityOrder = { urgent: 0, high: 1, normal: 2, low: 3 };
-
 /* SVG icons for Todo */
 var todoIcons = {
   grip: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="5" r="1"/><circle cx="9" cy="12" r="1"/><circle cx="9" cy="19" r="1"/><circle cx="15" cy="5" r="1"/><circle cx="15" cy="12" r="1"/><circle cx="15" cy="19" r="1"/></svg>',
   chevron: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>',
-  flag: '<svg viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" y1="22" x2="4" y2="15"/></svg>',
   pin: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 17v5"/><path d="M9 2h6l-1 7h4l-5.3 8H11.3L6 9h4z"/></svg>',
   more: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="5" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="12" cy="19" r="1"/></svg>',
   check: '<svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>'
 };
 
 function todoSortComparator(a, b) {
-  if (activeTodoSort === 'due') return a.date.localeCompare(b.date) || priorityOrder[a.priority] - priorityOrder[b.priority];
-  if (activeTodoSort === 'priority') return (priorityOrder[a.priority] - priorityOrder[b.priority]) || a.date.localeCompare(b.date);
+  if (activeTodoSort === 'due') return a.date.localeCompare(b.date) || a.created.localeCompare(b.created);
   if (activeTodoSort === 'created') return a.created.localeCompare(b.created);
   return a.sort_order - b.sort_order;
 }
@@ -792,9 +788,6 @@ function buildTodoRowHTML(todo, isChild) {
   html += '<span class="check' + (todo.done ? ' done' : '') + '" data-todo-id="' + todo.id + '">';
   if (todo.done) html += todoIcons.check;
   html += '</span>';
-
-  var prioClass = todo.priority || 'normal';
-  html += '<span class="todo-priority-flag ' + prioClass + '">' + todoIcons.flag + '</span>';
 
   html += '<div class="todo-content">';
   html += '<span class="task-title' + (todo.done ? ' done' : '') + '">' + todo.title + '</span>';

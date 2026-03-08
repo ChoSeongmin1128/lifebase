@@ -170,7 +170,7 @@ func (m *mockTodoRepo) NextSortOrder(_ context.Context, userID, listID string, p
 
 // Tests
 
-func TestCreateTodo_DefaultPriority(t *testing.T) {
+func TestCreateTodo_CreatesWithoutLegacyPriorityField(t *testing.T) {
 	listRepo := newMockListRepo()
 	todoRepo := newMockTodoRepo()
 	uc := NewTodoUseCase(listRepo, todoRepo, nil)
@@ -185,8 +185,8 @@ func TestCreateTodo_DefaultPriority(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if todo.Priority != "normal" {
-		t.Errorf("expected priority 'normal', got '%s'", todo.Priority)
+	if todo.Title != "Test Todo" {
+		t.Errorf("expected created todo title, got '%s'", todo.Title)
 	}
 }
 

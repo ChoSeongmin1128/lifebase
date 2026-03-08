@@ -75,7 +75,6 @@ func TestTodoListAndTodoRepoIntegration(t *testing.T) {
 		Notes:     "N",
 		DueDate:   strPtr("2026-03-07"),
 		DueTime:   strPtr("09:30"),
-		Priority:  "high",
 		IsDone:    false,
 		IsPinned:  true,
 		SortOrder: 1,
@@ -92,7 +91,6 @@ func TestTodoListAndTodoRepoIntegration(t *testing.T) {
 		ParentID:  &rootTodo.ID,
 		Title:     "Child",
 		Notes:     "",
-		Priority:  "normal",
 		IsDone:    false,
 		IsPinned:  false,
 		SortOrder: 2,
@@ -144,7 +142,6 @@ func TestTodoListAndTodoRepoIntegration(t *testing.T) {
 
 	rootTodo.IsDone = true
 	rootTodo.DoneAt = &now
-	rootTodo.Priority = "urgent"
 	rootTodo.Title = "Updated"
 	rootTodo.ParentID = nil
 	rootTodo.UpdatedAt = now.Add(time.Minute)
@@ -237,8 +234,8 @@ func TestTodoPushOutboxRepoIntegration(t *testing.T) {
 		t.Fatalf("insert list: %v", err)
 	}
 	_, err = db.Exec(ctx,
-		`INSERT INTO todos (id, list_id, user_id, title, priority, is_done, is_pinned, sort_order, created_at, updated_at)
-		 VALUES ('todo-1','list-1',$2,'T','normal',false,false,0,$1,$1)`,
+		`INSERT INTO todos (id, list_id, user_id, title, is_done, is_pinned, sort_order, created_at, updated_at)
+		 VALUES ('todo-1','list-1',$2,'T',false,false,0,$1,$1)`,
 		now, userID,
 	)
 	if err != nil {

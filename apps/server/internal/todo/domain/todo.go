@@ -28,7 +28,6 @@ type Todo struct {
 	Notes     string     `json:"notes"`
 	DueDate   *string    `json:"due_date"`
 	DueTime   *string    `json:"due_time"`
-	Priority  string     `json:"priority"`
 	IsDone    bool       `json:"is_done"`
 	IsPinned  bool       `json:"is_pinned"`
 	StarredAt *time.Time `json:"starred_at,omitempty"`

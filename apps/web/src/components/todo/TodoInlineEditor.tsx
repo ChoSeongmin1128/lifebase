@@ -3,12 +3,10 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   CalendarDays,
-  Check,
   ChevronDown,
   ChevronLeft,
   ChevronRight,
   Clock3,
-  Flag,
   X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -27,7 +25,6 @@ interface TodoItem {
   notes: string;
   due_date: string | null;
   due_time: string | null;
-  priority: string;
   is_done: boolean;
   is_pinned: boolean;
   starred_at?: string | null;
@@ -43,29 +40,6 @@ interface TodoInlineEditorProps {
   className?: string;
   onUpdate: (updates: Record<string, unknown>) => Promise<void>;
 }
-
-const PRIORITY_OPTIONS = [
-  {
-    value: "urgent",
-    label: "긴급",
-    chipClassName: "border-error/30 bg-error/8 text-error",
-  },
-  {
-    value: "high",
-    label: "높음",
-    chipClassName: "border-caution/30 bg-caution/8 text-caution",
-  },
-  {
-    value: "normal",
-    label: "보통",
-    chipClassName: "border-border/80 bg-background text-text-secondary",
-  },
-  {
-    value: "low",
-    label: "낮음",
-    chipClassName: "border-border/80 bg-background text-text-muted",
-  },
-] as const;
 
 const WEEKDAY_LABELS = ["일", "월", "화", "수", "목", "금", "토"] as const;
 const TIME_OPTIONS = Array.from({ length: 24 * 2 }, (_, index) => {
@@ -164,34 +138,6 @@ function isNestedRadixLayer(target: EventTarget | null) {
 
 function isTodoEditLayer(target: EventTarget | null) {
   return target instanceof HTMLElement && Boolean(target.closest('[data-todo-edit-layer="true"]'));
-}
-
-function OptionRow({
-  selected,
-  label,
-  tone,
-  onClick,
-}: {
-  selected: boolean;
-  label: string;
-  tone?: "urgent" | "high";
-  onClick: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      className={cn(
-        "flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-sm transition-colors hover:bg-surface-accent",
-        tone === "urgent" && "text-error",
-        tone === "high" && "text-caution",
-        !tone && "text-text-primary"
-      )}
-      onClick={onClick}
-    >
-      <span>{label}</span>
-      <Check size={14} className={cn("text-primary transition-opacity", selected ? "opacity-100" : "opacity-0")} />
-    </button>
-  );
 }
 
 function ChipButton({
@@ -423,13 +369,11 @@ export function TodoInlineEditor({
 }: TodoInlineEditorProps) {
   const [dueDate, setDueDate] = useState(() => todo.due_date || "");
   const [dueTime, setDueTime] = useState(() => todo.due_time || "");
-  const [priority, setPriority] = useState(() => todo.priority);
   const [notes, setNotes] = useState(() => todo.notes);
   const [dateOpen, setDateOpen] = useState(false);
   const [timeOpen, setTimeOpen] = useState(false);
-  const [priorityOpen, setPriorityOpen] = useState(false);
 
-  const overlayOpen = dateOpen || timeOpen || priorityOpen;
+  const overlayOpen = dateOpen || timeOpen;
 
   useEffect(() => {
     if (overlayOpen) {
@@ -467,15 +411,6 @@ export function TodoInlineEditor({
       due_time: nextTime || "",
     });
   };
-
-  const applyPriority = (nextPriority: string) => {
-    setPriority(nextPriority);
-    void onUpdate({ priority: nextPriority });
-    setPriorityOpen(false);
-  };
-
-  const selectedPriority =
-    PRIORITY_OPTIONS.find((option) => option.value === priority) ?? PRIORITY_OPTIONS[2];
 
   return (
     <div className={cn("mt-3 space-y-3 rounded-2xl border border-border/70 bg-background/90 p-3 shadow-sm", className)}>
@@ -559,36 +494,6 @@ export function TodoInlineEditor({
               onChange={applyDueTime}
               onClose={() => setTimeOpen(false)}
             />
-          </PopoverContent>
-        </Popover>
-
-        <Popover open={priorityOpen} onOpenChange={setPriorityOpen}>
-          <PopoverTrigger asChild>
-            <button type="button" onClick={(event) => event.stopPropagation()}>
-              <ChipButton
-                icon={<Flag size={14} className="text-text-muted" />}
-                label={selectedPriority.label}
-                className={selectedPriority.chipClassName}
-              />
-            </button>
-          </PopoverTrigger>
-          <PopoverContent
-            align="start"
-            className="w-48 rounded-2xl border-border/80 p-2"
-            data-todo-edit-layer="true"
-            onPointerDown={(event) => event.stopPropagation()}
-            onInteractOutside={(event) => {
-              if (isTodoEditLayer(event.target) || isNestedRadixLayer(event.target)) {
-                event.preventDefault();
-              }
-            }}
-          >
-            <div className="space-y-1">
-              <OptionRow selected={priority === "urgent"} label="긴급" tone="urgent" onClick={() => applyPriority("urgent")} />
-              <OptionRow selected={priority === "high"} label="높음" tone="high" onClick={() => applyPriority("high")} />
-              <OptionRow selected={priority === "normal"} label="보통" onClick={() => applyPriority("normal")} />
-              <OptionRow selected={priority === "low"} label="낮음" onClick={() => applyPriority("low")} />
-            </div>
           </PopoverContent>
         </Popover>
 

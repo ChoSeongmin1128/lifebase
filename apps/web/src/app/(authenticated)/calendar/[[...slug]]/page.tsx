@@ -237,14 +237,6 @@ function formatTimeRangeLabel(startISO: string, endISO: string): string {
   return `${formatTimeLabel(startISO)} - ${formatTimeLabel(endISO)}`;
 }
 
-function getTodoPriorityRank(priority: string): number {
-  if (priority === "urgent") return 0;
-  if (priority === "high") return 1;
-  if (priority === "normal") return 2;
-  if (priority === "low") return 3;
-  return 4;
-}
-
 function parseWeekHourRange(settings: Record<string, string>): { start: number; end: number } {
   const rawStart = Number.parseInt(settings.week_start_hour || "8", 10);
   const rawEnd = Number.parseInt(settings.week_end_hour || "22", 10);
@@ -655,12 +647,12 @@ export default function CalendarPage() {
         title: todo.title || "(제목 없음)",
         due_date: todo.due_date || null,
         due_time: todo.due_time || null,
-        priority: todo.priority || "normal",
         is_done: todo.is_done,
       }))
       .sort((a, b) => {
-        const rankDiff = getTodoPriorityRank(a.priority) - getTodoPriorityRank(b.priority);
-        if (rankDiff !== 0) return rankDiff;
+        const timeA = a.due_time || "99:99";
+        const timeB = b.due_time || "99:99";
+        if (timeA !== timeB) return timeA.localeCompare(timeB);
         return (a.title || "").localeCompare(b.title || "");
       });
 
@@ -728,7 +720,6 @@ export default function CalendarPage() {
             title: todo.title || "(제목 없음)",
             due_date: todo.due_date || null,
             due_time: todo.due_time || null,
-            priority: todo.priority || "normal",
             is_done: todo.is_done,
           });
           byDate.set(dueDate, prev);
@@ -736,8 +727,9 @@ export default function CalendarPage() {
 
         for (const [dateKey, items] of byDate.entries()) {
           items.sort((a, b) => {
-            const rankDiff = getTodoPriorityRank(a.priority) - getTodoPriorityRank(b.priority);
-            if (rankDiff !== 0) return rankDiff;
+            const timeA = a.due_time || "99:99";
+            const timeB = b.due_time || "99:99";
+            if (timeA !== timeB) return timeA.localeCompare(timeB);
             return (a.title || "").localeCompare(b.title || "");
           });
           byDate.set(dateKey, items);
@@ -1708,8 +1700,8 @@ function YearCompactDayPanel({
                                 {todo.title}
                               </p>
                               <p className="text-[11px] text-text-muted">
-                                우선순위: {todo.priority}{todo.is_done ? " · 완료" : ""}
-                                {dueLabel ? ` · 기한 ${dueLabel}` : ""}
+                                {dueLabel ? `기한 ${dueLabel}` : "기한 없음"}
+                                {todo.is_done ? " · 완료" : ""}
                               </p>
                             </div>
                           );

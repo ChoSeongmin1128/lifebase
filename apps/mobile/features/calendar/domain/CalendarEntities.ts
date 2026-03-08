@@ -50,7 +50,6 @@ export type DaySummaryTodo = {
   due: string | null;
   due_date?: string | null;
   due_time?: string | null;
-  priority: string;
   is_done: boolean;
 };
 

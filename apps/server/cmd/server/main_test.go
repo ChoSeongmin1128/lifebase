@@ -629,3 +629,74 @@ func TestMain_ShutdownError_Exits(t *testing.T) {
 		t.Fatalf("expected exit code 1 from shutdown error, got %d", atomic.LoadInt32(&exitCode))
 	}
 }
+
+func TestMain_BootstrapPathWithoutRealDB(t *testing.T) {
+	oldLoadConfig := loadConfig
+	oldNewDBPool := newDBPool
+	oldPing := pingDBPool
+	oldClose := closeDBPool
+	oldListen := listenAndServeHTTPServer
+	oldShutdown := shutdownHTTPServer
+	oldExit := exitProcess
+	t.Cleanup(func() {
+		loadConfig = oldLoadConfig
+		newDBPool = oldNewDBPool
+		pingDBPool = oldPing
+		closeDBPool = oldClose
+		listenAndServeHTTPServer = oldListen
+		shutdownHTTPServer = oldShutdown
+		exitProcess = oldExit
+	})
+
+	loadConfig = func() (*config.Config, error) {
+		return &config.Config{
+			Server: config.ServerConfig{
+				Port:      0,
+				Env:       "test",
+				WebOrigin: "http://localhost:39001",
+			},
+			Database: config.DatabaseConfig{URL: "postgres://stub"},
+			Redis:    config.RedisConfig{URL: ""},
+			Google:   config.GoogleConfig{},
+			PublicData: config.PublicDataConfig{
+				HolidayEndpoint: "https://example.com",
+			},
+			JWT: config.JWTConfig{
+				Secret:        "test-secret",
+				AccessExpiry:  15 * time.Minute,
+				RefreshExpiry: 24 * time.Hour,
+			},
+			Storage: config.StorageConfig{
+				DataPath:  t.TempDir(),
+				ThumbPath: t.TempDir(),
+			},
+			StateHMACKey: "test-hmac",
+		}, nil
+	}
+
+	newDBPool = func(context.Context, string) (*pgxpool.Pool, error) {
+		return &pgxpool.Pool{}, nil
+	}
+	pingDBPool = func(context.Context, *pgxpool.Pool) error { return nil }
+	closeDBPool = func(*pgxpool.Pool) {}
+	listenAndServeHTTPServer = func(*http.Server) error { return http.ErrServerClosed }
+	shutdownHTTPServer = func(*http.Server, context.Context) error { return nil }
+	exitProcess = func(int) {}
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		main()
+	}()
+
+	time.Sleep(50 * time.Millisecond)
+	if err := syscall.Kill(os.Getpid(), syscall.SIGINT); err != nil {
+		t.Fatalf("send SIGINT: %v", err)
+	}
+
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("main did not stop in bootstrap path")
+	}
+}

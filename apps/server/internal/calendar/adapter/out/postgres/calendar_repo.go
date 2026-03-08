@@ -15,6 +15,11 @@ type calendarRepo struct {
 	db *pgxpool.Pool
 }
 
+var scanCalendarRowsFn = scanCalendarRows
+var queryCalendarRowsFn = func(ctx context.Context, db *pgxpool.Pool, sql string, args ...any) (pgx.Rows, error) {
+	return db.Query(ctx, sql, args...)
+}
+
 func NewCalendarRepo(db *pgxpool.Pool) *calendarRepo {
 	return &calendarRepo{db: db}
 }
@@ -73,14 +78,14 @@ func (r *calendarRepo) FindByID(ctx context.Context, userID, id string) (*domain
 }
 
 func (r *calendarRepo) ListByUser(ctx context.Context, userID string) ([]*domain.Calendar, error) {
-	rows, err := r.db.Query(ctx,
+	rows, err := queryCalendarRowsFn(ctx, r.db,
 		`SELECT id, user_id, google_id, google_account_id, name, kind, color_id, is_primary, is_visible, is_readonly, is_special, sync_token, synced_start, synced_end, created_at, updated_at
 		 FROM calendars WHERE user_id = $1 ORDER BY is_primary DESC, name ASC`, userID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	return scanCalendarRows(rows)
+	return scanCalendarRowsFn(rows)
 }
 
 func (r *calendarRepo) Update(ctx context.Context, cal *domain.Calendar) error {

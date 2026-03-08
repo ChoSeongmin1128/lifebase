@@ -37,7 +37,7 @@ var queryGoogleSyncRowFn = func(ctx context.Context, db *pgxpool.Pool, sql strin
 	return db.QueryRow(ctx, sql, args...)
 }
 
-var googleSyncTryAdvisoryLockFn = func(ctx context.Context, conn *pgxpool.Conn, lockKey int64) (bool, error) {
+var googleSyncTryAdvisoryLockFn = func(ctx context.Context, conn googleSyncConn, lockKey int64) (bool, error) {
 	var locked bool
 	if err := conn.QueryRow(ctx, `SELECT pg_try_advisory_lock($1)`, lockKey).Scan(&locked); err != nil {
 		return false, err
@@ -93,7 +93,7 @@ func (s *googleAccountSyncer) syncCalendarsAndEvents(
 	token portout.OAuthToken,
 	now time.Time,
 ) error {
-	_, _ = s.db.Exec(ctx,
+	_, _ = execGoogleSyncFn(ctx, s.db,
 		`DELETE FROM events
 		  WHERE user_id = $1
 		    AND calendar_id IN (
@@ -106,7 +106,7 @@ func (s *googleAccountSyncer) syncCalendarsAndEvents(
 		userID,
 		accountID,
 	)
-	_, _ = s.db.Exec(ctx,
+	_, _ = execGoogleSyncFn(ctx, s.db,
 		`DELETE FROM calendars
 		  WHERE user_id = $1
 		    AND google_account_id = $2
@@ -166,8 +166,9 @@ func (s *googleAccountSyncer) syncCalendarsAndEvents(
 	end := now.AddDate(2, 0, 0)
 	for googleCalendarID, localCalendarID := range localCalendarIDByGoogleID {
 		var syncToken *string
-		_ = s.db.QueryRow(
+		_ = queryGoogleSyncRowFn(
 			ctx,
+			s.db,
 			`SELECT sync_token FROM calendars WHERE id = $1 AND user_id = $2`,
 			localCalendarID,
 			userID,
@@ -218,7 +219,7 @@ func (s *googleAccountSyncer) syncCalendarsAndEvents(
 		}
 
 		if nextSyncToken != "" {
-			_, _ = s.db.Exec(ctx,
+			_, _ = execGoogleSyncFn(ctx, s.db,
 				`UPDATE calendars SET sync_token = $3, updated_at = $4 WHERE id = $1 AND user_id = $2`,
 				localCalendarID,
 				userID,
@@ -305,7 +306,7 @@ func (s *googleAccountSyncer) BackfillEvents(
 	now := time.Now()
 	for accountID, calendars := range calsByAccount {
 		lockKey := advisoryLockKey(fmt.Sprintf("%s:%d:%d", accountID, start.Unix(), end.Unix()))
-		lockConn, acquireErr := s.db.Acquire(ctx)
+		lockConn, acquireErr := acquireGoogleSyncConnFn(ctx, s.db)
 		if acquireErr != nil {
 			return nil, acquireErr
 		}
@@ -384,7 +385,7 @@ func (s *googleAccountSyncer) applyOAuthEvent(
 	now time.Time,
 ) (updated bool, deleted bool, err error) {
 	if event.Status == "cancelled" || event.StartTime == nil || event.EndTime == nil {
-		_, _ = s.db.Exec(ctx,
+		_, _ = execGoogleSyncFn(ctx, s.db,
 			`UPDATE events
 			 SET deleted_at = $4, updated_at = $4
 			 WHERE user_id = $1 AND calendar_id = $2 AND google_id = $3`,
@@ -435,7 +436,7 @@ func (s *googleAccountSyncer) expandCalendarCoverage(
 	userID, calendarID string,
 	start, end, now time.Time,
 ) error {
-	_, _ = s.db.Exec(ctx,
+	_, _ = execGoogleSyncFn(ctx, s.db,
 		`UPDATE calendars
 		    SET synced_start = CASE
 		                         WHEN synced_start IS NULL THEN $3
@@ -456,7 +457,7 @@ func (s *googleAccountSyncer) expandCalendarCoverage(
 		now,
 	)
 
-	_, _ = s.db.Exec(ctx,
+	_, _ = execGoogleSyncFn(ctx, s.db,
 		`INSERT INTO calendar_backfill_state (user_id, calendar_id, covered_start, covered_end, updated_at)
 		 VALUES ($1, $2, $3, $4, $5)
 		 ON CONFLICT (user_id, calendar_id)
@@ -579,7 +580,7 @@ func (s *googleAccountSyncer) syncTaskListsAndTodos(
 
 		for _, task := range allTasks {
 			if task.IsDeleted {
-				_, _ = s.db.Exec(ctx,
+				_, _ = execGoogleSyncFn(ctx, s.db,
 					`UPDATE todos
 					 SET deleted_at = $4, updated_at = $4
 					 WHERE user_id = $1 AND list_id = $2 AND google_id = $3`,
@@ -621,9 +622,9 @@ func (s *googleAccountSyncer) syncTaskListsAndTodos(
 
 			_, err = execGoogleSyncFn(ctx, s.db,
 				`INSERT INTO todos (
-				   id, list_id, user_id, parent_id, google_id, title, notes, due_date, due_time, priority, is_done, is_pinned, sort_order, done_at, created_at, updated_at
+				   id, list_id, user_id, parent_id, google_id, title, notes, due_date, due_time, is_done, is_pinned, sort_order, done_at, created_at, updated_at
 				 ) VALUES (
-				   $1, $2, $3, NULL, $4, $5, $6, $7, NULL, 'normal', $8, FALSE, 0, $9, $10, $11
+				   $1, $2, $3, NULL, $4, $5, $6, $7, NULL, $8, FALSE, 0, $9, $10, $11
 				 )`,
 				uuid.New().String(),
 				localListID,
@@ -640,6 +641,14 @@ func (s *googleAccountSyncer) syncTaskListsAndTodos(
 			if err != nil {
 				return fmt.Errorf("insert todo: %w", err)
 			}
+		}
+
+		// Inserts above create local ids for brand-new Google tasks. Refresh the
+		// map before hierarchy normalization so children can resolve to the local
+		// id of a newly inserted root parent in the same sync pass.
+		localTodoIDByGoogleID, err = s.loadLocalTodoIDsByGoogleID(ctx, userID, localListID)
+		if err != nil {
+			return err
 		}
 
 		sortOrderByParentKey := map[string]int{}
@@ -687,7 +696,7 @@ func (s *googleAccountSyncer) syncTaskListsAndTodos(
 		// Some Google Task deletions are not always returned as tombstones.
 		// For full-list polling, treat locally cached items that were not seen as deleted.
 		if len(seenGoogleIDs) == 0 {
-			_, _ = s.db.Exec(ctx,
+			_, _ = execGoogleSyncFn(ctx, s.db,
 				`UPDATE todos
 				 SET deleted_at = $3, updated_at = $3
 				 WHERE user_id = $1 AND list_id = $2
@@ -698,7 +707,7 @@ func (s *googleAccountSyncer) syncTaskListsAndTodos(
 				now,
 			)
 		} else {
-			_, _ = s.db.Exec(ctx,
+			_, _ = execGoogleSyncFn(ctx, s.db,
 				`UPDATE todos
 				 SET deleted_at = $4, updated_at = $4
 				 WHERE user_id = $1 AND list_id = $2
@@ -713,7 +722,7 @@ func (s *googleAccountSyncer) syncTaskListsAndTodos(
 		}
 
 		if doneRetentionCutoff != nil {
-			_, _ = s.db.Exec(ctx,
+			_, _ = execGoogleSyncFn(ctx, s.db,
 				`UPDATE todos
 				 SET deleted_at = $4, updated_at = $4
 				 WHERE user_id = $1 AND list_id = $2
@@ -864,8 +873,9 @@ func (s *googleAccountSyncer) resolveTodoDoneRetentionCutoff(
 	const defaultPeriod = "1y"
 
 	var raw string
-	err := s.db.QueryRow(
+	err := queryGoogleSyncRowFn(
 		ctx,
+		s.db,
 		`SELECT value FROM user_settings WHERE user_id = $1 AND key = 'todo_done_retention_period'`,
 		userID,
 	).Scan(&raw)

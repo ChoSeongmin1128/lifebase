@@ -128,6 +128,45 @@ func TestOpenWrapperAndResetWrapperBranches(t *testing.T) {
 	}
 }
 
+func TestOpenAndResetWrappersWithInjectedHooks(t *testing.T) {
+	prevOpenPool, prevApply, prevReset := openPoolFn, applyMigrationsFn, resetTablesFn
+	prevOnce, prevErr := migrateOnce, migrateErr
+	migrateOnce = sync.Once{}
+	migrateErr = nil
+	t.Cleanup(func() {
+		openPoolFn = prevOpenPool
+		applyMigrationsFn = prevApply
+		resetTablesFn = prevReset
+		migrateOnce = prevOnce
+		migrateErr = prevErr
+	})
+
+	openPoolFn = func(context.Context, string) (*pgxpool.Pool, bool, error) {
+		return &pgxpool.Pool{}, false, nil
+	}
+	applyMigrationsFn = func(context.Context, *pgxpool.Pool) error { return nil }
+
+	ft := &fakeT{}
+	db := Open(ft)
+	if db == nil || ft.fatal != "" || ft.skipped {
+		t.Fatalf("expected Open success via injected hooks, got db=%v fatal=%q skipped=%v", db, ft.fatal, ft.skipped)
+	}
+
+	resetTablesFn = func(context.Context, *pgxpool.Pool) error { return nil }
+	ft = &fakeT{}
+	Reset(ft, nil)
+	if ft.fatal != "" {
+		t.Fatalf("expected Reset success via injected hooks, got fatal=%q", ft.fatal)
+	}
+
+	resetTablesFn = func(context.Context, *pgxpool.Pool) error { return errors.New("reset boom") }
+	ft = &fakeT{}
+	Reset(ft, nil)
+	if !strings.Contains(ft.fatal, "reset boom") {
+		t.Fatalf("expected Reset fatal via injected hooks, got %q", ft.fatal)
+	}
+}
+
 func TestOpenWrapperMigrationFailureBranch(t *testing.T) {
 	dsn := strings.TrimSpace(os.Getenv("LIFEBASE_TEST_DATABASE_URL"))
 	if dsn == "" {
@@ -267,6 +306,97 @@ func TestResetTablesRowIterationBranches(t *testing.T) {
 		}
 		if err := resetTables(context.Background(), nil); err == nil || !strings.Contains(err.Error(), "truncate tables") {
 			t.Fatalf("expected truncate tables error, got %v", err)
+		}
+	})
+}
+
+func TestResetWrapperUnitBranches(t *testing.T) {
+	prevQuery, prevExec := queryTablesFn, execSQLFn
+	t.Cleanup(func() {
+		queryTablesFn = prevQuery
+		execSQLFn = prevExec
+	})
+
+	t.Run("success", func(t *testing.T) {
+		queryTablesFn = func(context.Context, *pgxpool.Pool) (pgx.Rows, error) {
+			return &fakeRows{nextResults: []bool{false}}, nil
+		}
+		execSQLFn = func(context.Context, *pgxpool.Pool, string) error { return nil }
+
+		ft := &fakeT{}
+		Reset(ft, nil)
+		if ft.fatal != "" {
+			t.Fatalf("expected no fatal on Reset success path, got %q", ft.fatal)
+		}
+	})
+
+	t.Run("error", func(t *testing.T) {
+		queryTablesFn = func(context.Context, *pgxpool.Pool) (pgx.Rows, error) {
+			return nil, errors.New("list fail")
+		}
+
+		ft := &fakeT{}
+		Reset(ft, nil)
+		if ft.fatal == "" {
+			t.Fatal("expected fatal on Reset error path")
+		}
+	})
+}
+
+func TestApplyMigrationsUnitBranches(t *testing.T) {
+	prevUsersExists := usersTableExistsFn
+	prevReadDir := readDirFn
+	prevReadFile := readFileFn
+	prevCaller := callerFn
+	prevExec := execSQLFn
+	t.Cleanup(func() {
+		usersTableExistsFn = prevUsersExists
+		readDirFn = prevReadDir
+		readFileFn = prevReadFile
+		callerFn = prevCaller
+		execSQLFn = prevExec
+	})
+
+	t.Run("users_exists_short_circuit", func(t *testing.T) {
+		usersTableExistsFn = func(context.Context, *pgxpool.Pool) (bool, error) { return true, nil }
+		if err := applyMigrations(context.Background(), nil); err != nil {
+			t.Fatalf("expected short-circuit success, got %v", err)
+		}
+	})
+
+	t.Run("users_exists_query_error", func(t *testing.T) {
+		want := errors.New("users lookup fail")
+		usersTableExistsFn = func(context.Context, *pgxpool.Pool) (bool, error) { return false, want }
+		if err := applyMigrations(context.Background(), nil); !errors.Is(err, want) {
+			t.Fatalf("expected users lookup error, got %v", err)
+		}
+	})
+
+	t.Run("empty_up_sql_file", func(t *testing.T) {
+		usersTableExistsFn = func(context.Context, *pgxpool.Pool) (bool, error) { return false, nil }
+		tempDir := t.TempDir()
+		migrationsDir := filepath.Join(tempDir, "migrations")
+		if err := os.MkdirAll(migrationsDir, 0o755); err != nil {
+			t.Fatalf("mkdir migrations: %v", err)
+		}
+		filePath := filepath.Join(migrationsDir, "001_empty_up.sql")
+		if err := os.WriteFile(filePath, []byte("-- +goose Up\n\n-- +goose Down\nSELECT 1;"), 0o644); err != nil {
+			t.Fatalf("write migration: %v", err)
+		}
+
+		callerFn = func(skip int) (uintptr, string, int, bool) {
+			return 0, filepath.Join(tempDir, "internal", "testutil", "dbtest", "dbtest.go"), 0, true
+		}
+		execCalled := false
+		execSQLFn = func(context.Context, *pgxpool.Pool, string) error {
+			execCalled = true
+			return nil
+		}
+		if err := applyMigrations(context.Background(), nil); err != nil {
+			t.Fatalf("expected empty-up migration success, got %v", err)
+		}
+		if execCalled {
+			t.Fatal("expected no exec for empty up migration")
 		}
 	})
 }
@@ -571,6 +701,82 @@ func TestApplyMigrationsErrorBranches(t *testing.T) {
 		if err := applyMigrations(ctx, tempPool); err != nil {
 			t.Fatalf("expected directory and non-sql files to be skipped, got %v", err)
 		}
+	})
+}
+
+func TestApplyMigrationsWithInjectedHooks(t *testing.T) {
+	prevUsers, prevReadDir, prevReadFile, prevCaller, prevExec := usersTableExistsFn, readDirFn, readFileFn, callerFn, execSQLFn
+	t.Cleanup(func() {
+		usersTableExistsFn = prevUsers
+		readDirFn = prevReadDir
+		readFileFn = prevReadFile
+		callerFn = prevCaller
+		execSQLFn = prevExec
+	})
+
+	t.Run("users_table_check_error", func(t *testing.T) {
+		usersTableExistsFn = func(context.Context, *pgxpool.Pool) (bool, error) {
+			return false, errors.New("users check boom")
+		}
+		if err := applyMigrations(context.Background(), nil); err == nil || !strings.Contains(err.Error(), "users check boom") {
+			t.Fatalf("expected users table check error, got %v", err)
+		}
+		usersTableExistsFn = prevUsers
+	})
+
+	t.Run("users_table_exists_short_circuit", func(t *testing.T) {
+		usersTableExistsFn = func(context.Context, *pgxpool.Pool) (bool, error) {
+			return true, nil
+		}
+		readDirFn = func(string) ([]fs.DirEntry, error) {
+			t.Fatal("readDir should not be called when users table already exists")
+			return nil, nil
+		}
+		if err := applyMigrations(context.Background(), nil); err != nil {
+			t.Fatalf("expected nil when users table already exists, got %v", err)
+		}
+		usersTableExistsFn = prevUsers
+		readDirFn = prevReadDir
+	})
+
+	t.Run("success_executes_non_empty_up_sql", func(t *testing.T) {
+		usersTableExistsFn = func(context.Context, *pgxpool.Pool) (bool, error) {
+			return false, nil
+		}
+		tmp := t.TempDir()
+		migrationsDir := filepath.Join(tmp, "migrations")
+		if err := os.MkdirAll(migrationsDir, 0o755); err != nil {
+			t.Fatalf("mkdir migrations: %v", err)
+		}
+		files := map[string]string{
+			"001_first.sql": "-- +goose Up\nSELECT 1;\n-- +goose Down\nSELECT 2;",
+			"002_empty.sql": "-- +goose Up\n-- +goose NO TRANSACTION\n\n-- +goose Down\nSELECT 2;",
+			"003_second.sql": "-- +goose Up\nSELECT 3;\n-- +goose Down\nSELECT 4;",
+		}
+		for name, body := range files {
+			if err := os.WriteFile(filepath.Join(migrationsDir, name), []byte(body), 0o644); err != nil {
+				t.Fatalf("write migration %s: %v", name, err)
+			}
+		}
+
+		callerFn = func(skip int) (uintptr, string, int, bool) {
+			return 0, filepath.Join(tmp, "internal", "testutil", "dbtest", "dbtest.go"), 0, true
+		}
+		executed := make([]string, 0, 2)
+		execSQLFn = func(_ context.Context, _ *pgxpool.Pool, sql string) error {
+			executed = append(executed, strings.TrimSpace(sql))
+			return nil
+		}
+
+		if err := applyMigrations(context.Background(), nil); err != nil {
+			t.Fatalf("expected injected success, got %v", err)
+		}
+		if len(executed) != 2 || executed[0] != "SELECT 1;" || executed[1] != "SELECT 3;" {
+			t.Fatalf("unexpected executed migrations: %#v", executed)
+		}
+		usersTableExistsFn = prevUsers
+		callerFn = prevCaller
+		execSQLFn = prevExec
 	})
 }
 

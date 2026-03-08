@@ -203,7 +203,7 @@ func TestFolderAndFileReposIntegration(t *testing.T) {
 	if err != nil || len(trashedFolders) != 1 {
 		t.Fatalf("list trashed folders failed: err=%v folders=%#v", err, trashedFolders)
 	}
-	existsFolderName, err := folderRepo.ExistsByName(ctx, userID, nil, "Photos")
+	existsFolderName, err := folderRepo.ExistsByName(ctx, userID, nil, "Child Renamed")
 	if err != nil || existsFolderName {
 		t.Fatalf("expected trashed folder name not to count as active: exists=%v err=%v", existsFolderName, err)
 	}
@@ -213,9 +213,33 @@ func TestFolderAndFileReposIntegration(t *testing.T) {
 	if _, err := folderRepo.FindByID(ctx, userID, childID); err != nil {
 		t.Fatalf("find restored folder: %v", err)
 	}
-	existsFolderName, err = folderRepo.ExistsByName(ctx, userID, nil, "Photos")
+	existsFolderName, err = folderRepo.ExistsByName(ctx, userID, nil, "Child Renamed")
 	if err != nil || !existsFolderName {
 		t.Fatalf("expected restored folder name to count as active: exists=%v err=%v", existsFolderName, err)
+	}
+	existsChildFolderName, err := folderRepo.ExistsByName(ctx, userID, &rootID, "Child Renamed")
+	if err != nil || existsChildFolderName {
+		t.Fatalf("expected no child-named folder under original root after parent move: exists=%v err=%v", existsChildFolderName, err)
+	}
+	grandChildID := "eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee"
+	grandChild := &domain.Folder{
+		ID:        grandChildID,
+		UserID:    userID,
+		ParentID:  &rootID,
+		Name:      "Grand Child",
+		CreatedAt: now,
+		UpdatedAt: now,
+	}
+	if err := folderRepo.Create(ctx, grandChild); err != nil {
+		t.Fatalf("create grand child folder: %v", err)
+	}
+	existsChildFolderName, err = folderRepo.ExistsByName(ctx, userID, &rootID, "Grand Child")
+	if err != nil || !existsChildFolderName {
+		t.Fatalf("expected child folder exists by name under parent: exists=%v err=%v", existsChildFolderName, err)
+	}
+	existsFolderNameInParent, err := folderRepo.ExistsByName(ctx, userID, &rootID, "Child Renamed")
+	if err != nil || existsFolderNameInParent {
+		t.Fatalf("expected moved child folder name lookup under old parent to be false: exists=%v err=%v", existsFolderNameInParent, err)
 	}
 
 	if err := fileRepo.HardDelete(ctx, fileRootID); err != nil {

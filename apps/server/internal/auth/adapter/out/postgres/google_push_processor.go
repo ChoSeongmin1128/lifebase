@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	portout "lifebase/internal/auth/port/out"
@@ -22,11 +23,29 @@ type googlePushProcessor struct {
 	googleAuth portout.GoogleAuthClient
 }
 
+type googlePushConn interface {
+	QueryRow(ctx context.Context, sql string, args ...any) pgx.Row
+	Exec(ctx context.Context, sql string, args ...any) (pgconn.CommandTag, error)
+	Release()
+}
+
 var queryGooglePushRowsFn = func(ctx context.Context, db *pgxpool.Pool, sql string, args ...any) (pgx.Rows, error) {
 	return db.Query(ctx, sql, args...)
 }
 
-var googlePushTryAdvisoryLockFn = func(ctx context.Context, conn *pgxpool.Conn, lockKey int64) (bool, error) {
+var queryGooglePushRowFn = func(ctx context.Context, db *pgxpool.Pool, sql string, args ...any) googleSyncRow {
+	return db.QueryRow(ctx, sql, args...)
+}
+
+var execGooglePushFn = func(ctx context.Context, db *pgxpool.Pool, sql string, args ...any) (pgconn.CommandTag, error) {
+	return db.Exec(ctx, sql, args...)
+}
+
+var acquireGooglePushConnFn = func(ctx context.Context, db *pgxpool.Pool) (googlePushConn, error) {
+	return db.Acquire(ctx)
+}
+
+var googlePushTryAdvisoryLockFn = func(ctx context.Context, conn googlePushConn, lockKey int64) (bool, error) {
 	var locked bool
 	if err := conn.QueryRow(ctx, `SELECT pg_try_advisory_lock($1)`, lockKey).Scan(&locked); err != nil {
 		return false, err
@@ -174,7 +193,7 @@ func (p *googlePushProcessor) claimPending(ctx context.Context, limit int) ([]pu
 
 func (p *googlePushProcessor) processOne(ctx context.Context, item pushOutboxItem) error {
 	lockKey := advisoryLockKey(item.AccountID)
-	lockConn, err := p.db.Acquire(ctx)
+	lockConn, err := acquireGooglePushConnFn(ctx, p.db)
 	if err != nil {
 		return err
 	}
@@ -423,7 +442,7 @@ func (p *googlePushProcessor) processTodoPush(
 
 func (p *googlePushProcessor) loadAccountToken(ctx context.Context, userID, accountID string) (*accountToken, error) {
 	var row accountToken
-	err := p.db.QueryRow(ctx,
+	err := queryGooglePushRowFn(ctx, p.db,
 		`SELECT access_token, refresh_token, token_expires_at, status
 		   FROM user_google_accounts
 		  WHERE id = $1 AND user_id = $2`,
@@ -438,7 +457,7 @@ func (p *googlePushProcessor) loadAccountToken(ctx context.Context, userID, acco
 
 func (p *googlePushProcessor) loadCalendarEvent(ctx context.Context, userID, eventID string) (*localCalendarEvent, error) {
 	var row localCalendarEvent
-	err := p.db.QueryRow(ctx,
+	err := queryGooglePushRowFn(ctx, p.db,
 		`SELECT e.id, e.google_id, e.title, e.description, e.location, e.start_time, e.end_time,
 		        e.timezone, e.is_all_day, e.color_id, e.recurrence_rule, e.etag,
 		        e.updated_at, e.deleted_at, c.google_id, c.google_account_id
@@ -473,7 +492,7 @@ func (p *googlePushProcessor) loadCalendarEvent(ctx context.Context, userID, eve
 
 func (p *googlePushProcessor) loadTodo(ctx context.Context, userID, todoID string) (*localTodo, error) {
 	var row localTodo
-	err := p.db.QueryRow(ctx,
+	err := queryGooglePushRowFn(ctx, p.db,
 		`SELECT t.id, t.user_id, t.list_id, t.parent_id, t.google_id, t.title, t.notes,
 		        CASE WHEN t.due_date IS NULL THEN NULL ELSE to_char(t.due_date, 'YYYY-MM-DD') END AS due_date,
 		        t.is_done, t.sort_order, t.updated_at, t.deleted_at, l.google_id, l.google_account_id
@@ -530,7 +549,7 @@ func (p *googlePushProcessor) resolveTodoMoveTargets(
 ) (*string, *string, error) {
 	var parentGoogleID *string
 	if todo.ParentID != nil && *todo.ParentID != "" {
-		err := p.db.QueryRow(ctx,
+		err := queryGooglePushRowFn(ctx, p.db,
 			`SELECT google_id
 			   FROM todos
 			  WHERE user_id = $1 AND id = $2 AND deleted_at IS NULL`,
@@ -549,7 +568,7 @@ func (p *googlePushProcessor) resolveTodoMoveTargets(
 	}
 
 	var previousGoogleID *string
-	err := p.db.QueryRow(ctx,
+	err := queryGooglePushRowFn(ctx, p.db,
 		`SELECT google_id
 		   FROM todos
 		  WHERE user_id = $1
@@ -558,7 +577,7 @@ func (p *googlePushProcessor) resolveTodoMoveTargets(
 		    AND deleted_at IS NULL
 		    AND google_id IS NOT NULL
 		    AND (
-		      ($4::uuid IS NULL AND parent_id IS NULL) OR
+		      ($4::text IS NULL AND parent_id IS NULL) OR
 		      parent_id = $4
 		    )
 		    AND sort_order < $5
@@ -584,7 +603,7 @@ func (p *googlePushProcessor) setEventGoogleMeta(
 	userID, eventID, googleID string,
 	etag *string,
 ) error {
-	_, err := p.db.Exec(ctx,
+	_, err := execGooglePushFn(ctx, p.db,
 		`UPDATE events
 		    SET google_id = $3,
 		        etag = COALESCE($4, etag)
@@ -598,7 +617,7 @@ func (p *googlePushProcessor) setEventGoogleMeta(
 }
 
 func (p *googlePushProcessor) setTodoGoogleID(ctx context.Context, userID, todoID, googleID string) error {
-	_, err := p.db.Exec(ctx,
+	_, err := execGooglePushFn(ctx, p.db,
 		`UPDATE todos
 		    SET google_id = $3
 		  WHERE user_id = $1 AND id = $2`,
@@ -610,7 +629,7 @@ func (p *googlePushProcessor) setTodoGoogleID(ctx context.Context, userID, todoI
 }
 
 func (p *googlePushProcessor) markDone(ctx context.Context, id string) error {
-	_, err := p.db.Exec(ctx,
+	_, err := execGooglePushFn(ctx, p.db,
 		`UPDATE google_push_outbox
 		    SET status = 'done',
 		        next_retry_at = NULL,
@@ -623,7 +642,7 @@ func (p *googlePushProcessor) markDone(ctx context.Context, id string) error {
 }
 
 func (p *googlePushProcessor) markRetry(ctx context.Context, id string, delay time.Duration, reason string) error {
-	_, err := p.db.Exec(ctx,
+	_, err := execGooglePushFn(ctx, p.db,
 		`UPDATE google_push_outbox
 		    SET status = 'retry',
 		        attempt_count = attempt_count + 1,
@@ -639,7 +658,7 @@ func (p *googlePushProcessor) markRetry(ctx context.Context, id string, delay ti
 }
 
 func (p *googlePushProcessor) reschedule(ctx context.Context, id string, delay time.Duration, reason string) error {
-	_, err := p.db.Exec(ctx,
+	_, err := execGooglePushFn(ctx, p.db,
 		`UPDATE google_push_outbox
 		    SET status = 'retry',
 		        next_retry_at = NOW() + $2::interval,
@@ -654,7 +673,7 @@ func (p *googlePushProcessor) reschedule(ctx context.Context, id string, delay t
 }
 
 func (p *googlePushProcessor) markDead(ctx context.Context, id, reason string) error {
-	_, err := p.db.Exec(ctx,
+	_, err := execGooglePushFn(ctx, p.db,
 		`UPDATE google_push_outbox
 		    SET status = 'dead',
 		        attempt_count = attempt_count + 1,
@@ -669,7 +688,7 @@ func (p *googlePushProcessor) markDead(ctx context.Context, id, reason string) e
 }
 
 func (p *googlePushProcessor) markAccountReauthRequired(ctx context.Context, accountID string) error {
-	_, err := p.db.Exec(ctx,
+	_, err := execGooglePushFn(ctx, p.db,
 		`UPDATE user_google_accounts
 		    SET status = 'reauth_required',
 		        updated_at = NOW()

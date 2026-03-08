@@ -127,3 +127,33 @@ func TestTryAdvisoryMonthLockQueryErrorBranch(t *testing.T) {
 		t.Fatal("expected advisory lock query error")
 	}
 }
+
+func TestTryAdvisoryMonthLockAdditionalBranches(t *testing.T) {
+	db := dbtest.Open(t)
+	dbtest.Reset(t, db)
+	repo := NewHolidayRepo(db)
+
+	prev := queryAdvisoryLock
+	t.Cleanup(func() { queryAdvisoryLock = prev })
+
+	queryAdvisoryLock = func(context.Context, *pgxpool.Conn, int64) (bool, error) {
+		return false, nil
+	}
+	locked, unlock, err := repo.TryAdvisoryMonthLock(context.Background(), 2026, 8)
+	if err != nil {
+		t.Fatalf("TryAdvisoryMonthLock false branch: %v", err)
+	}
+	if locked || unlock != nil {
+		t.Fatalf("expected unlocked result, locked=%v unlock=%v", locked, unlock)
+	}
+
+	queryAdvisoryLock = prev
+	lockedReal, unlockReal, err := repo.TryAdvisoryMonthLock(context.Background(), 2026, 9)
+	if err != nil {
+		t.Fatalf("TryAdvisoryMonthLock real branch: %v", err)
+	}
+	if !lockedReal || unlockReal == nil {
+		t.Fatalf("expected real lock acquisition, locked=%v unlockNil=%v", lockedReal, unlockReal == nil)
+	}
+	unlockReal()
+}

@@ -150,7 +150,6 @@ func TestTodoUseCaseAdditionalBranches(t *testing.T) {
 		notes := "notes"
 		dueDate := "2026-03-09"
 		dueTime := "14:30"
-		priority := "high"
 		done := true
 		pinned := false
 		sortOrder := 7
@@ -159,7 +158,6 @@ func TestTodoUseCaseAdditionalBranches(t *testing.T) {
 			Notes:     &notes,
 			DueDate:   &dueDate,
 			DueTime:   &dueTime,
-			Priority:  &priority,
 			IsDone:    &done,
 			IsPinned:  &pinned,
 			SortOrder: &sortOrder,
@@ -212,6 +210,52 @@ func TestTodoUseCaseAdditionalBranches(t *testing.T) {
 
 		if err := uc.ReorderTodos(ctx, "u1", []portin.ReorderItem{{ID: target.ID, ParentID: &child.ID, SortOrder: 1}}); err == nil || !strings.Contains(err.Error(), "maximum nesting depth") {
 			t.Fatalf("expected depth error, got %v", err)
+		}
+	})
+
+	t.Run("due date and due time validation branches", func(t *testing.T) {
+		lists := newTodoListRepoStub()
+		todos := newTodoRepoStub()
+		uc := NewTodoUseCase(lists, todos, nil)
+		list, _ := uc.CreateList(ctx, "u1", "l1")
+
+		onlySpaces := "   "
+		if got := normalizeOptionalString(&onlySpaces); got != nil {
+			t.Fatalf("expected nil for spaces-only optional string, got %q", *got)
+		}
+
+		dueTimeOnly := "10:00"
+		if _, err := uc.CreateTodo(ctx, "u1", portin.CreateTodoInput{
+			ListID:  list.ID,
+			Title:   "invalid-create",
+			DueTime: &dueTimeOnly,
+		}); err == nil || !strings.Contains(err.Error(), "due_time requires due_date") {
+			t.Fatalf("expected due_time validation error on create, got %v", err)
+		}
+
+		existing, err := uc.CreateTodo(ctx, "u1", portin.CreateTodoInput{
+			ListID:  list.ID,
+			Title:   "seed",
+			DueDate: todoStringPtr("2026-03-09"),
+			DueTime: todoStringPtr("09:30"),
+		})
+		if err != nil {
+			t.Fatalf("seed todo create failed: %v", err)
+		}
+
+		if _, err := uc.UpdateTodo(ctx, "u1", existing.ID, portin.UpdateTodoInput{
+			DueDate: &onlySpaces,
+		}); err != nil {
+			t.Fatalf("expected due date clear to succeed, got %v", err)
+		}
+		if todos.todos[existing.ID].DueDate != nil || todos.todos[existing.ID].DueTime != nil {
+			t.Fatalf("expected due date/time cleared when due date is blank, got %#v", todos.todos[existing.ID])
+		}
+
+		if _, err := uc.UpdateTodo(ctx, "u1", existing.ID, portin.UpdateTodoInput{
+			DueTime: &dueTimeOnly,
+		}); err == nil || !strings.Contains(err.Error(), "due_time requires due_date") {
+			t.Fatalf("expected due_time validation error on update, got %v", err)
 		}
 	})
 }

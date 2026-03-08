@@ -66,20 +66,20 @@ const todoLists = [
 ];
 
 const todoItems = [
-  { id: 1, list_id: 'list-1', date: '2026-02-18', title: '릴리즈 체크리스트 점검', done: false, account: 'work', priority: 'urgent', is_pinned: true, parent_id: null, created: '2026-02-10', sort_order: 0 },
-  { id: 2, list_id: 'list-1', date: '2026-02-20', title: '회의 노트 정리', done: true, account: 'work', priority: 'normal', is_pinned: false, parent_id: null, created: '2026-02-15', sort_order: 1 },
-  { id: 3, list_id: 'list-1', date: '2026-02-24', title: '월간 회고 작성', done: false, account: 'work', priority: 'high', is_pinned: false, parent_id: null, created: '2026-02-18', sort_order: 2 },
-  { id: 4, list_id: 'list-2', date: '2026-03-15', title: 'OAuth 토큰 점검', done: false, account: 'work', priority: 'high', is_pinned: false, parent_id: null, created: '2026-02-20', sort_order: 0 },
-  { id: 5, list_id: 'list-3', date: '2026-04-18', title: '세금 신고 자료 업로드', done: false, account: 'personal', priority: 'normal', is_pinned: false, parent_id: null, created: '2026-02-22', sort_order: 0 },
-  { id: 6, list_id: 'list-1', date: '2026-02-19', title: 'QA 시나리오 작성', done: false, account: 'work', priority: 'normal', is_pinned: true, parent_id: null, created: '2026-02-12', sort_order: 3 },
-  { id: 7, list_id: 'list-1', date: '2026-02-19', title: '로그인 플로우 테스트', done: false, account: 'work', priority: 'normal', is_pinned: false, parent_id: 6, created: '2026-02-12', sort_order: 0 },
-  { id: 8, list_id: 'list-1', date: '2026-02-19', title: '결제 플로우 테스트', done: true, account: 'work', priority: 'normal', is_pinned: false, parent_id: 6, created: '2026-02-12', sort_order: 1 },
-  { id: 9, list_id: 'list-1', date: '2026-02-22', title: '디자인 시스템 검토', done: false, account: 'work', priority: 'normal', is_pinned: false, parent_id: null, created: '2026-02-16', sort_order: 4 },
-  { id: 10, list_id: 'list-2', date: '2026-02-25', title: '배포 파이프라인 점검', done: false, account: 'work', priority: 'normal', is_pinned: false, parent_id: null, created: '2026-02-19', sort_order: 1 },
-  { id: 11, list_id: 'list-2', date: '2026-02-25', title: '스테이징 환경 확인', done: false, account: 'work', priority: 'normal', is_pinned: false, parent_id: 10, created: '2026-02-19', sort_order: 0 },
-  { id: 12, list_id: 'list-3', date: '2026-03-01', title: '건강검진 예약', done: false, account: 'personal', priority: 'low', is_pinned: false, parent_id: null, created: '2026-02-21', sort_order: 1 },
-  { id: 13, list_id: 'list-1', date: '2026-02-17', title: 'API 문서 업데이트', done: true, account: 'work', priority: 'normal', is_pinned: false, parent_id: null, created: '2026-02-10', sort_order: 5 },
-  { id: 14, list_id: 'list-2', date: '2026-02-20', title: '주간 보고서 제출', done: true, account: 'work', priority: 'normal', is_pinned: false, parent_id: null, created: '2026-02-14', sort_order: 2 }
+  { id: 1, list_id: 'list-1', date: '2026-02-18', title: '릴리즈 체크리스트 점검', done: false, account: 'work', is_pinned: true, parent_id: null, created: '2026-02-10', sort_order: 0 },
+  { id: 2, list_id: 'list-1', date: '2026-02-20', title: '회의 노트 정리', done: true, account: 'work', is_pinned: false, parent_id: null, created: '2026-02-15', sort_order: 1 },
+  { id: 3, list_id: 'list-1', date: '2026-02-24', title: '월간 회고 작성', done: false, account: 'work', is_pinned: false, parent_id: null, created: '2026-02-18', sort_order: 2 },
+  { id: 4, list_id: 'list-2', date: '2026-03-15', title: 'OAuth 토큰 점검', done: false, account: 'work', is_pinned: false, parent_id: null, created: '2026-02-20', sort_order: 0 },
+  { id: 5, list_id: 'list-3', date: '2026-04-18', title: '세금 신고 자료 업로드', done: false, account: 'personal', is_pinned: false, parent_id: null, created: '2026-02-22', sort_order: 0 },
+  { id: 6, list_id: 'list-1', date: '2026-02-19', title: 'QA 시나리오 작성', done: false, account: 'work', is_pinned: true, parent_id: null, created: '2026-02-12', sort_order: 3 },
+  { id: 7, list_id: 'list-1', date: '2026-02-19', title: '로그인 플로우 테스트', done: false, account: 'work', is_pinned: false, parent_id: 6, created: '2026-02-12', sort_order: 0 },
+  { id: 8, list_id: 'list-1', date: '2026-02-19', title: '결제 플로우 테스트', done: true, account: 'work', is_pinned: false, parent_id: 6, created: '2026-02-12', sort_order: 1 },
+  { id: 9, list_id: 'list-1', date: '2026-02-22', title: '디자인 시스템 검토', done: false, account: 'work', is_pinned: false, parent_id: null, created: '2026-02-16', sort_order: 4 },
+  { id: 10, list_id: 'list-2', date: '2026-02-25', title: '배포 파이프라인 점검', done: false, account: 'work', is_pinned: false, parent_id: null, created: '2026-02-19', sort_order: 1 },
+  { id: 11, list_id: 'list-2', date: '2026-02-25', title: '스테이징 환경 확인', done: false, account: 'work', is_pinned: false, parent_id: 10, created: '2026-02-19', sort_order: 0 },
+  { id: 12, list_id: 'list-3', date: '2026-03-01', title: '건강검진 예약', done: false, account: 'personal', is_pinned: false, parent_id: null, created: '2026-02-21', sort_order: 1 },
+  { id: 13, list_id: 'list-1', date: '2026-02-17', title: 'API 문서 업데이트', done: true, account: 'work', is_pinned: false, parent_id: null, created: '2026-02-10', sort_order: 5 },
+  { id: 14, list_id: 'list-2', date: '2026-02-20', title: '주간 보고서 제출', done: true, account: 'work', is_pinned: false, parent_id: null, created: '2026-02-14', sort_order: 2 }
 ];
 
 const galleryItems = [

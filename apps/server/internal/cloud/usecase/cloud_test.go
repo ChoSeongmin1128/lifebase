@@ -12,21 +12,24 @@ import (
 )
 
 type folderRepoStub struct {
-	byID       map[string]*domain.Folder
-	byParent   map[string][]*domain.Folder
-	findErr    error
+	byID           map[string]*domain.Folder
+	byParent       map[string][]*domain.Folder
+	findErr        error
 	findTrashedErr error
-	listErr    error
-	createErr  error
-	updateErr  error
-	softErr    error
-	restoreErr error
-	hardErr    error
-	existsErr  error
-	existsByName map[string]bool
-	softDeleted []string
-	restored    []string
-	hardDeleted []string
+	listErr        error
+	listByParentFn func(string, *string) ([]*domain.Folder, error)
+	createErr      error
+	updateErr      error
+	softErr        error
+	restoreErr     error
+	restoreFn      func(string, string) error
+	hardErr        error
+	existsErr      error
+	existsByName   map[string]bool
+	existsByNameFn func(string, *string, string) (bool, error)
+	softDeleted    []string
+	restored       []string
+	hardDeleted    []string
 }
 
 func newFolderRepoStub() *folderRepoStub {
@@ -73,6 +76,9 @@ func (m *folderRepoStub) FindTrashedByID(_ context.Context, userID, id string) (
 	return f, nil
 }
 func (m *folderRepoStub) ListByParent(_ context.Context, userID string, parentID *string) ([]*domain.Folder, error) {
+	if m.listByParentFn != nil {
+		return m.listByParentFn(userID, parentID)
+	}
 	if m.listErr != nil {
 		return nil, m.listErr
 	}
@@ -105,6 +111,11 @@ func (m *folderRepoStub) SoftDelete(_ context.Context, userID, id string) error 
 	return nil
 }
 func (m *folderRepoStub) Restore(_ context.Context, userID, id string) error {
+	if m.restoreFn != nil {
+		if err := m.restoreFn(userID, id); err != nil {
+			return err
+		}
+	}
 	if m.restoreErr != nil {
 		return m.restoreErr
 	}
@@ -137,6 +148,9 @@ func (m *folderRepoStub) ListTrashed(context.Context, string) ([]*domain.Folder,
 	return out, nil
 }
 func (m *folderRepoStub) ExistsByName(_ context.Context, userID string, parentID *string, name string) (bool, error) {
+	if m.existsByNameFn != nil {
+		return m.existsByNameFn(userID, parentID, name)
+	}
 	if m.existsErr != nil {
 		return false, m.existsErr
 	}
@@ -154,12 +168,14 @@ type fileRepoStub struct {
 	updateErr        error
 	softErr          error
 	restoreErr       error
+	restoreFn        func(string, string) error
 	hardErr          error
 	updateStorageErr error
 	existsByName     map[string]bool
 	existsAlways     bool
 	existsErr        error
 	existsByNameFn   func(string, *string, string) (bool, error)
+	listByFolderFn   func(string, *string, string, string) ([]*domain.File, error)
 	findTrashedErr   error
 	softDeleted      []string
 	restored         []string
@@ -201,6 +217,9 @@ func (m *fileRepoStub) FindByID(_ context.Context, userID, id string) (*domain.F
 	return f, nil
 }
 func (m *fileRepoStub) ListByFolder(_ context.Context, userID string, folderID *string, _, _ string) ([]*domain.File, error) {
+	if m.listByFolderFn != nil {
+		return m.listByFolderFn(userID, folderID, "", "")
+	}
 	if m.listErr != nil {
 		return nil, m.listErr
 	}
@@ -248,6 +267,11 @@ func (m *fileRepoStub) SoftDelete(_ context.Context, userID, id string) error {
 	return nil
 }
 func (m *fileRepoStub) Restore(_ context.Context, userID, id string) error {
+	if m.restoreFn != nil {
+		if err := m.restoreFn(userID, id); err != nil {
+			return err
+		}
+	}
 	if m.restoreErr != nil {
 		return m.restoreErr
 	}
@@ -328,10 +352,10 @@ func (m *sharedRepoStub) ListSharedFolders(context.Context, string) ([]*domain.F
 }
 
 type starRepoStub struct {
-	refs      []portout.StarRef
-	listErr   error
-	setErr    error
-	unsetErr  error
+	refs     []portout.StarRef
+	listErr  error
+	setErr   error
+	unsetErr error
 }
 
 func (m *starRepoStub) List(context.Context, string) ([]portout.StarRef, error) {
@@ -1064,4 +1088,546 @@ func TestCloudUseCaseAdditionalBranchCoverage(t *testing.T) {
 	if _, err := ucQueueErr.UploadFile(ctx, "u1", &root3.ID, "queued.txt", "text/plain", 1, []byte("z")); err != nil {
 		t.Fatalf("expected upload success even when queue fails: %v", err)
 	}
+}
+
+func TestCloudUseCaseTrashAndDeleteAdditionalErrorBranches(t *testing.T) {
+	ctx := context.Background()
+	uc, folders, files, _, stars, _, _ := newCloudUCForTest()
+
+	root := seedFolder(folders, "root", "u1", "Root", nil)
+	child := seedFolder(folders, "child", "u1", "Child", &root.ID)
+	seedFile(files, "child-file", "u1", "child.txt", "text/plain", "u1/child.txt", &child.ID, 10)
+
+	if err := uc.DeleteFolder(ctx, "u1", "missing"); err == nil {
+		t.Fatal("expected delete folder not found error")
+	}
+
+	files.listErr = errors.New("list files fail")
+	if err := uc.DeleteFolder(ctx, "u1", root.ID); err == nil {
+		t.Fatal("expected delete folder list files error")
+	}
+	files.listErr = nil
+
+	folders.listErr = errors.New("list folders fail")
+	if err := uc.DeleteFolder(ctx, "u1", root.ID); err == nil {
+		t.Fatal("expected delete folder list folders error")
+	}
+	folders.listErr = nil
+
+	files.softErr = errors.New("soft delete file fail")
+	if err := uc.DeleteFolder(ctx, "u1", root.ID); err == nil {
+		t.Fatal("expected delete folder file soft delete error")
+	}
+	files.softErr = nil
+
+	files.byFolder[parentKey(&child.ID)] = nil
+	folders.softErr = errors.New("soft delete folder fail")
+	if err := uc.DeleteFolder(ctx, "u1", root.ID); err == nil {
+		t.Fatal("expected delete folder folder soft delete error")
+	}
+	folders.softErr = nil
+
+	if _, err := uc.GetTrashFolder(ctx, "u1", root.ID); err == nil {
+		t.Fatal("expected get trash folder error")
+	}
+
+	if _, err := uc.ListTrash(ctx, "u1", strPtr("missing")); err == nil {
+		t.Fatal("expected list trash invalid folder error")
+	}
+
+	stars.refs = []portout.StarRef{{ItemID: "missing", ItemType: "folder"}, {ItemID: "missing-file", ItemType: "file"}}
+	if items, err := uc.ListStarred(ctx, "u1"); err != nil || len(items) != 0 {
+		t.Fatalf("expected missing starred refs to be skipped, err=%v len=%d", err, len(items))
+	}
+
+	// findFolderInTrashScope: active folder path but no trashed ancestor
+	if _, err := uc.findFolderInTrashScope(ctx, "u1", root.ID, nil); err == nil {
+		t.Fatal("expected active folder outside trash to fail")
+	}
+
+	// hasTrashedAncestor: missing ancestor path
+	missingParent := "missing-parent"
+	if ok, err := uc.hasTrashedAncestor(ctx, "u1", &missingParent, nil); err == nil || ok {
+		t.Fatalf("expected missing ancestor error, ok=%v err=%v", ok, err)
+	}
+
+	// restoreDeletedFolderPath: missing trashed folder path
+	if err := uc.restoreDeletedFolderPath(ctx, "u1", &missingParent); err == nil {
+		t.Fatal("expected restoreDeletedFolderPath missing error")
+	}
+
+	// restoreFolderSelf: resolve name error
+	markFolderTrashed(child)
+	folders.existsErr = errors.New("exists by name fail")
+	if err := uc.restoreFolderSelf(ctx, "u1", child); err == nil {
+		t.Fatal("expected restoreFolderSelf resolve name error")
+	}
+	folders.existsErr = nil
+
+	// restoreFolderSubtree: root missing in trash map
+	if err := uc.restoreFolderSubtree(ctx, "u1", "unknown-root", nil, nil); err == nil {
+		t.Fatal("expected restoreFolderSubtree missing root error")
+	}
+
+	// restore file path: active file with no trashed ancestor should fail
+	active := seedFile(files, "active", "u1", "a.txt", "text/plain", "u1/a.txt", nil, 1)
+	if err := uc.RestoreItem(ctx, "u1", active.ID, "file"); err == nil {
+		t.Fatal("expected restore active file outside trash to fail")
+	}
+}
+
+func TestCloudUseCaseFolderNameExhaustionAndDepthCycle(t *testing.T) {
+	ctx := context.Background()
+	uc, folders, _, _, _, _, _ := newCloudUCForTest()
+
+	folders.existsByName[fileNameKey("u1", nil, "dup")] = true
+	for i := 1; i <= 10000; i++ {
+		folders.existsByName[fileNameKey("u1", nil, fmt.Sprintf("dup (%d)", i))] = true
+	}
+	if _, err := uc.resolveFolderName(ctx, "u1", nil, "dup"); err == nil {
+		t.Fatal("expected resolveFolderName exhaustion error")
+	}
+
+	cycleA := "cycle-a"
+	cycleB := "cycle-b"
+	folder := &domain.Folder{ID: cycleA, ParentID: &cycleB}
+	foldersByID := map[string]*domain.Folder{
+		cycleA: {ID: cycleA, ParentID: &cycleB},
+		cycleB: {ID: cycleB, ParentID: &cycleA},
+	}
+	if got := folderDepth(folder, foldersByID); got != 2 {
+		t.Fatalf("expected folderDepth to stop on cycle with depth 2, got %d", got)
+	}
+}
+
+func TestCloudUseCaseRestoreAndTraversalAdditionalBranches(t *testing.T) {
+	ctx := context.Background()
+	uc, folders, files, _, stars, _, _ := newCloudUCForTest()
+
+	parentID := "parent"
+	if ok, err := uc.hasTrashedAncestor(ctx, "u1", &parentID, map[string]struct{}{"parent": {}}); err != nil || !ok {
+		t.Fatalf("expected trashed ancestor hit via id map, ok=%v err=%v", ok, err)
+	}
+
+	folders.byID["cycle-a"] = &domain.Folder{ID: "cycle-a", UserID: "u1", ParentID: strPtr("cycle-b"), Name: "A"}
+	folders.byID["cycle-b"] = &domain.Folder{ID: "cycle-b", UserID: "u1", ParentID: strPtr("cycle-a"), Name: "B"}
+	if _, err := uc.hasTrashedAncestor(ctx, "u1", strPtr("cycle-a"), nil); err == nil {
+		t.Fatal("expected hasTrashedAncestor cycle error")
+	}
+
+	active := seedFolder(folders, "active", "u1", "Active", nil)
+	if err := uc.restoreDeletedFolderPath(ctx, "u1", &active.ID); err != nil {
+		t.Fatalf("expected already-active path to restore without error: %v", err)
+	}
+
+	trashed := seedFolder(folders, "trashed", "u1", "Trashed", nil)
+	markFolderTrashed(trashed)
+	if err := uc.restoreFolderSelf(ctx, "u1", trashed); err != nil {
+		t.Fatalf("restoreFolderSelf success failed: %v", err)
+	}
+	markFolderTrashed(trashed)
+	folders.restoreErr = errors.New("restore fail")
+	if err := uc.restoreFolderSelf(ctx, "u1", trashed); err == nil {
+		t.Fatal("expected restoreFolderSelf restore error")
+	}
+	folders.restoreErr = nil
+
+	root := seedFolder(folders, "sub-root", "u1", "SubRoot", nil)
+	markFolderTrashed(root)
+	file := seedFile(files, "sub-file", "u1", "dup.txt", "text/plain", "u1/dup", &root.ID, 1)
+	markFileTrashed(file)
+	files.existsByName[fileNameKey("u1", &root.ID, "dup.txt")] = true
+	files.updateErr = errors.New("update fail")
+	if err := uc.restoreFolderSubtree(ctx, "u1", root.ID, []*domain.Folder{root}, []*domain.File{file}); err == nil {
+		t.Fatal("expected restoreFolderSubtree file rename update error")
+	}
+	files.updateErr = nil
+	files.restoreErr = errors.New("restore fail")
+	if err := uc.restoreFolderSubtree(ctx, "u1", root.ID, []*domain.Folder{root}, []*domain.File{file}); err == nil {
+		t.Fatal("expected restoreFolderSubtree file restore error")
+	}
+	files.restoreErr = nil
+
+	files.listErr = errors.New("list by folder fail")
+	if _, _, err := uc.collectActiveFolderTree(ctx, "u1", active); err == nil {
+		t.Fatal("expected collectActiveFolderTree file list error")
+	}
+	files.listErr = nil
+	folders.listErr = errors.New("list by parent fail")
+	if _, _, err := uc.collectActiveFolderTree(ctx, "u1", active); err == nil {
+		t.Fatal("expected collectActiveFolderTree folder list error")
+	}
+	folders.listErr = nil
+
+	stars.refs = []portout.StarRef{{ItemID: "x", ItemType: "unknown"}}
+	items, err := uc.ListStarred(ctx, "u1")
+	if err != nil {
+		t.Fatalf("ListStarred unknown type should be ignored without error: %v", err)
+	}
+	if len(items) != 0 {
+		t.Fatalf("expected unknown star type to be ignored, got %d items", len(items))
+	}
+}
+
+func TestCloudUseCaseTargetedGapBranches(t *testing.T) {
+	ctx := context.Background()
+	uc, folders, files, _, stars, _, _ := newCloudUCForTest()
+
+	root := seedFolder(folders, "gap-root", "u1", "GapRoot", nil)
+	child := seedFolder(folders, "gap-child", "u1", "GapChild", &root.ID)
+	fileInChild := seedFile(files, "gap-file", "u1", "gap.txt", "text/plain", "u1/gap.txt", &child.ID, 2)
+
+	// resolveFolderName: duplicate resolution on non-root parent
+	folders.existsByName[fileNameKey("u1", &root.ID, "GapChild")] = true
+	if resolved, err := uc.resolveFolderName(ctx, "u1", &root.ID, "GapChild"); err != nil || resolved != "GapChild (1)" {
+		t.Fatalf("expected duplicate folder name resolution, got=%q err=%v", resolved, err)
+	}
+
+	// ListTrash: folderID path with active children load errors
+	markFolderTrashed(root)
+	if _, err := uc.ListTrash(ctx, "u1", &root.ID); err != nil {
+		t.Fatalf("expected list trash success before forcing errors: %v", err)
+	}
+	folders.listErr = errors.New("active folder list fail")
+	if _, err := uc.ListTrash(ctx, "u1", &root.ID); err == nil {
+		t.Fatal("expected list trash active folder list error")
+	}
+	folders.listErr = nil
+	files.listErr = errors.New("active file list fail")
+	if _, err := uc.ListTrash(ctx, "u1", &root.ID); err == nil {
+		t.Fatal("expected list trash active file list error")
+	}
+	files.listErr = nil
+
+	// RestoreItem(file): resolve filename failure branch
+	markFileTrashed(fileInChild)
+	files.existsErr = errors.New("resolve name fail")
+	if err := uc.RestoreItem(ctx, "u1", fileInChild.ID, "file"); err == nil {
+		t.Fatal("expected restore item file resolve name error")
+	}
+	files.existsErr = nil
+
+	// RestoreItem(folder): active folder branch with successful ancestor restore path
+	activeChild := seedFolder(folders, "gap-active-child", "u1", "ActiveChild", &root.ID)
+	if err := uc.RestoreItem(ctx, "u1", activeChild.ID, "folder"); err != nil {
+		t.Fatalf("expected restore active folder in trash scope success: %v", err)
+	}
+
+	// restoreDeletedFolderPath: recursive parent restore failure branch
+	trashedParent := seedFolder(folders, "gap-trashed-parent", "u1", "TP", nil)
+	markFolderTrashed(trashedParent)
+	restoreTarget := seedFolder(folders, "gap-restore-target", "u1", "Target", &trashedParent.ID)
+	markFolderTrashed(restoreTarget)
+	folders.restoreErr = errors.New("restore parent fail")
+	if err := uc.restoreDeletedFolderPath(ctx, "u1", &restoreTarget.ID); err == nil {
+		t.Fatal("expected restoreDeletedFolderPath recursive restore error")
+	}
+	folders.restoreErr = nil
+
+	// restoreFolderSelf: rename needed + update error branch
+	renameFolder := seedFolder(folders, "gap-rename-folder", "u1", "DupFolder", nil)
+	markFolderTrashed(renameFolder)
+	folders.existsByName[fileNameKey("u1", nil, "DupFolder")] = true
+	folders.updateErr = errors.New("folder update fail")
+	if err := uc.restoreFolderSelf(ctx, "u1", renameFolder); err == nil {
+		t.Fatal("expected restoreFolderSelf rename update error")
+	}
+	folders.updateErr = nil
+	delete(folders.existsByName, fileNameKey("u1", nil, "DupFolder"))
+
+	// restoreFolderSubtree: child folder recursion branch
+	subRoot := seedFolder(folders, "gap-sub-root", "u1", "SubRoot", nil)
+	markFolderTrashed(subRoot)
+	subChild := seedFolder(folders, "gap-sub-child", "u1", "SubChild", &subRoot.ID)
+	markFolderTrashed(subChild)
+	subFile := seedFile(files, "gap-sub-file", "u1", "sub.txt", "text/plain", "u1/sub.txt", &subChild.ID, 3)
+	markFileTrashed(subFile)
+	if err := uc.restoreFolderSubtree(ctx, "u1", subRoot.ID, []*domain.Folder{subRoot, subChild}, []*domain.File{subFile}); err != nil {
+		t.Fatalf("expected restoreFolderSubtree recursive success: %v", err)
+	}
+
+	// collectActiveFolderTree: recursive success branch
+	activeRoot := seedFolder(folders, "gap-active-root", "u1", "ActiveRoot", nil)
+	activeSub := seedFolder(folders, "gap-active-sub", "u1", "ActiveSub", &activeRoot.ID)
+	seedFile(files, "gap-active-root-file", "u1", "a.txt", "text/plain", "u1/a.txt", &activeRoot.ID, 1)
+	seedFile(files, "gap-active-sub-file", "u1", "b.txt", "text/plain", "u1/b.txt", &activeSub.ID, 1)
+	colFolders, colFiles, err := uc.collectActiveFolderTree(ctx, "u1", activeRoot)
+	if err != nil {
+		t.Fatalf("collectActiveFolderTree recursive success failed: %v", err)
+	}
+	if len(colFolders) < 2 || len(colFiles) < 2 {
+		t.Fatalf("expected recursive tree collection, folders=%d files=%d", len(colFolders), len(colFiles))
+	}
+
+	// EmptyTrash: collectActiveFolderTree error propagation
+	errFolder := seedFolder(folders, "gap-empty-err-root", "u1", "ErrRoot", nil)
+	markFolderTrashed(errFolder)
+	files.listErr = errors.New("empty trash collect fail")
+	if err := uc.EmptyTrash(ctx, "u1"); err == nil {
+		t.Fatal("expected EmptyTrash collect tree error")
+	}
+	files.listErr = nil
+
+	// ListStarred: include both folder and file success entries
+	stars.refs = []portout.StarRef{
+		{ItemID: activeRoot.ID, ItemType: "folder"},
+		{ItemID: fileInChild.ID, ItemType: "file"},
+	}
+	fileInChild.DeletedAt = nil
+	items, err := uc.ListStarred(ctx, "u1")
+	if err != nil {
+		t.Fatalf("ListStarred mixed refs failed: %v", err)
+	}
+	if len(items) != 2 {
+		t.Fatalf("expected 2 starred items, got %d", len(items))
+	}
+
+	// resolveFolderName: error on candidate existence check inside loop
+	checkCalls := 0
+	folders.existsByNameFn = func(userID string, parentID *string, name string) (bool, error) {
+		checkCalls++
+		if checkCalls == 1 {
+			return true, nil
+		}
+		return false, errors.New("candidate exists check fail")
+	}
+	if _, err := uc.resolveFolderName(ctx, "u1", nil, "LoopErr"); err == nil {
+		t.Fatal("expected resolveFolderName loop exists check error")
+	}
+	folders.existsByNameFn = nil
+
+	// RestoreItem(folder): list trashed folders/files error branches
+	restoreListRoot := seedFolder(folders, "gap-restore-list-root", "u1", "RestoreListRoot", nil)
+	markFolderTrashed(restoreListRoot)
+	folders.listErr = errors.New("list trashed folders fail")
+	if err := uc.RestoreItem(ctx, "u1", restoreListRoot.ID, "folder"); err == nil {
+		t.Fatal("expected restore folder list trashed folders error")
+	}
+	folders.listErr = nil
+	files.listErr = errors.New("list trashed files fail")
+	if err := uc.RestoreItem(ctx, "u1", restoreListRoot.ID, "folder"); err == nil {
+		t.Fatal("expected restore folder list trashed files error")
+	}
+	files.listErr = nil
+
+	// restoreFolderSubtree: resolve filename error branch
+	resolveErrRoot := seedFolder(folders, "gap-resolve-err-root", "u1", "ResolveErrRoot", nil)
+	markFolderTrashed(resolveErrRoot)
+	resolveErrFile := seedFile(files, "gap-resolve-err-file", "u1", "resolve.txt", "text/plain", "u1/resolve.txt", &resolveErrRoot.ID, 1)
+	markFileTrashed(resolveErrFile)
+	files.existsErr = errors.New("resolve filename fail")
+	if err := uc.restoreFolderSubtree(ctx, "u1", resolveErrRoot.ID, []*domain.Folder{resolveErrRoot}, []*domain.File{resolveErrFile}); err == nil {
+		t.Fatal("expected restoreFolderSubtree resolve filename error")
+	}
+	files.existsErr = nil
+
+	// collectActiveFolderTree: recursive child traversal failure branch
+	recRoot := seedFolder(folders, "gap-rec-root", "u1", "RecRoot", nil)
+	recChild := seedFolder(folders, "gap-rec-child", "u1", "RecChild", &recRoot.ID)
+	seedFile(files, "gap-rec-file", "u1", "rec.txt", "text/plain", "u1/rec.txt", &recRoot.ID, 1)
+	files.listByFolderFn = func(_ string, folderID *string, _, _ string) ([]*domain.File, error) {
+		if folderID != nil && *folderID == recChild.ID {
+			return nil, errors.New("recursive child file list fail")
+		}
+		return files.byFolder[parentKey(folderID)], nil
+	}
+	if _, _, err := uc.collectActiveFolderTree(ctx, "u1", recRoot); err == nil {
+		t.Fatal("expected collectActiveFolderTree recursive child error")
+	}
+	files.listByFolderFn = nil
+}
+
+func TestCloudUseCaseLastGapBranches(t *testing.T) {
+	ctx := context.Background()
+
+	t.Run("ListTrash duplicate active entries are skipped", func(t *testing.T) {
+		uc, folders, files, _, _, _, _ := newCloudUCForTest()
+		root := seedFolder(folders, "root", "u1", "Root", nil)
+		trashed := seedFolder(folders, "trashed", "u1", "Trashed", &root.ID)
+		trashedFile := seedFile(files, "trashed-file", "u1", "a.txt", "text/plain", "u1/a", &trashed.ID, 1)
+		markFolderTrashed(trashed)
+		markFileTrashed(trashedFile)
+
+		folders.byParent[parentKey(&trashed.ID)] = append(folders.byParent[parentKey(&trashed.ID)],
+			&domain.Folder{ID: trashed.ID, UserID: "u1", ParentID: &trashed.ID, Name: "duplicate"})
+		files.byFolder[parentKey(&trashed.ID)] = append(files.byFolder[parentKey(&trashed.ID)],
+			&domain.File{ID: trashedFile.ID, UserID: "u1", FolderID: &trashed.ID, Name: "duplicate.txt"})
+
+		items, err := uc.ListTrash(ctx, "u1", &trashed.ID)
+		if err != nil {
+			t.Fatalf("ListTrash failed: %v", err)
+		}
+		counts := map[string]int{}
+		for _, item := range items {
+			if item.Type == "folder" {
+				counts[item.Folder.ID]++
+			} else {
+				counts[item.File.ID]++
+			}
+		}
+		if counts[trashed.ID] > 1 || counts[trashedFile.ID] > 1 {
+			t.Fatalf("expected duplicate active entries to be skipped, counts=%#v", counts)
+		}
+	})
+
+	t.Run("RestoreItem file restoreDeletedFolderPath error", func(t *testing.T) {
+		uc, folders, files, _, _, _, _ := newCloudUCForTest()
+		root := seedFolder(folders, "root", "u1", "Root", nil)
+		child := seedFolder(folders, "child", "u1", "Child", &root.ID)
+		file := seedFile(files, "file", "u1", "a.txt", "text/plain", "u1/a", &child.ID, 1)
+		markFolderTrashed(root)
+		markFolderTrashed(child)
+		markFileTrashed(file)
+		folders.restoreErr = errors.New("restore path fail")
+		if err := uc.RestoreItem(ctx, "u1", file.ID, "file"); err == nil || err.Error() != "restore folder: restore path fail" {
+			t.Fatalf("expected restore path error, got %v", err)
+		}
+	})
+
+	t.Run("restoreDeletedFolderPath nil and empty noop", func(t *testing.T) {
+		uc, _, _, _, _, _, _ := newCloudUCForTest()
+		if err := uc.restoreDeletedFolderPath(ctx, "u1", nil); err != nil {
+			t.Fatalf("expected nil path noop: %v", err)
+		}
+		empty := ""
+		if err := uc.restoreDeletedFolderPath(ctx, "u1", &empty); err != nil {
+			t.Fatalf("expected empty path noop: %v", err)
+		}
+	})
+}
+
+func TestCloudUseCaseExhaustiveGapBranches(t *testing.T) {
+	ctx := context.Background()
+
+	t.Run("ListTrash active folder and file errors plus duplicate skips", func(t *testing.T) {
+		uc, folders, files, _, _, _, _ := newCloudUCForTest()
+		root := seedFolder(folders, "root", "u1", "Root", nil)
+		trashed := seedFolder(folders, "trashed", "u1", "Trashed", &root.ID)
+		seenFolder := seedFolder(folders, "seen-folder", "u1", "Seen Folder", &trashed.ID)
+		markFolderTrashed(seenFolder)
+		visibleFolder := &domain.Folder{ID: "active-folder", UserID: "u1", ParentID: &trashed.ID, Name: "Active Folder"}
+		duplicateFolder := &domain.Folder{ID: seenFolder.ID, UserID: "u1", ParentID: &trashed.ID, Name: "Duplicate Folder"}
+		visibleFile := &domain.File{ID: "active-file", UserID: "u1", FolderID: &trashed.ID, Name: "active.txt"}
+		duplicateFile := &domain.File{ID: "seen-file", UserID: "u1", FolderID: &trashed.ID, Name: "dup.txt"}
+		seenFile := seedFile(files, duplicateFile.ID, "u1", duplicateFile.Name, "text/plain", "u1/dup", &trashed.ID, 1)
+		markFolderTrashed(trashed)
+		markFileTrashed(seenFile)
+		folders.byParent[parentKey(&trashed.ID)] = append(folders.byParent[parentKey(&trashed.ID)], visibleFolder, duplicateFolder)
+		files.byFolder[parentKey(&trashed.ID)] = append(files.byFolder[parentKey(&trashed.ID)], visibleFile, duplicateFile)
+
+		items, err := uc.ListTrash(ctx, "u1", &trashed.ID)
+		if err != nil {
+			t.Fatalf("ListTrash failed: %v", err)
+		}
+		counts := map[string]int{}
+		for _, item := range items {
+			if item.Type == "folder" {
+				counts[item.Folder.ID]++
+			} else {
+				counts[item.File.ID]++
+			}
+		}
+		if counts[visibleFolder.ID] != 1 || counts[visibleFile.ID] != 1 || counts[trashed.ID] > 1 || counts[duplicateFile.ID] > 1 {
+			t.Fatalf("unexpected ListTrash counts: %#v", counts)
+		}
+
+		folders.listByParentFn = func(string, *string) ([]*domain.Folder, error) {
+			return nil, errors.New("active folder list fail")
+		}
+		if _, err := uc.ListTrash(ctx, "u1", &trashed.ID); err == nil || err.Error() != "active folder list fail" {
+			t.Fatalf("expected active folder list error, got %v", err)
+		}
+		folders.listByParentFn = nil
+		files.listByFolderFn = func(string, *string, string, string) ([]*domain.File, error) {
+			return nil, errors.New("active file list fail")
+		}
+		if _, err := uc.ListTrash(ctx, "u1", &trashed.ID); err == nil || err.Error() != "active file list fail" {
+			t.Fatalf("expected active file list error, got %v", err)
+		}
+		files.listByFolderFn = nil
+	})
+
+	t.Run("RestoreItem folder path and listing errors", func(t *testing.T) {
+		uc, folders, files, _, _, _, _ := newCloudUCForTest()
+		root := seedFolder(folders, "root", "u1", "Root", nil)
+		parent := seedFolder(folders, "parent", "u1", "Parent", &root.ID)
+		child := seedFolder(folders, "child", "u1", "Child", &parent.ID)
+		markFolderTrashed(parent)
+		markFolderTrashed(child)
+
+		folders.restoreFn = func(_ string, id string) error {
+			if id == parent.ID {
+				return errors.New("restore parent fail")
+			}
+			return nil
+		}
+		if err := uc.RestoreItem(ctx, "u1", child.ID, "folder"); err == nil || err.Error() != "restore folder: restore parent fail" {
+			t.Fatalf("expected restoreDeletedFolderPath propagated error, got %v", err)
+		}
+		folders.restoreFn = nil
+		markFolderTrashed(parent)
+		markFolderTrashed(child)
+
+		folders.listErr = errors.New("list trashed folders fail")
+		if err := uc.RestoreItem(ctx, "u1", child.ID, "folder"); err == nil || err.Error() != "list trashed folders fail" {
+			t.Fatalf("expected trashed folders list error, got %v", err)
+		}
+		folders.listErr = nil
+		files.listErr = errors.New("list trashed files fail")
+		if err := uc.RestoreItem(ctx, "u1", child.ID, "folder"); err == nil || err.Error() != "list trashed files fail" {
+			t.Fatalf("expected trashed files list error, got %v", err)
+		}
+	})
+
+	t.Run("EmptyTrash collectActiveFolderTree error", func(t *testing.T) {
+		uc, folders, files, _, _, _, _ := newCloudUCForTest()
+		root := seedFolder(folders, "root", "u1", "Root", nil)
+		child := seedFolder(folders, "child", "u1", "Child", &root.ID)
+		seedFile(files, "active-file", "u1", "a.txt", "text/plain", "u1/a", &child.ID, 1)
+		markFolderTrashed(root)
+		files.listByFolderFn = func(_ string, folderID *string, _, _ string) ([]*domain.File, error) {
+			if folderID != nil && *folderID == root.ID {
+				return []*domain.File{}, nil
+			}
+			return nil, errors.New("collect tree fail")
+		}
+		if err := uc.EmptyTrash(ctx, "u1"); err == nil || err.Error() != "collect tree fail" {
+			t.Fatalf("expected collectActiveFolderTree error, got %v", err)
+		}
+	})
+
+	t.Run("restoreFolderSubtree child recursion and file restore error", func(t *testing.T) {
+		uc, folders, files, _, _, _, _ := newCloudUCForTest()
+		root := seedFolder(folders, "root", "u1", "Root", nil)
+		child := seedFolder(folders, "child", "u1", "Child", &root.ID)
+		grand := seedFolder(folders, "grand", "u1", "Grand", &child.ID)
+		file := seedFile(files, "file", "u1", "a.txt", "text/plain", "u1/a", &root.ID, 1)
+		markFolderTrashed(root)
+		markFolderTrashed(child)
+		markFolderTrashed(grand)
+		markFileTrashed(file)
+
+		folders.restoreFn = func(_ string, id string) error {
+			if id == child.ID {
+				return errors.New("child restore fail")
+			}
+			return nil
+		}
+		if err := uc.restoreFolderSubtree(ctx, "u1", root.ID, []*domain.Folder{root, child, grand}, nil); err == nil || err.Error() != "restore folder: child restore fail" {
+			t.Fatalf("expected child recursion error, got %v", err)
+		}
+
+		folders.restoreFn = nil
+		markFolderTrashed(root)
+		markFileTrashed(file)
+		files.restoreFn = func(_ string, id string) error {
+			if id == file.ID {
+				return errors.New("file restore fail")
+			}
+			return nil
+		}
+		if err := uc.restoreFolderSubtree(ctx, "u1", root.ID, []*domain.Folder{root}, []*domain.File{file}); err == nil || err.Error() != "restore file: file restore fail" {
+			t.Fatalf("expected file restore error, got %v", err)
+		}
+	})
 }

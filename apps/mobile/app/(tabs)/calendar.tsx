@@ -65,14 +65,6 @@ function formatDateLabel(dateKey: string): string {
   });
 }
 
-function getTodoPriorityRank(priority: string): number {
-  if (priority === "urgent") return 0;
-  if (priority === "high") return 1;
-  if (priority === "normal") return 2;
-  if (priority === "low") return 3;
-  return 4;
-}
-
 function parseWeekStartsOn(settings: Record<string, string>): number {
   const raw = Number.parseInt(settings.calendar_week_start || "0", 10);
   if (Number.isNaN(raw)) return 0;
@@ -297,15 +289,12 @@ export default function CalendarScreen() {
         due: todo.due || todo.due_date || null,
         due_date: todo.due_date || null,
         due_time: todo.due_time || null,
-        priority: todo.priority || "normal",
         is_done: todo.done ?? todo.is_done ?? false,
       }))
       .sort((a, b) => {
         const timeA = a.due_time || "99:99";
         const timeB = b.due_time || "99:99";
         if (timeA !== timeB) return timeA.localeCompare(timeB);
-        const rankDiff = getTodoPriorityRank(a.priority) - getTodoPriorityRank(b.priority);
-        if (rankDiff !== 0) return rankDiff;
         return (a.title || "").localeCompare(b.title || "");
       });
   }, [listTodoItems, listTodoLists]);
@@ -661,8 +650,7 @@ export default function CalendarScreen() {
                           {todo.title}
                         </Text>
                         <Text style={styles.summaryMetaText}>
-                          우선순위 {todo.priority}
-                          {todo.due_date ? ` · 기한 ${formatDueLabel(todo.due_date, todo.due_time)}` : ""}
+                          {todo.due_date ? `기한 ${formatDueLabel(todo.due_date, todo.due_time)}` : "기한 없음"}
                           {todo.is_done ? " · 완료" : ""}
                         </Text>
                       </View>

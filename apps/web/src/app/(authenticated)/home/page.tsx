@@ -49,9 +49,7 @@ function formatEventTime(event: HomeSummaryEvent): string {
 }
 
 function getTodoBadge(todo: HomeSummaryTodo): string {
-  if (todo.priority === "urgent") return "긴급";
-  if (todo.priority === "high") return "높음";
-  return todo.due_date ? formatDueLabel(todo.due_date, todo.due_time) : "보통";
+  return todo.due_date ? formatDueLabel(todo.due_date, todo.due_time) : "기한 없음";
 }
 
 export default function HomePage() {

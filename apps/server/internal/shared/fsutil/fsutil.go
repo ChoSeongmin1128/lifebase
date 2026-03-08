@@ -10,6 +10,14 @@ import (
 	"syscall"
 )
 
+var (
+	removeDirFn = os.Remove
+	statPathFn  = os.Stat
+	walkDirFn   = filepath.WalkDir
+	relPathFn   = filepath.Rel
+	dirPathFn   = filepath.Dir
+)
+
 func PruneEmptyParents(root, start string) error {
 	root = filepath.Clean(root)
 	current := filepath.Clean(start)
@@ -22,7 +30,7 @@ func PruneEmptyParents(root, start string) error {
 			return nil
 		}
 
-		err := os.Remove(current)
+		err := removeDirFn(current)
 		switch {
 		case err == nil:
 		case os.IsNotExist(err):
@@ -32,7 +40,7 @@ func PruneEmptyParents(root, start string) error {
 			return err
 		}
 
-		parent := filepath.Dir(current)
+		parent := dirPathFn(current)
 		if parent == current {
 			return nil
 		}
@@ -42,7 +50,7 @@ func PruneEmptyParents(root, start string) error {
 
 func RemoveEmptyDirs(root string) (int, error) {
 	root = filepath.Clean(root)
-	if _, err := os.Stat(root); err != nil {
+	if _, err := statPathFn(root); err != nil {
 		if os.IsNotExist(err) {
 			return 0, nil
 		}
@@ -50,7 +58,7 @@ func RemoveEmptyDirs(root string) (int, error) {
 	}
 
 	dirs := make([]string, 0, 32)
-	if err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
+	if err := walkDirFn(root, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			if os.IsNotExist(err) {
 				return nil
@@ -72,7 +80,7 @@ func RemoveEmptyDirs(root string) (int, error) {
 
 	removed := 0
 	for _, dir := range dirs {
-		err := os.Remove(dir)
+		err := removeDirFn(dir)
 		switch {
 		case err == nil:
 			removed++
@@ -87,7 +95,7 @@ func RemoveEmptyDirs(root string) (int, error) {
 }
 
 func isWithinRoot(root, target string) bool {
-	rel, err := filepath.Rel(root, target)
+	rel, err := relPathFn(root, target)
 	if err != nil {
 		return false
 	}

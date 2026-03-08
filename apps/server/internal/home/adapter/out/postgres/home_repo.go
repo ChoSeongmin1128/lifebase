@@ -23,6 +23,7 @@ var (
 	scanEventSummariesFn      = scanEventSummaries
 	scanTodoSummariesFn       = scanTodoSummaries
 	scanRecentFileSummariesFn = scanRecentFileSummaries
+	scanStorageTypeUsageFn    = scanStorageTypeUsage
 )
 
 func NewHomeRepo(db *pgxpool.Pool) portout.HomeRepository {
@@ -93,7 +94,7 @@ func (r *homeRepo) listTodosByDueScope(ctx context.Context, userID, todayDate st
 		`SELECT id, list_id, title,
 		        CASE WHEN due_date IS NULL THEN NULL ELSE to_char(due_date, 'YYYY-MM-DD') END AS due_date,
 		        CASE WHEN due_time IS NULL THEN NULL ELSE to_char(due_time, 'HH24:MI') END AS due_time,
-		        priority, is_pinned
+		        is_pinned
 		 FROM todos
 		 WHERE user_id = $1
 		   AND deleted_at IS NULL
@@ -212,7 +213,7 @@ func (r *homeRepo) ListStorageTypeUsage(ctx context.Context, userID string) ([]d
 	}
 	defer rows.Close()
 
-	return scanStorageTypeUsage(rows)
+	return scanStorageTypeUsageFn(rows)
 }
 
 func scanEventSummaries(rows pgx.Rows, limit int) ([]domain.EventSummary, error) {
@@ -248,7 +249,6 @@ func scanTodoSummaries(rows pgx.Rows, limit int) ([]domain.TodoSummary, error) {
 			&item.Title,
 			&item.DueDate,
 			&item.DueTime,
-			&item.Priority,
 			&item.IsPinned,
 		); err != nil {
 			return nil, err
