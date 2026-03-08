@@ -11,10 +11,9 @@ import {
   DialogTitle,
   DialogFooter,
 } from "@/components/ui/dialog";
-import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@/components/ui/select";
-import { Textarea } from "@/components/ui/textarea";
 import { TodoToolbar, type TodoSortBy, type TodoFilterMode } from "@/components/todo/TodoToolbar";
 import { TodoRow } from "@/components/todo/TodoRow";
+import { TodoDetailPanel } from "@/components/todo/TodoDetailPanel";
 import { CreateTodoDialog } from "@/components/todo/CreateTodoDialog";
 import { useCreateTodo } from "@/features/todo/ui/hooks/useCreateTodo";
 import { useTodoActions } from "@/features/todo/ui/hooks/useTodoActions";
@@ -209,7 +208,7 @@ function TodoPageInner() {
   const [newListGoogleAccountID, setNewListGoogleAccountID] = useState("");
   const [googleAccounts, setGoogleAccounts] = useState<GoogleAccountSummary[]>([]);
   const [showNewList, setShowNewList] = useState(false);
-  const [editingTodo, setEditingTodo] = useState<TodoItem | null>(null);
+  const [editingTodoId, setEditingTodoId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [filter, setFilter] = useState<TodoFilterMode>("all");
   const [doneCollapsed, setDoneCollapsed] = useState(true);
@@ -631,7 +630,7 @@ function TodoPageInner() {
   const handleDeleteTodo = async (todoId: string) => {
     try {
       await deleteTodo(todoId);
-      setEditingTodo(null);
+      setEditingTodoId(null);
       await loadTodos();
       await loadLists();
       void triggerTodoSync("page_action", PAGE_ACTION_SYNC_COOLDOWN_MS);
@@ -641,18 +640,24 @@ function TodoPageInner() {
   };
 
   const handleUpdateTodo = async (todoId: string, updates: Record<string, unknown>) => {
+    const previousTodo = todos.find((todo) => todo.id === todoId);
+    if (previousTodo) {
+      patchTodoLocally(todoId, updates);
+    }
     try {
       await updateTodo(todoId, updates);
-      setEditingTodo(null);
-      await loadTodos();
       const needsListRefresh =
         Object.prototype.hasOwnProperty.call(updates, "is_done") ||
         Object.prototype.hasOwnProperty.call(updates, "list_id");
       if (needsListRefresh) {
+        await loadTodos(activeListIdRef.current, { silent: true });
         await loadLists();
       }
       void triggerTodoSync("page_action", PAGE_ACTION_SYNC_COOLDOWN_MS);
     } catch (err) {
+      if (previousTodo) {
+        setTodos((prev) => prev.map((todo) => (todo.id === todoId ? previousTodo : todo)));
+      }
       console.error("Update failed:", err);
     }
   };
@@ -878,9 +883,32 @@ function TodoPageInner() {
     return allFlat.find((f) => f.id === dragActiveId)?.todo ?? null;
   }, [dragActiveId, allFlat]);
 
+  const editingTodo = useMemo(() => {
+    if (!editingTodoId) return null;
+    return todos.find((todo) => todo.id === editingTodoId) ?? null;
+  }, [editingTodoId, todos]);
+
   const projectedDepth = projection?.depth ?? 0;
 
   const isDndEnabled = sortBy === "manual" && !isAllView;
+
+  const patchTodoLocally = useCallback((todoId: string, updates: Record<string, unknown>) => {
+    setTodos((prev) =>
+      prev.map((todo) => {
+        if (todo.id !== todoId) return todo;
+        return {
+          ...todo,
+          ...updates,
+          due_date: Object.prototype.hasOwnProperty.call(updates, "due_date")
+            ? ((updates.due_date as string) || null)
+            : todo.due_date,
+          due_time: Object.prototype.hasOwnProperty.call(updates, "due_time")
+            ? ((updates.due_time as string) || null)
+            : todo.due_time,
+        };
+      }),
+    );
+  }, []);
 
   const renderTodoRow = (item: FlattenedItem) => {
     const { todo, depth } = item;
@@ -914,7 +942,7 @@ function TodoPageInner() {
           onToggleCollapse={() => toggleCollapse(todo.id)}
           onToggleDone={() => handleToggleDone(todo)}
           onTogglePin={() => handleTogglePin(todo)}
-          onEdit={() => setEditingTodo(todo)}
+          onEdit={() => setEditingTodoId(todo.id)}
           onDelete={() => handleDeleteTodo(todo.id)}
           onChangePriority={(p) => handleUpdateTodo(todo.id, { priority: p })}
           onAddSubtask={!isAllView && depth < 1 ? () => { setCreateParentId(todo.id); setShowCreateDialog(true); } : undefined}
@@ -1228,52 +1256,66 @@ function TodoPageInner() {
         </button>
 
         {/* Todo list */}
-        <div className="relative flex-1 overflow-auto">
-          {!settingsLoaded || loading ? (
-            <div className="flex items-center justify-center py-20 text-text-muted">
-              불러오는 중...
-            </div>
-          ) : !activeListId ? (
-            <div className="flex flex-col items-center justify-center py-20 text-text-muted">
-              <p>목록을 선택하거나 만들어 주세요</p>
-            </div>
-          ) : isDndEnabled ? (
-            <DndContext
-              sensors={sensors}
-              collisionDetection={closestCenter}
-              onDragStart={handleDragStart}
-              onDragMove={handleDragMove}
-              onDragOver={handleDragOver}
-              onDragEnd={handleDragEnd}
-              onDragCancel={handleDragCancel}
-            >
-              <SortableContext items={allFlatIds} strategy={verticalListSortingStrategy}>
-                {todoListContent}
-              </SortableContext>
-              <DragOverlay dropAnimation={null}>
-                {activeTodo && (
-                  <TodoRow
-                    todo={activeTodo}
-                    listLabel={isAllView ? listNameByID.get(activeTodo.list_id) : undefined}
-                    depth={projectedDepth}
-                    isOverdue={isOverdueTodo(activeTodo)}
-                    hasChildren={activeTodo.children.length > 0}
-                    isCollapsed={false}
-                    showDragHandle
-                    isOverlay
-                    onToggleCollapse={() => {}}
-                    onToggleDone={() => {}}
-                    onTogglePin={() => {}}
-                    onEdit={() => {}}
-                    onDelete={() => {}}
-                    onChangePriority={() => {}}
-                  />
-                )}
-              </DragOverlay>
-            </DndContext>
-          ) : (
-            todoListContent
-          )}
+        <div className="flex flex-1 min-h-0">
+          <div className="relative min-w-0 flex-1 overflow-auto">
+            {!settingsLoaded || loading ? (
+              <div className="flex items-center justify-center py-20 text-text-muted">
+                불러오는 중...
+              </div>
+            ) : !activeListId ? (
+              <div className="flex flex-col items-center justify-center py-20 text-text-muted">
+                <p>목록을 선택하거나 만들어 주세요</p>
+              </div>
+            ) : isDndEnabled ? (
+              <DndContext
+                sensors={sensors}
+                collisionDetection={closestCenter}
+                onDragStart={handleDragStart}
+                onDragMove={handleDragMove}
+                onDragOver={handleDragOver}
+                onDragEnd={handleDragEnd}
+                onDragCancel={handleDragCancel}
+              >
+                <SortableContext items={allFlatIds} strategy={verticalListSortingStrategy}>
+                  {todoListContent}
+                </SortableContext>
+                <DragOverlay dropAnimation={null}>
+                  {activeTodo && (
+                    <TodoRow
+                      todo={activeTodo}
+                      listLabel={isAllView ? listNameByID.get(activeTodo.list_id) : undefined}
+                      depth={projectedDepth}
+                      isOverdue={isOverdueTodo(activeTodo)}
+                      hasChildren={activeTodo.children.length > 0}
+                      isCollapsed={false}
+                      showDragHandle
+                      isOverlay
+                      onToggleCollapse={() => {}}
+                      onToggleDone={() => {}}
+                      onTogglePin={() => {}}
+                      onEdit={() => {}}
+                      onDelete={() => {}}
+                      onChangePriority={() => {}}
+                    />
+                  )}
+                </DragOverlay>
+              </DndContext>
+            ) : (
+              todoListContent
+            )}
+          </div>
+
+          {editingTodo ? (
+            <TodoDetailPanel
+              key={editingTodo.id}
+              todo={editingTodo}
+              listName={listNameByID.get(editingTodo.list_id)}
+              className="hidden w-[360px] shrink-0 md:flex"
+              onClose={() => setEditingTodoId(null)}
+              onDelete={() => handleDeleteTodo(editingTodo.id)}
+              onUpdate={(updates) => handleUpdateTodo(editingTodo.id, updates)}
+            />
+          ) : null}
         </div>
       </div>
 
@@ -1289,87 +1331,22 @@ function TodoPageInner() {
         disabled={creating}
       />
 
-      {/* Edit Modal */}
-      <Dialog open={!!editingTodo} onOpenChange={(v) => !v && setEditingTodo(null)}>
+      {/* Edit Modal (mobile) */}
+      <Dialog open={!!editingTodo} onOpenChange={(v) => !v && setEditingTodoId(null)}>
         {editingTodo && (
-          <DialogContent>
-            <DialogHeader>
+          <DialogContent className="md:hidden max-w-lg p-0">
+            <DialogHeader className="sr-only">
               <DialogTitle>Todo 수정</DialogTitle>
             </DialogHeader>
-            <div className="space-y-3">
-              <Input
-                defaultValue={editingTodo.title}
-                onBlur={(e) => {
-                  if (e.target.value !== editingTodo.title) {
-                    handleUpdateTodo(editingTodo.id, { title: e.target.value });
-                  }
-                }}
-              />
-              <Textarea
-                defaultValue={editingTodo.notes}
-                placeholder="메모"
-                rows={3}
-                onBlur={(e) => {
-                  if (e.target.value !== editingTodo.notes) {
-                    handleUpdateTodo(editingTodo.id, { notes: e.target.value });
-                  }
-                }}
-              />
-              <div className="flex gap-2">
-                <div className="flex-1">
-                  <label className="mb-1 block text-xs text-text-muted">기한 날짜</label>
-                  <Input
-                    type="date"
-                    defaultValue={editingTodo.due_date || ""}
-                    onChange={(e) =>
-                      handleUpdateTodo(editingTodo.id, {
-                        due_date: e.target.value || "",
-                        due_time: e.target.value ? (editingTodo.due_time || "") : "",
-                      })
-                    }
-                  />
-                </div>
-                <div className="w-28">
-                  <label className="mb-1 block text-xs text-text-muted">시간</label>
-                  <Input
-                    type="time"
-                    defaultValue={editingTodo.due_time || ""}
-                    disabled={!editingTodo.due_date}
-                    onChange={(e) =>
-                      handleUpdateTodo(editingTodo.id, {
-                        due_date: editingTodo.due_date || "",
-                        due_time: e.target.value || "",
-                      })
-                    }
-                  />
-                </div>
-                <div className="flex-1">
-                  <label className="mb-1 block text-xs text-text-muted">우선순위</label>
-                  <Select
-                    defaultValue={editingTodo.priority}
-                    onValueChange={(v) => handleUpdateTodo(editingTodo.id, { priority: v })}
-                  >
-                    <SelectTrigger className="h-9">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="urgent">긴급</SelectItem>
-                      <SelectItem value="high">높음</SelectItem>
-                      <SelectItem value="normal">보통</SelectItem>
-                      <SelectItem value="low">낮음</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-            </div>
-            <DialogFooter className="justify-between">
-              <Button variant="danger" size="sm" onClick={() => handleDeleteTodo(editingTodo.id)}>
-                삭제
-              </Button>
-              <Button variant="ghost" size="sm" onClick={() => setEditingTodo(null)}>
-                닫기
-              </Button>
-            </DialogFooter>
+            <TodoDetailPanel
+              key={editingTodo.id}
+              todo={editingTodo}
+              listName={listNameByID.get(editingTodo.list_id)}
+              className="border-l-0"
+              onClose={() => setEditingTodoId(null)}
+              onDelete={() => handleDeleteTodo(editingTodo.id)}
+              onUpdate={(updates) => handleUpdateTodo(editingTodo.id, updates)}
+            />
           </DialogContent>
         )}
       </Dialog>

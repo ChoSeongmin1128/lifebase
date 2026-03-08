@@ -161,14 +161,14 @@ export function TodoRow({
         <div className="min-w-0">
           <span
             className={cn(
-              "block truncate text-sm text-text-primary",
+              "block line-clamp-3 break-words text-sm leading-5 text-text-primary",
               todo.is_done && "text-text-muted line-through"
             )}
           >
             {todo.title}
           </span>
           {todo.notes.trim() ? (
-            <p className="mt-0.5 line-clamp-2 text-xs text-text-muted">
+            <p className="mt-0.5 line-clamp-1 text-xs text-text-muted">
               {todo.notes.trim()}
             </p>
           ) : null}
