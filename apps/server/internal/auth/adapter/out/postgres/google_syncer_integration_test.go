@@ -385,6 +385,95 @@ func TestGoogleAccountSyncerResolveTodoDoneRetentionCutoffSwitchCasesIntegration
 	}
 }
 
+func TestGoogleAccountSyncerSyncAccountKeepsLocallyDeletedTodoWhenDeletePushPending(t *testing.T) {
+	db := dbtest.Open(t)
+	dbtest.Reset(t, db)
+	ctx := context.Background()
+	now := time.Now().UTC().Truncate(time.Second)
+
+	const userID = "11111111-1111-1111-1111-111111111111"
+	const accountID = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
+	const listID = "list-local-1"
+	const todoID = "todo-pending-delete"
+
+	_, err := db.Exec(ctx,
+		`INSERT INTO user_google_accounts
+		    (id, user_id, google_email, google_id, access_token, refresh_token, token_expires_at, scopes, status, is_primary, connected_at, created_at, updated_at)
+		 VALUES ($1, $2, 'u1@gmail.com', 'gid-1', 'at', 'rt', $3, 'scope', 'active', true, $3, $3, $3)`,
+		accountID, userID, now,
+	)
+	if err != nil {
+		t.Fatalf("insert google account: %v", err)
+	}
+
+	_, err = db.Exec(ctx,
+		`INSERT INTO todo_lists
+		    (id, user_id, google_id, google_account_id, name, sort_order, created_at, updated_at)
+		 VALUES ($1, $2, 'g-list-1', $3, 'Main', 0, $4, $4)`,
+		listID, userID, accountID, now,
+	)
+	if err != nil {
+		t.Fatalf("insert todo list: %v", err)
+	}
+
+	deletedAt := now.Add(-time.Minute)
+	_, err = db.Exec(ctx,
+		`INSERT INTO todos
+		    (id, list_id, user_id, google_id, title, notes, due, priority, is_done, is_pinned, sort_order, done_at, created_at, updated_at, deleted_at)
+		 VALUES ($1, $2, $3, 'gt-keep-deleted', 'Delete Me', '', NULL, 'normal', false, false, 0, NULL, $4, $5, $6)`,
+		todoID, listID, userID, now.Add(-time.Hour), deletedAt, deletedAt,
+	)
+	if err != nil {
+		t.Fatalf("insert deleted todo: %v", err)
+	}
+
+	_, err = db.Exec(ctx,
+		`INSERT INTO google_push_outbox
+		    (id, account_id, user_id, domain, op, local_resource_id, expected_updated_at, payload_json, status, attempt_count, next_retry_at, created_at, updated_at)
+		 VALUES
+		    ('out-pending-delete', $1, $2, 'todo', 'delete', $3, $4, '{}'::jsonb, 'pending', 0, NULL, $4, $4)`,
+		accountID, userID, todoID, deletedAt,
+	)
+	if err != nil {
+		t.Fatalf("insert pending delete outbox: %v", err)
+	}
+
+	syncer := NewGoogleAccountSyncer(db, &googleAuthStub{
+		listTaskListsFn: func(context.Context, portout.OAuthToken) ([]portout.OAuthTaskList, error) {
+			return []portout.OAuthTaskList{{GoogleID: "g-list-1", Name: "Main"}}, nil
+		},
+		listTasksFn: func(_ context.Context, _ portout.OAuthToken, taskListID, _ string) (*portout.OAuthTasksPage, error) {
+			if taskListID != "g-list-1" {
+				return &portout.OAuthTasksPage{}, nil
+			}
+			return &portout.OAuthTasksPage{
+				Items: []portout.OAuthTask{
+					{GoogleID: "gt-keep-deleted", Title: "Delete Me", Notes: "", IsDone: false},
+				},
+			}, nil
+		},
+	})
+
+	account := &authdomain.GoogleAccount{
+		ID:           accountID,
+		UserID:       userID,
+		AccessToken:  "at",
+		RefreshToken: "rt",
+	}
+
+	if err := syncer.SyncAccount(ctx, userID, account, portout.GoogleSyncOptions{SyncTodo: true}); err != nil {
+		t.Fatalf("SyncAccount: %v", err)
+	}
+
+	var gotDeletedAt *time.Time
+	if err := db.QueryRow(ctx, `SELECT deleted_at FROM todos WHERE id = $1`, todoID).Scan(&gotDeletedAt); err != nil {
+		t.Fatalf("read todo deleted_at: %v", err)
+	}
+	if gotDeletedAt == nil {
+		t.Fatal("expected pending delete todo to remain deleted after pull sync")
+	}
+}
+
 func TestGoogleAccountSyncerResolveTodoDoneRetentionCutoffFallsBackOnDBError(t *testing.T) {
 	db := dbtest.Open(t)
 	dbtest.Reset(t, db)

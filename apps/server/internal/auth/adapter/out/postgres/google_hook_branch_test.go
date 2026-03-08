@@ -219,6 +219,51 @@ func TestGoogleAccountSyncerBackfillRowsAndAcquireBranches(t *testing.T) {
 	})
 }
 
+func TestGoogleAccountSyncerLoadPendingDeleteTodoIDsBranches(t *testing.T) {
+	prev := queryGoogleSyncRowsFn
+	t.Cleanup(func() { queryGoogleSyncRowsFn = prev })
+
+	syncer := NewGoogleAccountSyncer(nil, &googleAuthStub{})
+	ctx := context.Background()
+
+	t.Run("scan_error", func(t *testing.T) {
+		queryGoogleSyncRowsFn = func(context.Context, *pgxpool.Pool, string, ...any) (pgx.Rows, error) {
+			return &fakePushRows{next: []bool{true}, scan: errors.New("scan fail")}, nil
+		}
+		if _, err := syncer.loadPendingDeleteTodoIDs(ctx, "user", "list"); err == nil {
+			t.Fatal("expected loadPendingDeleteTodoIDs scan error")
+		}
+	})
+
+	t.Run("rows_error", func(t *testing.T) {
+		queryGoogleSyncRowsFn = func(context.Context, *pgxpool.Pool, string, ...any) (pgx.Rows, error) {
+			return &fakePushRows{next: []bool{false}, err: errors.New("rows fail")}, nil
+		}
+		if _, err := syncer.loadPendingDeleteTodoIDs(ctx, "user", "list"); err == nil {
+			t.Fatal("expected loadPendingDeleteTodoIDs rows error")
+		}
+	})
+
+	t.Run("success", func(t *testing.T) {
+		queryGoogleSyncRowsFn = func(context.Context, *pgxpool.Pool, string, ...any) (pgx.Rows, error) {
+			return &fakePushRows{data: [][]any{{"todo-1"}, {"todo-2"}}}, nil
+		}
+		ids, err := syncer.loadPendingDeleteTodoIDs(ctx, "user", "list")
+		if err != nil {
+			t.Fatalf("loadPendingDeleteTodoIDs: %v", err)
+		}
+		if _, ok := ids["todo-1"]; !ok {
+			t.Fatal("expected todo-1 in pending delete ids")
+		}
+		if _, ok := ids["todo-2"]; !ok {
+			t.Fatal("expected todo-2 in pending delete ids")
+		}
+		if len(ids) != 2 {
+			t.Fatalf("expected 2 pending delete ids, got %d", len(ids))
+		}
+	})
+}
+
 func TestAuthScannerHelpers(t *testing.T) {
 	now := time.Now().UTC()
 

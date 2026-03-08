@@ -568,6 +568,15 @@ func (s *googleAccountSyncer) syncTaskListsAndTodos(
 			pageToken = page.NextPageToken
 		}
 
+		localTodoIDByGoogleID, err := s.loadLocalTodoIDsByGoogleID(ctx, userID, localListID)
+		if err != nil {
+			return err
+		}
+		pendingDeleteTodoIDs, err := s.loadPendingDeleteTodoIDs(ctx, userID, localListID)
+		if err != nil {
+			return err
+		}
+
 		for _, task := range allTasks {
 			if task.IsDeleted {
 				_, _ = s.db.Exec(ctx,
@@ -580,6 +589,13 @@ func (s *googleAccountSyncer) syncTaskListsAndTodos(
 					now,
 				)
 				continue
+			}
+
+			localTodoID := localTodoIDByGoogleID[task.GoogleID]
+			if localTodoID != "" {
+				if _, blocked := pendingDeleteTodoIDs[localTodoID]; blocked {
+					continue
+				}
 			}
 
 			tag, err := execGoogleSyncFn(ctx, s.db,
@@ -626,10 +642,6 @@ func (s *googleAccountSyncer) syncTaskListsAndTodos(
 			}
 		}
 
-		localTodoIDByGoogleID, err := s.loadLocalTodoIDsByGoogleID(ctx, userID, localListID)
-		if err != nil {
-			return err
-		}
 		sortOrderByParentKey := map[string]int{}
 		tasksByGoogleID := make(map[string]portout.OAuthTask, len(allTasks))
 		for _, task := range allTasks {
@@ -644,6 +656,9 @@ func (s *googleAccountSyncer) syncTaskListsAndTodos(
 			}
 			localTodoID := localTodoIDByGoogleID[task.GoogleID]
 			if localTodoID == "" {
+				continue
+			}
+			if _, blocked := pendingDeleteTodoIDs[localTodoID]; blocked {
 				continue
 			}
 			parentID := normalizeGoogleTaskParent(task, tasksByGoogleID, localTodoIDByGoogleID)
@@ -746,6 +761,59 @@ func (s *googleAccountSyncer) loadLocalTodoIDsByGoogleID(
 	}
 	if err := rows.Err(); err != nil {
 		return nil, fmt.Errorf("iterate todo google ids: %w", err)
+	}
+	return result, nil
+}
+
+func (s *googleAccountSyncer) loadPendingDeleteTodoIDs(
+	ctx context.Context,
+	userID, localListID string,
+) (map[string]struct{}, error) {
+	rows, err := queryGoogleSyncRowsFn(ctx, s.db,
+		`SELECT DISTINCT t.id
+		   FROM todos t
+		  WHERE t.user_id = $1
+		    AND t.list_id = $2
+		    AND (
+		      EXISTS (
+		        SELECT 1
+		          FROM google_push_outbox o
+		         WHERE o.user_id = t.user_id
+		           AND o.domain = 'todo'
+		           AND o.op = 'delete'
+		           AND o.status IN ('pending', 'retry', 'processing')
+		           AND o.local_resource_id = t.id
+		      )
+		      OR EXISTS (
+		        SELECT 1
+		          FROM google_push_outbox o
+		         WHERE o.user_id = t.user_id
+		           AND o.domain = 'todo'
+		           AND o.op = 'delete'
+		           AND o.status IN ('pending', 'retry', 'processing')
+		           AND o.local_resource_id = t.parent_id
+		      )
+		    )`,
+		userID,
+		localListID,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("query pending delete todos: %w", err)
+	}
+	defer rows.Close()
+
+	result := map[string]struct{}{}
+	for rows.Next() {
+		var todoID string
+		if err := rows.Scan(&todoID); err != nil {
+			return nil, fmt.Errorf("scan pending delete todo id: %w", err)
+		}
+		if todoID != "" {
+			result[todoID] = struct{}{}
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate pending delete todo ids: %w", err)
 	}
 	return result, nil
 }
