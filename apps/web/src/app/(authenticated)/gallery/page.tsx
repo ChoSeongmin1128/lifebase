@@ -207,14 +207,15 @@ export default function GalleryPage() {
       <div className="flex h-full flex-col">
         {/* Header */}
         <PageToolbar>
-          <h1 className="text-lg font-semibold text-text-strong">갤러리</h1>
-          <PageToolbarGroup>
+          <div className="flex items-center gap-2">
+            <h1 className="text-lg font-semibold text-text-strong">갤러리</h1>
             {refreshing ? (
-              <div className="hidden items-center gap-1.5 text-xs text-primary md:flex">
+              <span className="text-primary" aria-label="업데이트 중">
                 <Loader2 size={12} className="animate-spin" />
-                업데이트 중
-              </div>
+              </span>
             ) : null}
+          </div>
+          <PageToolbarGroup>
             {/* Media type filter */}
             <div className="flex rounded-lg border border-border">
               {mediaFilters.map((f) => (
@@ -279,14 +280,6 @@ export default function GalleryPage() {
 
         {/* Content */}
         <div className="relative flex-1 overflow-auto p-4">
-          {refreshing ? (
-            <div className="pointer-events-none sticky top-0 z-10 mb-3 flex justify-end">
-              <div className="inline-flex items-center gap-1.5 rounded-full border border-border bg-background/90 px-2.5 py-1 text-xs text-primary shadow-sm backdrop-blur">
-                <Loader2 size={12} className="animate-spin" />
-                업데이트 중...
-              </div>
-            </div>
-          ) : null}
           {loading ? (
             <div className="flex items-center justify-center py-20 text-text-muted">불러오는 중...</div>
           ) : items.length === 0 ? (

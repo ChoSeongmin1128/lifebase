@@ -1229,14 +1229,6 @@ function TodoPageInner() {
 
         {/* Todo list */}
         <div className="relative flex-1 overflow-auto">
-          {refreshing ? (
-            <div className="pointer-events-none sticky top-0 z-10 flex justify-end px-4 py-2 md:px-6">
-              <div className="inline-flex items-center gap-1.5 rounded-full border border-border bg-background/90 px-2.5 py-1 text-xs text-primary shadow-sm backdrop-blur">
-                <Loader2 size={12} className="animate-spin" />
-                업데이트 중...
-              </div>
-            </div>
-          ) : null}
           {!settingsLoaded || loading ? (
             <div className="flex items-center justify-center py-20 text-text-muted">
               불러오는 중...

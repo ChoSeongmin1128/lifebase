@@ -868,14 +868,13 @@ function CloudPageInner() {
       {/* Toolbar Row 2: Actions */}
       <PageToolbar>
         <PageToolbarGroup className="gap-2">
-          {refreshing ? (
-            <div className="hidden items-center gap-1.5 text-xs text-primary md:flex">
-              <Loader2 size={12} className="animate-spin" />
-              업데이트 중
-            </div>
-          ) : null}
           {/* Search */}
           <div className="relative">
+            {refreshing ? (
+              <span className="absolute -left-5 top-1/2 -translate-y-1/2 text-primary" aria-label="업데이트 중">
+                <Loader2 size={12} className="animate-spin" />
+              </span>
+            ) : null}
             <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-text-muted" />
             <Input
               placeholder={isMyFilesSection ? "검색..." : `${sectionLabel}에서는 검색 미지원`}
@@ -1164,14 +1163,6 @@ function CloudPageInner() {
 
       {/* File list */}
       <div className="relative flex-1 overflow-auto">
-        {refreshing ? (
-          <div className="pointer-events-none sticky top-0 z-10 flex justify-end px-4 py-2 md:px-6">
-            <div className="inline-flex items-center gap-1.5 rounded-full border border-border bg-background/90 px-2.5 py-1 text-xs text-primary shadow-sm backdrop-blur">
-              <Loader2 size={12} className="animate-spin" />
-              업데이트 중...
-            </div>
-          </div>
-        ) : null}
         {loading ? (
           <div className="flex items-center justify-center py-20 text-text-muted">
             불러오는 중...

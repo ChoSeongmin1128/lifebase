@@ -65,6 +65,11 @@ export function TodoToolbar({
       <h2 className="font-medium text-text-strong">{listName}</h2>
       <PageToolbarGroup className="gap-2">
         <div className="relative">
+          {refreshing ? (
+            <span className="absolute -left-5 top-1/2 -translate-y-1/2 text-primary" aria-label="업데이트 중">
+              <Loader2 size={12} className="animate-spin" />
+            </span>
+          ) : null}
           <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-text-muted" />
           <Input
             placeholder="검색..."
@@ -96,12 +101,6 @@ export function TodoToolbar({
         </DropdownMenu>
 
         <div className="hidden items-center gap-2 text-xs text-text-muted md:flex">
-          {refreshing ? (
-            <span className="inline-flex items-center gap-1.5 text-primary">
-              <Loader2 size={12} className="animate-spin" />
-              업데이트 중
-            </span>
-          ) : null}
           <span>최근 동기화: {lastSyncedAt ? new Date(lastSyncedAt).toLocaleString("ko-KR") : "-"}</span>
         </div>
         <Button
