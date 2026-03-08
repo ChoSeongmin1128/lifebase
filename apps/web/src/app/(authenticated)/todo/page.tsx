@@ -944,9 +944,10 @@ function TodoPageInner() {
           onToggleCollapse={() => toggleCollapse(todo.id)}
           onToggleDone={() => handleToggleDone(todo)}
           onTogglePin={() => handleTogglePin(todo)}
-          onEdit={() => setEditingTodoId((prev) => (prev === todo.id ? null : todo.id))}
+          onEdit={() => setEditingTodoId(todo.id)}
           onDelete={() => handleDeleteTodo(todo.id)}
           onChangePriority={(p) => handleUpdateTodo(todo.id, { priority: p })}
+          onUpdateTitle={(title) => handleUpdateTodo(todo.id, { title })}
           onAddSubtask={!isAllView && depth < 1 ? () => { setCreateParentId(todo.id); setShowCreateDialog(true); } : undefined}
           onMoveToList={(listId) => handleUpdateTodo(todo.id, { list_id: listId })}
         />

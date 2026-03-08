@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useRef, useState } from "react";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -13,6 +14,7 @@ import {
   DropdownMenuSubTrigger,
   DropdownMenuSubContent,
 } from "@/components/ui/dropdown-menu";
+import { Textarea } from "@/components/ui/textarea";
 import { PriorityFlag } from "./PriorityFlag";
 import {
   MoreVertical,
@@ -71,8 +73,62 @@ interface TodoRowProps {
   onEdit: () => void;
   onDelete: () => void;
   onChangePriority: (priority: string) => void;
+  onUpdateTitle?: (title: string) => void;
   onAddSubtask?: () => void;
   onMoveToList?: (listId: string) => void;
+}
+
+function ExpandedTitleEditor({
+  title,
+  isDone,
+  onUpdateTitle,
+}: {
+  title: string;
+  isDone: boolean;
+  onUpdateTitle?: (title: string) => void;
+}) {
+  const [draftTitle, setDraftTitle] = useState(title);
+  const titleInputRef = useRef<HTMLTextAreaElement | null>(null);
+
+  useEffect(() => {
+    if (!titleInputRef.current) return;
+    titleInputRef.current.style.height = "0px";
+    titleInputRef.current.style.height = `${titleInputRef.current.scrollHeight}px`;
+  }, [draftTitle]);
+
+  return (
+    <Textarea
+      ref={titleInputRef}
+      value={draftTitle}
+      rows={1}
+      autoFocus
+      className={cn(
+        "min-h-0 resize-none border-0 bg-transparent px-0 py-0 text-sm leading-5 text-text-primary shadow-none focus-visible:ring-0",
+        isDone && "text-text-muted line-through"
+      )}
+      onClick={(event) => event.stopPropagation()}
+      onChange={(event) => setDraftTitle(event.target.value)}
+      onKeyDown={(event) => {
+        if (event.key === "Escape") {
+          setDraftTitle(title);
+          event.currentTarget.blur();
+        }
+      }}
+      onBlur={() => {
+        const nextTitle = draftTitle.trim();
+        if (!nextTitle) {
+          setDraftTitle(title);
+          return;
+        }
+        if (nextTitle !== title) {
+          onUpdateTitle?.(nextTitle);
+        }
+        if (nextTitle !== draftTitle) {
+          setDraftTitle(nextTitle);
+        }
+      }}
+    />
+  );
 }
 
 export function TodoRow({
@@ -94,6 +150,7 @@ export function TodoRow({
   onEdit,
   onDelete,
   onChangePriority,
+  onUpdateTitle,
   onAddSubtask,
   onMoveToList,
 }: TodoRowProps) {
@@ -160,17 +217,28 @@ export function TodoRow({
       <PriorityFlag priority={todo.priority} />
 
       {/* Content */}
-      <div className="min-w-0 flex-1 cursor-pointer" onClick={onEdit}>
+      <div
+        className={cn("min-w-0 flex-1", isExpanded ? "cursor-text" : "cursor-pointer")}
+        onClick={isExpanded ? undefined : onEdit}
+      >
         <div className="min-w-0">
-          <span
-            className={cn(
-              "block line-clamp-3 break-words text-sm leading-5 text-text-primary",
-              isExpanded && "line-clamp-none",
-              todo.is_done && "text-text-muted line-through"
-            )}
-          >
-            {todo.title}
-          </span>
+          {isExpanded ? (
+            <ExpandedTitleEditor
+              key={`${todo.id}:${todo.title}`}
+              title={todo.title}
+              isDone={todo.is_done}
+              onUpdateTitle={onUpdateTitle}
+            />
+          ) : (
+            <span
+              className={cn(
+                "block line-clamp-3 break-words text-sm leading-5 text-text-primary",
+                todo.is_done && "text-text-muted line-through"
+              )}
+            >
+              {todo.title}
+            </span>
+          )}
           {todo.notes.trim() && !isExpanded ? (
             <p className="mt-0.5 line-clamp-1 text-xs text-text-muted">
               {todo.notes.trim()}

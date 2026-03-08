@@ -197,7 +197,8 @@ npx expo start
 - Google Tasks 공개 API 제약상 동기화는 `due_date`만 왕복하고 `due_time`은 LifeBase 로컬 확장값으로 유지
 - 정렬: `manual` / `date` / `due` / `recent_starred` / `title`
 - Web Todo는 `전체`/목록 전환 시 기존 목록을 유지한 채 백그라운드 refresh로 갱신한다
-- Web/Desktop Todo는 제목을 최대 3줄까지 노출하고, 수정은 행 아래 인라인 확장 중심으로 처리한다
+- Web/Desktop Todo는 제목을 최대 3줄까지 노출하고, 확장된 행 자체에서 제목을 바로 수정한다
+- 확장 영역은 메모, 일정, 우선순위만 보조 편집해 Google Tasks에 가까운 인라인 편집 흐름을 유지한다
 - Web Cloud/Gallery도 섹션·폴더·필터 전환 시 기존 목록을 유지한 채 백그라운드 refresh로 갱신한다
 
 ### 공유
