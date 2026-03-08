@@ -16,6 +16,9 @@ importers:
 
   apps/mobile:
     dependencies:
+      '@lifebase/design-tokens':
+        specifier: workspace:*
+        version: link:../../packages/design-tokens
       '@lifebase/features-todo':
         specifier: workspace:*
         version: link:../../packages/features/todo
@@ -73,6 +76,9 @@ importers:
       '@dnd-kit/utilities':
         specifier: ^3.2.2
         version: 3.2.2(react@19.2.3)
+      '@lifebase/design-tokens':
+        specifier: workspace:*
+        version: link:../../packages/design-tokens
       '@lifebase/features-todo':
         specifier: workspace:*
         version: link:../../packages/features/todo
@@ -151,6 +157,12 @@ importers:
         version: 5.9.3
 
   packages/api-types:
+    devDependencies:
+      typescript:
+        specifier: ^5
+        version: 5.9.3
+
+  packages/design-tokens:
     devDependencies:
       typescript:
         specifier: ^5

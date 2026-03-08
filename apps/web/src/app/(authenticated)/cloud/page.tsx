@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useState, useEffect, useCallback, useMemo, useRef, Suspense } from "react";
+import { getCloudItemToken } from "@lifebase/design-tokens";
 import { useCloudActions } from "@/features/cloud/ui/hooks/useCloudActions";
 import type { CloudFile, CloudSection, FolderData, FolderItem } from "@/features/cloud/domain/CloudItem";
 import { isAuthenticated } from "@/features/auth/infrastructure/token-auth";
@@ -1209,6 +1210,9 @@ function CloudPageInner() {
                   isMyFilesSection && draggingItem?.itemType === item.type && draggingItem.itemID === id;
                 const isCutClipboardItem =
                   clipboard?.mode === "cut" && clipboard.itemType === item.type && clipboard.itemID === id;
+                const itemToken = item.type === "folder"
+                  ? getCloudItemToken({ type: "folder" })
+                  : getCloudItemToken({ type: "file", mimeType: item.file!.mime_type });
 
                 return (
                   <tr
@@ -1268,9 +1272,9 @@ function CloudPageInner() {
                     <td className="px-2 py-2">
                       <div className="flex items-center gap-2">
                         {item.type === "folder" ? (
-                          <Folder size={16} className="text-text-muted shrink-0" />
+                          <Folder size={16} className="shrink-0" style={{ color: itemToken.foreground }} />
                         ) : (
-                          <FileIcon mimeType={item.file!.mime_type} size={16} className="text-text-muted shrink-0" />
+                          <FileIcon mimeType={item.file!.mime_type} size={16} className="shrink-0" />
                         )}
                         {isRenaming ? (
                           <Input
@@ -1424,6 +1428,9 @@ function CloudPageInner() {
                 isMyFilesSection && draggingItem?.itemType === item.type && draggingItem.itemID === id;
               const isCutClipboardItem =
                 clipboard?.mode === "cut" && clipboard.itemType === item.type && clipboard.itemID === id;
+              const itemToken = item.type === "folder"
+                ? getCloudItemToken({ type: "folder" })
+                : getCloudItemToken({ type: "file", mimeType: item.file!.mime_type });
 
               return (
                 <div
@@ -1468,9 +1475,17 @@ function CloudPageInner() {
                   }}
                 >
                   {/* 4:3 미리보기 영역 */}
-                  <div className="relative w-full aspect-[4/3] bg-surface-accent flex items-center justify-center">
+                  <div
+                    className="relative flex aspect-[4/3] w-full items-center justify-center"
+                    style={{
+                      backgroundColor:
+                        item.type === "folder" || !(item.file!.thumb_status === "done" && isMediaFile(item.file!.mime_type))
+                          ? itemToken.background
+                          : undefined,
+                    }}
+                  >
                     {item.type === "folder" ? (
-                      <Folder size={36} className="text-text-muted" />
+                      <Folder size={36} style={{ color: itemToken.foreground }} />
                     ) : item.file!.thumb_status === "done" && isMediaFile(item.file!.mime_type) ? (
                       <ThumbnailImage
                         fileId={item.file!.id}
@@ -1480,7 +1495,7 @@ function CloudPageInner() {
                         className="object-cover"
                       />
                     ) : (
-                      <FileIcon mimeType={item.file!.mime_type} size={36} className="text-text-muted" />
+                      <FileIcon mimeType={item.file!.mime_type} size={36} />
                     )}
                   </div>
                   {/* 파일명 */}

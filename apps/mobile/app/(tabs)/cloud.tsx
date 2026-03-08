@@ -7,6 +7,7 @@ import {
   StyleSheet,
   RefreshControl,
 } from "react-native";
+import { getCloudItemToken } from "@lifebase/design-tokens";
 import { useCloudActions } from "../../features/cloud/ui/hooks/useCloudActions";
 import type { FolderItem } from "../../features/cloud/domain/CloudItem";
 
@@ -57,22 +58,6 @@ export default function CloudScreen() {
     return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
   };
 
-  const getIcon = (item: FolderItem): { label: string; color: string; background: string } => {
-    if (item.type === "folder") {
-      return { label: "FD", color: "#92400e", background: "#fef3c7" };
-    }
-
-    const mime = (item.mime_type || "").toLowerCase();
-    if (mime.startsWith("image/")) return { label: "IMG", color: "#065f46", background: "#d1fae5" };
-    if (mime.startsWith("video/")) return { label: "VID", color: "#991b1b", background: "#fee2e2" };
-    if (mime.startsWith("audio/")) return { label: "AUD", color: "#5b21b6", background: "#ede9fe" };
-    if (mime.includes("pdf")) return { label: "PDF", color: "#991b1b", background: "#fee2e2" };
-    if (mime.includes("javascript") || mime.includes("typescript") || mime.includes("json") || mime.includes("html") || mime.includes("css")) {
-      return { label: "</>", color: "#0c4a6e", background: "#e0f2fe" };
-    }
-    return { label: "DOC", color: "#334155", background: "#e2e8f0" };
-  };
-
   return (
     <View style={styles.container}>
       {path.length > 1 && (
@@ -93,7 +78,9 @@ export default function CloudScreen() {
         }
         renderItem={({ item }) => (
           (() => {
-            const icon = getIcon(item);
+            const icon = item.type === "folder"
+              ? getCloudItemToken({ type: "folder" })
+              : getCloudItemToken({ type: "file", mimeType: item.mime_type });
             return (
               <TouchableOpacity
                 style={styles.row}
@@ -102,7 +89,7 @@ export default function CloudScreen() {
                 }}
               >
                 <View style={[styles.iconWrap, { backgroundColor: icon.background }]}>
-                  <Text style={[styles.iconLabel, { color: icon.color }]}>{icon.label}</Text>
+                  <Text style={[styles.iconLabel, { color: icon.foreground }]}>{icon.label}</Text>
                 </View>
                 <View style={styles.info}>
                   <Text style={styles.name} numberOfLines={1}>

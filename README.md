@@ -48,7 +48,7 @@ lifebase/
 │   └── mobile/          # Expo React Native 모바일 앱
 │       └── app/         # 탭: Cloud, Gallery, Calendar, Todo, Settings
 ├── docs/                # 설계 문서 및 프로토타입
-├── packages/            # 공유 패키지 (domain, api-types, features/*)
+├── packages/            # 공유 패키지 (domain, api-types, design-tokens, features/*)
 └── resources/           # 디자인 에셋
 ```
 
@@ -138,6 +138,7 @@ npx expo start
 - 휴지통 (복원/비우기)
 - 파일 검색 (pg_trgm)
 - 정렬: 이름/크기/수정일/생성일
+- Web/Mobile 공통 파일 타입 아이콘 색상 토큰 적용
 
 ### Gallery
 - 이미지/비디오 썸네일 자동 생성 (Asynq 비동기 워커)

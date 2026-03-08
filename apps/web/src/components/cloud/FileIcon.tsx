@@ -10,26 +10,24 @@ import {
   Code,
   type LucideIcon,
 } from "lucide-react";
+import { getCloudFileTypeKey, getCloudItemToken } from "@lifebase/design-tokens";
 import { cn } from "@/lib/utils";
 
-const MIME_MAP: [RegExp, LucideIcon, string][] = [
-  [/^image\//, Image, "text-emerald-500"],
-  [/^video\//, Film, "text-rose-500"],
-  [/^audio\//, Music, "text-violet-500"],
-  [/pdf/, FileText, "text-red-500"],
-  [/spreadsheet|excel|csv/, FileSpreadsheet, "text-green-600"],
-  [/presentation|powerpoint/, Presentation, "text-orange-500"],
-  [/zip|archive|compressed|tar|rar|7z/, Archive, "text-amber-600"],
-  [/javascript|typescript|json|html|css|xml|python|java|go|rust/, Code, "text-sky-500"],
-];
+const ICON_MAP: Partial<Record<ReturnType<typeof getCloudFileTypeKey>, LucideIcon>> = {
+  image: Image,
+  video: Film,
+  audio: Music,
+  pdf: FileText,
+  spreadsheet: FileSpreadsheet,
+  presentation: Presentation,
+  code: Code,
+  document: FileText,
+  archive: Archive,
+  unknown: File,
+};
 
 export function getFileIconColorClass(mimeType: string): string {
-  for (const [pattern, , colorClass] of MIME_MAP) {
-    if (pattern.test(mimeType)) {
-      return colorClass;
-    }
-  }
-  return "text-slate-500";
+  return getCloudItemToken({ type: "file", mimeType }).foreground;
 }
 
 export function FileIcon({
@@ -41,10 +39,8 @@ export function FileIcon({
   size?: number;
   className?: string;
 }) {
-  for (const [pattern, Icon, colorClass] of MIME_MAP) {
-    if (pattern.test(mimeType)) {
-      return <Icon size={size} className={cn(colorClass, className)} />;
-    }
-  }
-  return <File size={size} className={cn("text-slate-500", className)} />;
+  const token = getCloudItemToken({ type: "file", mimeType });
+  const Icon = ICON_MAP[getCloudFileTypeKey(mimeType)] ?? File;
+
+  return <Icon size={size} className={cn(className)} style={{ color: token.foreground }} />;
 }

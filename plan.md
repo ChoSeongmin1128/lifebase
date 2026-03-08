@@ -47,6 +47,7 @@
 - Web: `apps/web/src/features` 아래 `auth`, `admin`, `cloud`, `gallery`, `calendar`, `home`, `settings`, `todo`가 기능 단위 구조로 정리돼 있다.
 - Mobile: `apps/mobile/features` 아래 `auth`, `cloud`, `gallery`, `calendar`, `todo`가 기능 단위 구조로 정리돼 있다.
 - 공통 패키지: `packages/features/todo`가 존재하며, 나머지 기능은 앱 내부 feature 구조를 우선 사용 중이다.
+- UI 토큰: `packages/design-tokens`에서 Cloud 파일 타입 색상/라벨 토큰을 Web/Mobile 공통으로 관리하기 시작했다.
 
 3. 목표 구조
 `packages/features/<feature>`에 `domain`, `usecase`, `repository`를 배치한다.
