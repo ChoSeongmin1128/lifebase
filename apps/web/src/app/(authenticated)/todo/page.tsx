@@ -65,7 +65,7 @@ const ALL_LIST_ID = "__all__";
 const TODO_LAST_SYNC_AT_SETTING_KEY = "todo_last_sync_at";
 const TODO_DONE_COLLAPSED_SETTING_KEY = "todo_done_section_collapsed";
 const TODO_LAST_ACTIVE_LIST_ID_SETTING_KEY = "todo_last_active_list_id";
-const TODO_SORT_VALUES: TodoSortBy[] = ["manual", "date", "due", "recent_starred", "title"];
+const TODO_SORT_VALUES: TodoSortBy[] = ["manual", "due", "recent_starred", "title"];
 
 function toErrorMessage(err: unknown, fallback: string): string {
   if (err instanceof Error && err.message.trim()) {
@@ -76,6 +76,11 @@ function toErrorMessage(err: unknown, fallback: string): string {
 
 function isTodoSortBy(value: string | null | undefined): value is TodoSortBy {
   return !!value && TODO_SORT_VALUES.includes(value as TodoSortBy);
+}
+
+function resolveTodoSort(value: string | null | undefined): TodoSortBy | null {
+  if (value === "date") return "due";
+  return isTodoSortBy(value) ? value : null;
 }
 
 function compareStrings(a: string, b: string): number {
@@ -110,12 +115,6 @@ function compareTodos(a: TodoItem, b: TodoItem, sortBy: TodoSortBy): number {
     const orderCmp = a.sort_order - b.sort_order;
     if (orderCmp !== 0) return orderCmp;
     return a.created_at.localeCompare(b.created_at);
-  }
-
-  if (sortBy === "date") {
-    const createdCmp = compareDatesDesc(a.created_at, b.created_at);
-    if (createdCmp !== 0) return createdCmp;
-    return compareStrings(a.title, b.title);
   }
 
   if (sortBy === "due") {
@@ -170,7 +169,7 @@ function TodoPageInner() {
   const [settings, setSettings] = useState<Record<string, string>>({});
   const [settingsLoaded, setSettingsLoaded] = useState(false);
   const [activeListId, setActiveListIdState] = useState<string>(listFromUrl || ALL_LIST_ID);
-  const [sortBy, setSortBy] = useState<TodoSortBy>("date");
+  const [sortBy, setSortBy] = useState<TodoSortBy>("due");
   const activeListIdRef = useRef<string>(listFromUrl || ALL_LIST_ID);
 
   const setActiveListId = useCallback((id: string) => {
@@ -338,11 +337,10 @@ function TodoPageInner() {
       const next = await getSettings();
       setSettings(next || {});
       const preferredListID = (listFromUrl || next?.[TODO_LAST_ACTIVE_LIST_ID_SETTING_KEY] || ALL_LIST_ID).trim();
-      const preferredSort = isTodoSortBy(sortFromUrl)
-        ? sortFromUrl
-        : isTodoSortBy(next?.todo_default_sort)
-          ? next.todo_default_sort
-          : "date";
+      const preferredSort =
+        resolveTodoSort(sortFromUrl) ??
+        resolveTodoSort(next?.todo_default_sort) ??
+        "due";
       setActiveListId(preferredListID || ALL_LIST_ID);
       setSortBy(preferredSort);
       setLastSyncedAt(next?.[TODO_LAST_SYNC_AT_SETTING_KEY] || "");
@@ -354,7 +352,7 @@ function TodoPageInner() {
       if (listFromUrl) {
         setActiveListId(listFromUrl);
       }
-      setSortBy(isTodoSortBy(sortFromUrl) ? sortFromUrl : "date");
+      setSortBy(resolveTodoSort(sortFromUrl) ?? "due");
     } finally {
       setSettingsLoaded(true);
     }
@@ -514,8 +512,9 @@ function TodoPageInner() {
   }, [listFromUrl, setActiveListId, settingsLoaded]);
   useEffect(() => {
     if (!settingsLoaded) return;
-    if (!isTodoSortBy(sortFromUrl)) return;
-    setSortBy((prev) => (prev === sortFromUrl ? prev : sortFromUrl));
+    const nextSort = resolveTodoSort(sortFromUrl);
+    if (!nextSort) return;
+    setSortBy((prev) => (prev === nextSort ? prev : nextSort));
   }, [settingsLoaded, sortFromUrl]);
   useEffect(() => {
     if (!settingsLoaded) return;

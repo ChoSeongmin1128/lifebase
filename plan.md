@@ -209,11 +209,10 @@ Google Tasks 공개 API는 `due`를 RFC3339 문자열로 반환하지만 실제 
 리스트 행에서는 제목 아래 notes를 1~2줄 미리보기로 노출한다. due는 `due_date`만 있으면 날짜만, `due_date + due_time`이면 시/분까지 표시한다.
 
 4. 정렬 기준
-Todo 정렬은 `manual`, `date`, `due`, `recent_starred`, `title` 5종으로 고정한다.
+Todo 정렬은 `manual`, `due`, `recent_starred`, `title` 4종으로 고정한다. 기본 정렬은 `due`다.
 
 5. 정렬 의미
 - `manual`: 저장된 `sort_order`
-- `date`: `created_at DESC`
 - `due`: `due_date ASC`, 같은 날짜는 `due_time NULLS LAST` 후 `due_time ASC`
 - `recent_starred`: `starred_at DESC`
 - `title`: locale-aware ASC

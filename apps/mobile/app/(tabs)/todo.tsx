@@ -15,11 +15,10 @@ import { useAuthFlow } from "../../features/auth/ui/hooks/useAuthFlow";
 import type { GoogleAccountSummary } from "../../features/auth/domain/AuthSession";
 import { formatDueLabel } from "../../features/todo/lib/formatDueDate";
 
-type TodoSortBy = "manual" | "date" | "due" | "recent_starred" | "title";
+type TodoSortBy = "manual" | "due" | "recent_starred" | "title";
 
 const SORT_OPTIONS: { value: TodoSortBy; label: string }[] = [
   { value: "manual", label: "내 순서" },
-  { value: "date", label: "날짜" },
   { value: "due", label: "기한" },
   { value: "recent_starred", label: "최근 별표" },
   { value: "title", label: "제목" },
@@ -62,12 +61,6 @@ function sortTodos(items: TodoItem[], sortBy: TodoSortBy): TodoItem[] {
       return compareDatesDesc(a.created_at, b.created_at);
     }
 
-    if (sortBy === "date") {
-      const createdCmp = compareDatesDesc(a.created_at, b.created_at);
-      if (createdCmp !== 0) return createdCmp;
-      return compareStrings(a.title, b.title);
-    }
-
     if (sortBy === "due") {
       const dueCmp = compareDue(a, b);
       if (dueCmp !== 0) return dueCmp;
@@ -98,7 +91,7 @@ export default function TodoScreen() {
   const [newListTarget, setNewListTarget] = useState<"local" | "google">("local");
   const [newListGoogleAccountID, setNewListGoogleAccountID] = useState("");
   const [googleAccounts, setGoogleAccounts] = useState<GoogleAccountSummary[]>([]);
-  const [sortBy, setSortBy] = useState<TodoSortBy>("date");
+  const [sortBy, setSortBy] = useState<TodoSortBy>("due");
   const [refreshing, setRefreshing] = useState(false);
   const { createTodo, creating } = useCreateTodo();
   const { listLists, createList, listTodos, updateDone } = useTodoActions();

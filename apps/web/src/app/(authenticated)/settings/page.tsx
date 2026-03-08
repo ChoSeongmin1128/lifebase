@@ -25,6 +25,16 @@ import {
   normalizeHexColor,
 } from "@/lib/google-account-preferences";
 
+const TODO_DEFAULT_SORT_VALUES = ["manual", "due", "recent_starred", "title"] as const;
+
+function normalizeTodoDefaultSort(value: string | null | undefined): typeof TODO_DEFAULT_SORT_VALUES[number] {
+  if (value === "date") return "due";
+  if (value && TODO_DEFAULT_SORT_VALUES.includes(value as (typeof TODO_DEFAULT_SORT_VALUES)[number])) {
+    return value as (typeof TODO_DEFAULT_SORT_VALUES)[number];
+  }
+  return "due";
+}
+
 export default function SettingsPage() {
   const [settings, setSettings] = useState<Record<string, string>>({});
   const [googleAccounts, setGoogleAccounts] = useState<GoogleAccountSummary[]>([]);
@@ -496,7 +506,7 @@ export default function SettingsPage() {
               <SettingsCard title="Todo 설정">
                 <SettingRow label="기본 정렬">
                   <Select
-                    value={get("todo_default_sort", "date")}
+                    value={normalizeTodoDefaultSort(get("todo_default_sort", "due"))}
                     onValueChange={(v) => handleUpdateSetting("todo_default_sort", v)}
                   >
                     <SelectTrigger className="w-32 h-8 text-xs">
@@ -504,7 +514,6 @@ export default function SettingsPage() {
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="manual">내가 정렬한대로</SelectItem>
-                      <SelectItem value="date">날짜</SelectItem>
                       <SelectItem value="due">기한</SelectItem>
                       <SelectItem value="recent_starred">최근 별표한 항목</SelectItem>
                       <SelectItem value="title">제목</SelectItem>
