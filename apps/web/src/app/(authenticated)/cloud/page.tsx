@@ -64,6 +64,7 @@ type SortDir = "asc" | "desc";
 type ViewMode = "list" | "grid";
 type ClipboardMode = "copy" | "cut";
 type ClipboardItemType = "file" | "folder";
+type FolderRouteState = "ready" | "checking" | "invalid" | "not_found" | "error";
 interface CloudClipboardItem {
   itemType: ClipboardItemType;
   itemID: string;
@@ -101,6 +102,7 @@ const TRASH_ROOT_PATH_ENTRY: CloudPathEntry = { id: null, name: "휴지통" };
 const DELETE_UNDO_WINDOW_MS = 5_000;
 const cloudPathCache = new Map<string, CloudPathEntry[]>();
 const cloudFolderCache = new Map<string, FolderData>();
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 const getCloudLocationKey = (section: CloudSection, folderId: string | null) => `${section}:${folderId || "root"}`;
 
@@ -125,6 +127,13 @@ const buildClipboardSummary = (items: CloudClipboardItem[]) => {
 const arePathEntriesEqual = (a: CloudPathEntry[], b: CloudPathEntry[]) => (
   a.length === b.length
   && a.every((entry, index) => entry.id === b[index]?.id && entry.name === b[index]?.name)
+);
+
+const isValidUUID = (value: string) => UUID_PATTERN.test(value);
+
+const isNotFoundError = (error: unknown) => (
+  error instanceof Error
+  && error.message.toLowerCase().includes("not found")
 );
 
 function CloudPageInner() {
@@ -167,6 +176,8 @@ function CloudPageInner() {
   const [pathLoading, setPathLoading] = useState(false);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [folderRouteState, setFolderRouteState] = useState<FolderRouteState>(resolvedFolderID ? "checking" : "ready");
+  const [folderRouteReloadKey, setFolderRouteReloadKey] = useState(0);
   const [hasLoadedItems, setHasLoadedItems] = useState(false);
   const [sortBy, setSortBy] = useState<SortBy>("name");
   const [sortDir, setSortDir] = useState<SortDir>("asc");
@@ -198,6 +209,7 @@ function CloudPageInner() {
   const folderCacheRef = useRef<Map<string, FolderData>>(new Map(cloudFolderCache));
   const itemsRequestRef = useRef(0);
   const pathRequestRef = useRef(0);
+  const folderRouteRequestRef = useRef(0);
   const quickActionHandledRef = useRef(false);
   const pendingDeletionRef = useRef<PendingCloudDeletion | null>(null);
   const pendingTrashEmptyRef = useRef<PendingTrashEmpty | null>(null);
@@ -210,14 +222,76 @@ function CloudPageInner() {
   const cloud = useCloudActions();
   const toast = useToast();
 
-  useEffect(() => {
-    setActiveFolderID(resolvedFolderID);
-  }, [resolvedFolderID]);
-
   const updatePathState = useCallback((nextPath: CloudPathEntry[], folderId: string | null = currentFolderID) => {
     setPath((prev) => (arePathEntriesEqual(prev, nextPath) ? prev : nextPath));
     cloudPathCache.set(getCloudLocationKey(section, folderId), nextPath);
   }, [currentFolderID, section]);
+
+  useEffect(() => {
+    setActiveFolderID(resolvedFolderID);
+  }, [resolvedFolderID]);
+
+  useEffect(() => {
+    if ((!isMyFilesSection && !isTrashSection) || !authed) {
+      folderRouteRequestRef.current += 1;
+      setFolderRouteState("ready");
+      return;
+    }
+    if (!currentFolderID) {
+      folderRouteRequestRef.current += 1;
+      setFolderRouteState("ready");
+      return;
+    }
+    if (!isValidUUID(currentFolderID)) {
+      folderRouteRequestRef.current += 1;
+      itemsRequestRef.current += 1;
+      pathRequestRef.current += 1;
+      setFolderRouteState("invalid");
+      setItems([]);
+      setLoading(false);
+      setRefreshing(false);
+      setPathLoading(false);
+      updatePathState([rootPathEntry], null);
+      return;
+    }
+
+    const requestId = folderRouteRequestRef.current + 1;
+    folderRouteRequestRef.current = requestId;
+    setFolderRouteState("checking");
+    setLoading(true);
+    setPathLoading(true);
+
+    void (async () => {
+      try {
+        const folder = isTrashSection
+          ? await cloud.getTrashFolder(currentFolderID)
+          : await cloud.getFolder(currentFolderID);
+        if (requestId !== folderRouteRequestRef.current) return;
+        folderCacheRef.current.set(folder.id, folder);
+        cloudFolderCache.set(folder.id, folder);
+        setFolderRouteState("ready");
+      } catch (error) {
+        if (requestId !== folderRouteRequestRef.current) return;
+        itemsRequestRef.current += 1;
+        pathRequestRef.current += 1;
+        setFolderRouteState(isNotFoundError(error) ? "not_found" : "error");
+        setItems([]);
+        setLoading(false);
+        setRefreshing(false);
+        setPathLoading(false);
+        updatePathState([rootPathEntry], null);
+      }
+    })();
+  }, [
+    authed,
+    cloud,
+    currentFolderID,
+    folderRouteReloadKey,
+    isMyFilesSection,
+    isTrashSection,
+    rootPathEntry,
+    updatePathState,
+  ]);
 
   const buildCloudHref = useCallback((targetSection: CloudSection, folderId?: string | null, quick?: string | null) => {
     const params = new URLSearchParams();
@@ -272,6 +346,15 @@ function CloudPageInner() {
       return;
     }
 
+    if ((isMyFilesSection || isTrashSection) && currentFolderID && folderRouteState !== "ready") {
+      itemsRequestRef.current += 1;
+      setItems([]);
+      setLoading(folderRouteState === "checking");
+      setRefreshing(false);
+      setHasLoadedItems(folderRouteState !== "checking");
+      return;
+    }
+
     const requestId = itemsRequestRef.current + 1;
     itemsRequestRef.current = requestId;
     const showInitialLoading = !hasLoadedItems;
@@ -311,6 +394,7 @@ function CloudPageInner() {
     section,
     sortBy,
     sortDir,
+    folderRouteState,
     isMyFilesSection,
     isTrashSection,
   ]);
@@ -326,6 +410,14 @@ function CloudPageInner() {
       pathRequestRef.current += 1;
       updatePathState([rootPathEntry], null);
       setPathLoading(false);
+      return;
+    }
+    if (folderRouteState !== "ready") {
+      pathRequestRef.current += 1;
+      if (folderRouteState !== "checking") {
+        updatePathState([rootPathEntry], null);
+      }
+      setPathLoading(folderRouteState === "checking");
       return;
     }
 
@@ -364,13 +456,18 @@ function CloudPageInner() {
       updatePathState([rootPathEntry, ...nextEntries], currentFolderID);
     } catch {
       if (requestId !== pathRequestRef.current) return;
-      const fallbackName = folderCacheRef.current.get(currentFolderID)?.name || "폴더";
-      updatePathState([rootPathEntry, { id: currentFolderID, name: fallbackName }], currentFolderID);
+      const fallbackFolder = folderCacheRef.current.get(currentFolderID);
+      updatePathState(
+        fallbackFolder
+          ? [rootPathEntry, { id: currentFolderID, name: fallbackFolder.name }]
+          : [rootPathEntry],
+        fallbackFolder ? currentFolderID : null,
+      );
     } finally {
       if (requestId !== pathRequestRef.current) return;
       setPathLoading(false);
     }
-  }, [authed, cloud, currentFolderID, isMyFilesSection, isTrashSection, path, rootPathEntry, updatePathState]);
+  }, [authed, cloud, currentFolderID, folderRouteState, isMyFilesSection, isTrashSection, path, rootPathEntry, updatePathState]);
 
   const loadStars = useCallback(async () => {
     if (!authed) {
@@ -1202,21 +1299,64 @@ function CloudPageInner() {
     : items;
 
   const sectionLabel = CLOUD_SECTION_LABELS[section];
+  const hasFolderRouteError =
+    currentFolderID !== null
+    && (isMyFilesSection || isTrashSection)
+    && folderRouteState !== "ready"
+    && folderRouteState !== "checking";
+  const folderActionsEnabled =
+    !currentFolderID
+    || !(isMyFilesSection || isTrashSection)
+    || folderRouteState === "ready";
   const displayPath = (() => {
     if (!isMyFilesSection && !isTrashSection) return path;
     if (currentFolderID === null) return [rootPathEntry];
+    if (folderRouteState !== "ready" && folderRouteState !== "checking") return [rootPathEntry];
     const lastEntry = path[path.length - 1];
     if (lastEntry?.id === currentFolderID) return path;
     const existingIndex = path.findIndex((entry) => entry.id === currentFolderID);
     if (existingIndex >= 0) return path.slice(0, existingIndex + 1);
     const cached = folderCacheRef.current.get(currentFolderID);
-    return [rootPathEntry, { id: currentFolderID, name: cached?.name || "폴더" }];
+    return cached
+      ? [rootPathEntry, { id: currentFolderID, name: cached.name }]
+      : [rootPathEntry];
   })();
   const showFolderHeader = isMyFilesSection || isTrashSection;
-  const headerLoading = pathLoading || (currentFolderID !== null && displayPath[displayPath.length - 1]?.id !== currentFolderID);
+  const headerLoading = folderRouteState === "checking" || (
+    folderRouteState === "ready"
+    && (pathLoading || (currentFolderID !== null && displayPath[displayPath.length - 1]?.id !== currentFolderID))
+  );
   const showSearchResultBanner = isMyFilesSection && searchResults !== null;
   const showBulkBar = selectedIds.size > 0 && (isMyFilesSection || isTrashSection);
   const currentViewMode: ViewMode = isMyFilesSection ? viewMode : "list";
+  const routeActionLabel = isTrashSection ? "휴지통으로 이동" : "내 클라우드로 이동";
+  const routeStateCopy = (() => {
+    if (!hasFolderRouteError) return null;
+    if (folderRouteState === "invalid") {
+      return {
+        title: "잘못된 경로입니다",
+        description: "폴더 주소를 다시 확인해 주세요.",
+      };
+    }
+    if (folderRouteState === "not_found") {
+      return {
+        title: "폴더를 찾을 수 없습니다",
+        description: "삭제되었거나 이동되었을 수 있습니다.",
+      };
+    }
+    return {
+      title: "폴더를 불러오지 못했습니다",
+      description: "잠시 후 다시 시도해 주세요.",
+    };
+  })();
+
+  const navigateToSectionRoot = useCallback(() => {
+    syncFolderUrl(null, "replace");
+  }, [syncFolderUrl]);
+
+  const retryFolderRoute = useCallback(() => {
+    setFolderRouteReloadKey((prev) => prev + 1);
+  }, []);
 
   return (
     <div
@@ -1279,7 +1419,7 @@ function CloudPageInner() {
                 if (!e.target.value) setSearchResults(null);
               }}
               onKeyDown={(e) => e.key === "Enter" && handleSearch()}
-              disabled={!isMyFilesSection}
+              disabled={!isMyFilesSection || !folderActionsEnabled}
               className="h-8 w-full md:w-48 pl-8"
             />
           </div>
@@ -1289,6 +1429,7 @@ function CloudPageInner() {
             <div className="flex rounded-lg border border-border">
               <button
                 onClick={() => setViewMode("list")}
+                disabled={!folderActionsEnabled}
                 className={`flex h-8 w-8 items-center justify-center rounded-l-lg ${
                   currentViewMode === "list" ? "bg-surface-accent text-text-strong" : "text-text-muted hover:bg-surface-accent"
                 }`}
@@ -1297,6 +1438,7 @@ function CloudPageInner() {
               </button>
               <button
                 onClick={() => setViewMode("grid")}
+                disabled={!folderActionsEnabled}
                 className={`flex h-8 w-8 items-center justify-center rounded-r-lg ${
                   currentViewMode === "grid" ? "bg-surface-accent text-text-strong" : "text-text-muted hover:bg-surface-accent"
                 }`}
@@ -1321,6 +1463,7 @@ function CloudPageInner() {
                   {sortOptions.map((opt) => (
                     <DropdownMenuItem
                       key={opt.value}
+                      disabled={!folderActionsEnabled}
                       onClick={() => {
                         if (sortBy === opt.value) {
                           setSortDir(sortDir === "asc" ? "desc" : "asc");
@@ -1345,6 +1488,7 @@ function CloudPageInner() {
               <Button
                 variant="ghost"
                 size="sm"
+                disabled={!folderActionsEnabled}
                 onClick={() => {
                   setShowNewFile(false);
                   setNewFileName("");
@@ -1359,6 +1503,7 @@ function CloudPageInner() {
               <Button
                 variant="ghost"
                 size="sm"
+                disabled={!folderActionsEnabled}
                 onClick={() => {
                   setShowNewFolder(false);
                   setNewFolderName("");
@@ -1370,14 +1515,20 @@ function CloudPageInner() {
                 <span className="hidden md:inline">새 파일</span>
               </Button>
 
-              <Button variant="primary" size="sm" onClick={() => fileInputRef.current?.click()} className="gap-1.5">
+              <Button
+                variant="primary"
+                size="sm"
+                disabled={!folderActionsEnabled}
+                onClick={() => fileInputRef.current?.click()}
+                className="gap-1.5"
+              >
                 <Upload size={14} />
                 <span className="hidden md:inline">업로드</span>
               </Button>
               <Button
                 variant="ghost"
                 size="sm"
-                disabled={!clipboard || clipboardBusy}
+                disabled={!clipboard || clipboardBusy || !folderActionsEnabled}
                 onClick={() => void applyClipboardToFolder(currentFolderID ?? null)}
                 className="gap-1.5"
               >
@@ -1398,6 +1549,7 @@ function CloudPageInner() {
             <Button
               variant="ghost"
               size="sm"
+              disabled={!folderActionsEnabled}
               onClick={handleEmptyTrash}
               className="gap-1.5 text-error hover:text-error"
             >
@@ -1558,7 +1710,23 @@ function CloudPageInner() {
 
       {/* File list */}
       <div className="relative flex-1 overflow-auto">
-        {loading ? (
+        {routeStateCopy ? (
+          <div className="flex flex-col items-center justify-center py-20 text-center text-text-muted">
+            <Cloud size={48} className="text-border" />
+            <p className="mt-3 text-base font-medium text-text-strong">{routeStateCopy.title}</p>
+            <p className="mt-1 text-sm">{routeStateCopy.description}</p>
+            <div className="mt-4 flex items-center gap-2">
+              <Button size="sm" onClick={navigateToSectionRoot}>
+                {routeActionLabel}
+              </Button>
+              {folderRouteState === "error" && (
+                <Button variant="secondary" size="sm" onClick={retryFolderRoute}>
+                  다시 시도
+                </Button>
+              )}
+            </div>
+          </div>
+        ) : loading ? (
           <div className="flex items-center justify-center py-20 text-text-muted">
             불러오는 중...
           </div>

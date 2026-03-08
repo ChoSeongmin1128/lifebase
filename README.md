@@ -172,6 +172,7 @@ npx expo start
 - 폴더 CRUD + 계층 탐색
 - Web Cloud는 `/cloud/folders/{folderId}`를 canonical 폴더 URL로 사용하고, 기존 `?folder=` 진입은 canonical route로 정리한다
 - Web Cloud 폴더 화면은 상단 breadcrumb + 현재 폴더명 헤더를 기본으로 사용하고, 탐색 중 경로 전체가 새로고침되듯 흔들리지 않도록 로컬 경로 상태를 우선 사용한다
+- Web Cloud는 잘못된 UUID, 삭제된 폴더 링크, 일시적 폴더 조회 실패를 빈 폴더로 위장하지 않고 invalid/not-found/error 상태로 분리해 보여준다
 - Mobile/Desktop Cloud도 같은 정보 구조를 기준으로 후속 정렬한다
 - 휴지통 (복원/비우기)
 - Web Cloud 파일/폴더 삭제는 우측 하단 Undo 토스트 5초를 제공하고, 시간 경과 후 휴지통 이동을 확정한다
