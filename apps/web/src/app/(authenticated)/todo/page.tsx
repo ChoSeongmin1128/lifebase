@@ -60,6 +60,11 @@ interface TodoList {
   source?: "google" | "local" | string;
 }
 
+interface PendingTodoDeletion {
+  cancel: () => void;
+  flush: () => Promise<void>;
+}
+
 const PAGE_ACTION_SYNC_COOLDOWN_MS = 15_000;
 const ALL_LIST_ID = "__all__";
 const TODO_LAST_SYNC_AT_SETTING_KEY = "todo_last_sync_at";
@@ -224,6 +229,7 @@ function TodoPageInner() {
   const syncThrottleRef = useRef<Record<string, number>>({});
   const editingTodoIdRef = useRef<string | null>(null);
   const closeAnimationTimerRef = useRef<number | null>(null);
+  const pendingDeletionRef = useRef<PendingTodoDeletion | null>(null);
 
   // DnD state
   const [dragActiveId, setDragActiveId] = useState<string | null>(null);
@@ -249,6 +255,9 @@ function TodoPageInner() {
     return () => {
       if (closeAnimationTimerRef.current !== null) {
         window.clearTimeout(closeAnimationTimerRef.current);
+      }
+      if (pendingDeletionRef.current) {
+        void pendingDeletionRef.current.flush();
       }
     };
   }, []);
@@ -304,6 +313,44 @@ function TodoPageInner() {
     if (typeof list.done_count === "number") return list.done_count;
     return 0;
   }, []);
+
+  const applyListDeletionDelta = useCallback((removedTodos: TodoItem[]) => {
+    if (removedTodos.length === 0) return;
+
+    const deltaByListID = new Map<string, { active: number; done: number; total: number }>();
+    for (const todo of removedTodos) {
+      const current = deltaByListID.get(todo.list_id) || { active: 0, done: 0, total: 0 };
+      current.total += 1;
+      if (todo.is_done) current.done += 1;
+      else current.active += 1;
+      deltaByListID.set(todo.list_id, current);
+    }
+
+    const allDelta = Array.from(deltaByListID.values()).reduce(
+      (acc, item) => ({
+        active: acc.active + item.active,
+        done: acc.done + item.done,
+        total: acc.total + item.total,
+      }),
+      { active: 0, done: 0, total: 0 },
+    );
+
+    setLists((prev) =>
+      prev.map((list) => {
+        const delta = list.id === ALL_LIST_ID ? allDelta : deltaByListID.get(list.id);
+        if (!delta) return list;
+
+        const activeCount = Math.max(getListActiveCount(list) - delta.active, 0);
+        const doneCount = Math.max(getListDoneCount(list) - delta.done, 0);
+        return {
+          ...list,
+          active_count: activeCount,
+          done_count: doneCount,
+          total_count: Math.max(activeCount + doneCount, 0),
+        };
+      }),
+    );
+  }, [getListActiveCount, getListDoneCount]);
 
   const getListSourceLabel = useCallback((list: TodoList) => {
     if (list.is_virtual) return "통합";
@@ -728,15 +775,67 @@ function TodoPageInner() {
   };
 
   const handleDeleteTodo = async (todoId: string) => {
-    try {
-      await deleteTodo(todoId);
-      closeEditingTodo(todoId);
-      await loadTodos();
-      await loadLists();
-      void triggerTodoSync("page_action", PAGE_ACTION_SYNC_COOLDOWN_MS);
-    } catch (err) {
-      console.error("Delete failed:", err);
+    const removedTodos = todos.filter((todo) => todo.id === todoId || todo.parent_id === todoId);
+    if (removedTodos.length === 0) return;
+
+    if (pendingDeletionRef.current) {
+      await pendingDeletionRef.current.flush();
     }
+
+    const removedIDSet = new Set(removedTodos.map((todo) => todo.id));
+    const todosSnapshot = todos;
+    const listsSnapshot = lists;
+    let settled = false;
+
+    setTodos((prev) => prev.filter((todo) => !removedIDSet.has(todo.id)));
+    applyListDeletionDelta(removedTodos);
+    closeEditingTodo(todoId);
+
+    let timerID = 0;
+    const restore = () => {
+      setTodos(todosSnapshot);
+      setLists(listsSnapshot);
+    };
+
+    const finalize = async () => {
+      if (settled) return;
+      settled = true;
+      window.clearTimeout(timerID);
+      pendingDeletionRef.current = null;
+
+      try {
+        await deleteTodo(todoId);
+        await loadTodos(activeListIdRef.current, { silent: true });
+        await loadLists();
+        void triggerTodoSync("page_action", PAGE_ACTION_SYNC_COOLDOWN_MS);
+      } catch (err) {
+        restore();
+        console.error("Delete failed:", err);
+        toast.error("Todo 삭제 실패", toErrorMessage(err, "Todo를 삭제하지 못했습니다."));
+      }
+    };
+
+    const cancel = () => {
+      if (settled) return;
+      settled = true;
+      window.clearTimeout(timerID);
+      pendingDeletionRef.current = null;
+      restore();
+    };
+
+    pendingDeletionRef.current = { cancel, flush: finalize };
+    timerID = window.setTimeout(() => {
+      void finalize();
+    }, 5_000);
+
+    toast.show({
+      variant: "warning",
+      title: "Todo 삭제됨",
+      description: "5초 안에 실행 취소할 수 있습니다.",
+      duration: 5_000,
+      actionLabel: "실행 취소",
+      onAction: cancel,
+    });
   };
 
   const handleUpdateTodo = async (todoId: string, updates: Record<string, unknown>) => {
@@ -858,27 +957,76 @@ function TodoPageInner() {
     if (clearingCompleted) return;
     if (doneDeleteRootIDs.length === 0) return;
 
-    setClearingCompleted(true);
-    try {
-      const results = await Promise.allSettled(doneDeleteRootIDs.map((todoID) => deleteTodo(todoID)));
-      const failed = results.filter((result) => result.status === "rejected").length;
-
-      await loadTodos(activeListIdRef.current, { silent: true });
-      await loadLists();
-      void triggerTodoSync("page_action", PAGE_ACTION_SYNC_COOLDOWN_MS);
-
-      if (failed === 0) {
-        toast.success("완료 항목 정리 완료");
-      } else {
-        toast.warning("일부 완료 항목 정리 실패", `${failed}개 항목을 삭제하지 못했습니다.`);
-      }
-    } catch (err) {
-      console.error("Clear completed failed:", err);
-      toast.error("완료 항목 정리 실패", toErrorMessage(err, "완료 항목 삭제 중 오류가 발생했습니다."));
-    } finally {
-      setClearingCompleted(false);
+    if (pendingDeletionRef.current) {
+      await pendingDeletionRef.current.flush();
     }
-  }, [activeListIdRef, clearingCompleted, deleteTodo, doneDeleteRootIDs, loadLists, loadTodos, toast, triggerTodoSync]);
+
+    const removedTodos = todos.filter((todo) => todo.is_done);
+    const todosSnapshot = todos;
+    const listsSnapshot = lists;
+    let settled = false;
+
+    setTodos((prev) => prev.filter((todo) => !todo.is_done));
+    applyListDeletionDelta(removedTodos);
+
+    let timerID = 0;
+    const restore = () => {
+      setTodos(todosSnapshot);
+      setLists(listsSnapshot);
+    };
+
+    const finalize = async () => {
+      if (settled) return;
+      settled = true;
+      window.clearTimeout(timerID);
+      pendingDeletionRef.current = null;
+      setClearingCompleted(true);
+
+      try {
+        const results = await Promise.allSettled(doneDeleteRootIDs.map((todoID) => deleteTodo(todoID)));
+        const failed = results.filter((result) => result.status === "rejected").length;
+
+        await loadTodos(activeListIdRef.current, { silent: true });
+        await loadLists();
+        void triggerTodoSync("page_action", PAGE_ACTION_SYNC_COOLDOWN_MS);
+
+        if (failed === 0) {
+          toast.success("완료 항목 정리 완료");
+        } else {
+          restore();
+          toast.warning("일부 완료 항목 정리 실패", `${failed}개 항목을 삭제하지 못했습니다.`);
+        }
+      } catch (err) {
+        restore();
+        console.error("Clear completed failed:", err);
+        toast.error("완료 항목 정리 실패", toErrorMessage(err, "완료 항목 삭제 중 오류가 발생했습니다."));
+      } finally {
+        setClearingCompleted(false);
+      }
+    };
+
+    const cancel = () => {
+      if (settled) return;
+      settled = true;
+      window.clearTimeout(timerID);
+      pendingDeletionRef.current = null;
+      restore();
+    };
+
+    pendingDeletionRef.current = { cancel, flush: finalize };
+    timerID = window.setTimeout(() => {
+      void finalize();
+    }, 5_000);
+
+    toast.show({
+      variant: "warning",
+      title: `완료 Todo ${removedTodos.length}건 삭제 예정`,
+      description: "5초 안에 실행 취소할 수 있습니다.",
+      duration: 5_000,
+      actionLabel: "실행 취소",
+      onAction: cancel,
+    });
+  }, [applyListDeletionDelta, clearingCompleted, deleteTodo, doneDeleteRootIDs, lists, loadLists, loadTodos, toast, todos, triggerTodoSync]);
 
   const allFlat = useMemo(() => [...activeFlat, ...doneFlat], [activeFlat, doneFlat]);
   const allFlatIds = useMemo(() => allFlat.map((f) => f.id), [allFlat]);

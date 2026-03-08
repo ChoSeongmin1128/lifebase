@@ -200,6 +200,7 @@ npx expo start
 - 기본 정렬: `due`
 - 정렬: `manual` / `due` / `recent_starred` / `title`
 - 로컬에서 삭제 요청한 Todo는 Google push 삭제가 끝날 때까지 background pull sync가 다시 복구하지 않는다
+- Web Todo 단건 삭제와 완료 항목 정리는 우측 하단 Undo 토스트 5초를 제공한다
 - Web Todo는 `전체`/목록 전환 시 기존 목록을 유지한 채 백그라운드 refresh로 갱신한다
 - Web/Desktop Todo는 제목을 최대 3줄까지 노출하고, 확장된 행 자체에서 제목을 바로 수정한다
 - 확장 영역은 메모, 일정, 우선순위를 LifeBase 톤의 칩 기반 UI로 보조 편집해 Google Tasks에 가까운 인라인 편집 흐름을 유지한다
