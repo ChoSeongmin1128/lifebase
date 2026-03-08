@@ -10,6 +10,7 @@ LifeBase용 에이전트 규칙 진입점.
 - 호스팅: Mac Mini bare metal + Caddy + Cloudflare DNS (`lifebase.cc`)
 - 플랫폼: Web, Desktop(macOS/Windows), Mobile(iOS/Android)
 - 기획 인덱스: `@plan.md`
+- 구현/상태 변경 시 관련 문서와 규칙도 같은 작업에서 함께 동기화
 
 ## 규칙 import
 - 공통 워크플로우: `@.claude/rules/workflow.md`
@@ -17,6 +18,7 @@ LifeBase용 에이전트 규칙 진입점.
 - 스킬 작성/운영 규칙: `@.claude/rules/skills.md`
 - 보안/민감정보 규칙: `@.claude/rules/security.md`
 - DB 컨벤션: `@.claude/rules/database.md`
+- 테스트 규칙: `@.claude/rules/testing.md`
 - 프론트엔드 라우팅 컨벤션: `@.claude/rules/routing.md`
 - API 아키텍처 규칙: `@.claude/rules/api-architecture.md`
 - Google 연동 규칙: `@.claude/rules/google-api.md`

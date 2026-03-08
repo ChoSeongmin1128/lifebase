@@ -39,33 +39,38 @@
 ## 7. 작업 규칙
 - `CLAUDE.md`
 
-## 8. 프론트 기능별 리팩토링 계획 (전 기능 공통 구조 전환)
+## 8. 프론트 기능 구조 전환 현황 (진행중)
 1. 목표
 웹/모바일의 구현된 모든 프론트 기능을 화면 중심 구현에서 기능 중심 구조로 전환한다.
 
-2. 공통 패키지 구조
+2. 현재 상태
+- Web: `apps/web/src/features` 아래 `auth`, `admin`, `cloud`, `gallery`, `calendar`, `home`, `settings`, `todo`가 기능 단위 구조로 정리돼 있다.
+- Mobile: `apps/mobile/features` 아래 `auth`, `cloud`, `gallery`, `calendar`, `todo`가 기능 단위 구조로 정리돼 있다.
+- 공통 패키지: `packages/features/todo`가 존재하며, 나머지 기능은 앱 내부 feature 구조를 우선 사용 중이다.
+
+3. 목표 구조
 `packages/features/<feature>`에 `domain`, `usecase`, `repository`를 배치한다.
 
-3. 앱별 어댑터 구조
+4. 앱별 어댑터 구조
 웹/모바일은 각 앱 내부 `infrastructure`와 `ui/hooks`에서 공통 유스케이스를 연결한다.
 
-4. 대상 기능
+5. 대상 기능
 `auth`, `admin`, `cloud`, `gallery`, `calendar`, `todo`, `settings`를 전환 대상으로 한다.
 
-5. 점진 마이그레이션 순서
+6. 점진 마이그레이션 순서
 1) 기능별 대표 흐름 선정
 2) 응답 매핑 로직을 저장소 어댑터로 분리
 3) 비즈니스 로직을 유스케이스로 추출
 4) 유스케이스 테스트 보강
 5) UI 페이지에서 훅으로 연결
 
-6. 1차 구현 범위
-Todo 생성 흐름을 웹/모바일 공통 패키지 기반으로 먼저 전환하고 나머지 기능은 동일 패턴으로 확장한다.
+7. 현재 우선순위
+Todo 공통 패키지 패턴을 유지하되, Home/Calendar/Cloud처럼 플랫폼별 UI 차이가 큰 기능은 앱 내부 feature 구조를 먼저 안정화한 뒤 공유 범위를 좁혀 확장한다.
 
-7. 확장 순서
+8. 확장 순서
 2차 `calendar`, 3차 `cloud`, 4차 `settings`, 5차 `gallery`, 6차 `auth/admin` 순으로 전환한다.
 
-8. 검증
+9. 검증
 웹 lint, 모바일 타입 검사, 기능 패키지 빌드/테스트를 수행해 회귀를 확인한다.
 
 ## 9. Cloud 항목 드래그 이동 계획 (웹 1차 확장)
@@ -106,18 +111,21 @@ mac은 `cmd+x/c/v`, windows는 `ctrl+x/c/v`를 지원한다.
 6. 복사 정책
 파일 복사만 지원하고 폴더 복사는 미지원으로 고정한다.
 
-## 11. Home 허브 1차 구축 계획 (웹 우선)
-1. API 전략
-`GET /api/v1/home/summary` 통합 엔드포인트로 오늘 요약 데이터를 단일 조회한다.
+## 11. Home 허브 현황 및 후속 확장
+1. 현재 상태
+Web은 `GET /api/v1/home/summary`를 사용해 오늘 일정, 지난/오늘 Todo, 최근 파일, 저장공간, 빠른 액션을 표시한다.
 
-2. 요약 범위
-오늘 일정, 지난/오늘 Todo, 최근 파일, 저장공간, 빠른 액션(일정/Todo/업로드)을 기본 카드로 제공한다.
+2. 구현 완료 범위
+- 로그인 후 기본 진입을 `/home`으로 고정
+- 사이드바 로고(`LB`) 클릭 시 Home 이동
+- 빠른 액션 딥링크 연결
+- 저장공간 카드와 파일 타입별 breakdown 표시
 
-3. 내비게이션 정책
-로그인 후 기본 진입을 `/home`으로 고정하고 사이드바 로고(`LB`) 클릭 시 항상 Home으로 이동한다.
+3. 후속 작업
+- Desktop/Mobile 전용 Home 화면 확장
+- 카드별 drill-down UX와 새로고침/에러 상태 정교화
 
 4. 빠른 액션 연결
-Home 버튼은 인라인 생성 대신 딥링크를 사용한다.
 - `/calendar?quick=create`
 - `/todo?quick=create`
 - `/cloud?quick=upload`
@@ -125,9 +133,9 @@ Home 버튼은 인라인 생성 대신 딥링크를 사용한다.
 5. 저장공간 시각화
 저장공간 카드는 원형 도넛형 바를 사용하고 파일 타입별 사용량을 이미지/비디오/기타로 분해해 퍼센트와 용량을 함께 표시한다.
 
-## 12. 캘린더 다중 계정 필터/색상 전략 계획 (웹 1차)
-1. 목표
-Google Calendar 원본 색상 정합성과 다중 계정 가독성을 동시에 만족하는 색상 정책을 적용한다.
+## 12. 캘린더 다중 계정 필터/색상 전략 현황
+1. 현재 상태
+서버에는 다중 Google 계정 조회/연결/수동 sync API가 있고, Web Calendar와 Settings에는 계정 필터/색상/동기화 토글 UI가 구현돼 있다.
 
 2. 색상 규칙
 단일 계정 선택 시 Google 색상(`event.color_id -> calendar.color_id`)을 사용하고 다중 계정 동시 선택 시 계정 단위 통일 색상을 사용한다.
@@ -139,23 +147,25 @@ Google Calendar 원본 색상 정합성과 다중 계정 가독성을 동시에 
 활성 Google 계정 전체 선택을 기본으로 하고 선택 상태는 사용자 설정으로 저장한다.
 
 5. 백엔드 데이터 축
-`calendars.google_account_id` 컬럼을 추가해 캘린더-계정 소속 관계를 명시적으로 관리한다.
+`calendars.google_account_id` 컬럼을 추가해 캘린더-계정 소속 관계를 명시적으로 관리한다. `todo_lists.google_account_id`와 sync 상태 테이블도 추가됐다.
 
 6. 인증 API 확장
-일반 사용자 대상 `GET /auth/google-accounts`, `POST /auth/google-accounts/link`를 추가해 다중 계정 조회/연결을 지원한다.
+일반 사용자 대상 `GET /auth/google-accounts`, `POST /auth/google-accounts/link`, 수동 sync API를 통해 다중 계정 조회/연결/동기화를 지원한다.
 
 7. 웹 UX 확장
 Settings > 일반에서 Google 계정 목록과 추가 연결 액션을 제공하고 캘린더 툴바에서 계정 멀티 선택을 지원한다.
 
-8. 검증
-서버 테스트와 웹 lint를 수행하고 단일 계정/다중 계정 색상 전환, 계정 필터 적용, 계정 추가 연결 시나리오를 수동 검증한다.
+8. 남은 작업
+- 계정별 폴링 워커 안정화
+- Todo 쓰기 경로 Google Tasks 우선 전환 완결
+- 계정 경계 reorder/move 정책 마무리
 
 ## 13. 다중 계정 특수 캘린더 + Todo 완료 동기화/출처 표기 통합 계획 (부분 폐기)
 1. 유지 항목
 Todo 완료 동기화, Todo 출처 표기, 완료 보존 정책은 유지한다.
 
 2. 폐기 항목
-특수 캘린더(휴일/생일) 선택/중복 병합 정책은 폐기하고, 공휴일 정책은 `15. KASI 공휴일 전용 표시 도입 계획`을 따른다.
+특수 캘린더(휴일/생일) 선택/중복 병합 정책은 폐기하고, 공휴일 정책은 `15. KASI 공휴일 표시 현황`을 따른다.
 
 ## 14. Google Calendar API 에러 매핑 표준화 계획
 1. 범위
@@ -179,7 +189,7 @@ Google Calendar/Tasks 연동 중 발생하는 API 오류를 서버 공통 규칙
 7. 검증
 분류 유닛 테스트와 서버 전체 테스트를 수행하고, 로그/DB 상태(`google_sync_state`, `google_push_outbox`)를 점검한다.
 
-## 15. KASI 공휴일 전용 표시 도입 계획 (Web 1차)
+## 15. KASI 공휴일 표시 현황
 1. 데이터 소스
 한국 공휴일은 한국천문연구원 `getRestDeInfo`만 사용한다.
 
@@ -207,5 +217,7 @@ Google holiday/birthday 캘린더는 동기화 대상에서 제외하고, 기존
 9. 운영 기능
 Admin 페이지에 `공휴일 데이터 최신화` 버튼을 추가하고 기본 실행 범위는 당해년±2년으로 고정한다.
 
-10. 확장 순서
-Web/Desktop(Next 앱) 1차 반영 후 동일 API를 사용해 Mobile로 확장한다.
+10. 현재 상태와 후속 작업
+- Web Calendar와 Settings의 공휴일 표시/토글은 구현 완료
+- Desktop는 Web 앱을 재사용하므로 동일 반영 범위를 따른다
+- Mobile 전용 표시 UX와 운영 자동화 점검은 후속 범위다

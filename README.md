@@ -29,6 +29,8 @@ lifebase/
 │   │   ├── cmd/server/  # 엔트리포인트
 │   │   ├── internal/    # 헥사고날 모듈
 │   │   │   ├── auth/        # 인증 (Google OAuth + JWT)
+│   │   │   ├── home/        # Home 요약 허브
+│   │   │   ├── holiday/     # 한국 공휴일 조회/갱신
 │   │   │   ├── cloud/       # 파일/폴더 관리
 │   │   │   ├── gallery/     # 갤러리 (썸네일 서빙)
 │   │   │   ├── calendar/    # 캘린더 + 이벤트
@@ -38,15 +40,15 @@ lifebase/
 │   │   │   ├── admin/       # 관리자 운영 (권한/할당량/계정 상태)
 │   │   │   ├── worker/      # 썸네일 생성 워커
 │   │   │   └── shared/      # 공통 (미들웨어, 설정, 응답)
-│   │   └── migrations/  # goose DB 마이그레이션 (11개)
+│   │   └── migrations/  # goose DB 마이그레이션
 │   ├── web/             # Next.js 웹 앱
-│   │   └── src/app/     # 페이지: Cloud, Gallery, Calendar, Todo, Settings
+│   │   └── src/app/     # 페이지: Home, Cloud, Gallery, Calendar, Todo, Settings, Admin
 │   ├── desktop/         # Tauri v2 데스크탑 앱
 │   │   └── src/         # Rust (main.rs, lib.rs)
 │   └── mobile/          # Expo React Native 모바일 앱
 │       └── app/         # 탭: Cloud, Gallery, Calendar, Todo, Settings
-├── docs/                # 설계 문서 (16개)
-├── packages/            # 공유 패키지
+├── docs/                # 설계 문서 및 프로토타입
+├── packages/            # 공유 패키지 (domain, api-types, features/*)
 └── resources/           # 디자인 에셋
 ```
 
@@ -126,6 +128,10 @@ npx expo start
 
 ## 주요 기능
 
+### Home
+- 오늘 일정/지난 Todo/최근 파일/저장공간 요약
+- 빠른 액션: 일정 추가, Todo 추가, 파일 업로드
+
 ### Cloud
 - 파일 업로드/다운로드/삭제/이동/이름변경
 - 폴더 CRUD + 계층 탐색
@@ -143,6 +149,8 @@ npx expo start
 - 캘린더 CRUD + 이벤트 CRUD
 - 리마인더 관리
 - 월간/주간/3일/일정 4개 뷰
+- 다중 Google 계정 필터/색상 정책
+- 한국 공휴일 overlay 표시 + 설정 토글
 
 ### Todo
 - 리스트 기반 관리
@@ -158,6 +166,7 @@ npx expo start
 - 5탭: 일반/캘린더/Todo/알림/Cloud
 - 테마 (라이트/다크/시스템)
 - 방해 금지 시간 설정
+- Google 계정 연결/별칭/색상/동기화 설정
 
 ### Admin
 - 관리자 전용 OAuth 로그인 (`/admin/auth/callback`)
@@ -171,15 +180,18 @@ npx expo start
 
 | 모듈 | 엔드포인트 수 |
 |------|-------------|
-| auth | 5 |
-| cloud | 12 |
+| shared | 1 |
+| auth | 9 |
+| home | 1 |
+| holiday | 2 |
+| cloud | 26 |
 | gallery | 2 |
-| calendar | 8 |
-| todo | 8 |
+| calendar | 11 |
+| todo | 10 |
 | settings | 2 |
 | sharing | 5 |
 | admin | 10 |
-| **합계** | **52** |
+| **합계** | **79** |
 
 상세 목록은 `docs/700-마일스톤.md` 참조.
 
@@ -228,13 +240,13 @@ internal/<module>/
 | `docs/400-시스템-아키텍처.md` | 헥사고날 구조, 인프라, 파일 스토리지, 썸네일 |
 | `docs/420-플랫폼-기술선정.md` | 스택 선정 이유, 플랫폼별 역할 |
 | `CONTRIBUTING.md` | 브랜치 전략, worktree 기준, squash merge 운영 |
-| `docs/700-마일스톤.md` | 10단계 구현 로드맵 + 현재 진행 상황 |
+| `docs/700-마일스톤.md` | 구현 로드맵 + 현재 진행 상황 |
 
 전체 문서 인덱스: `plan.md`
 
 ## 버전
 
-현재: **v0.1.0** (초기 구현 완료)
+현재: **v0.2.0**
 
 Semantic Versioning 사용. 단일 소스: `package.json`
 

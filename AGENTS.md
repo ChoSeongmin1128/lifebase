@@ -15,6 +15,11 @@
 - commit policy -> `.claude/rules/commit-message.md`
 - release/version bump/sync -> `.claude/rules/versioning.md`
 
+## Documentation Sync Policy
+- If code, config, routes, schema, platform support, or user-visible behavior changes, update the related docs in the same task.
+- Minimum sync targets are `README.md`, `docs/700-마일스톤.md`, `plan.md`, and affected rule files under `.claude/` or `.codex/`.
+- If the touched scope already has known documentation drift, fix that drift before considering the task complete.
+
 ## Platform Execution Policy
 - For every feature task, evaluate impact for Web (including responsive mobile web), Desktop (macOS/Windows), and Mobile (iOS/Android).
 - If shared scope exists, implement and validate Web first.
