@@ -9,7 +9,7 @@ import {
   DropdownMenuItem,
 } from "@/components/ui/dropdown-menu";
 import { PageToolbar, PageToolbarGroup } from "@/components/layout/PageToolbar";
-import { Search, ArrowUpDown, Filter, RefreshCw, Loader2 } from "lucide-react";
+import { Search, ArrowUpDown, Filter, RefreshCw } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 type SortBy = "manual" | "due" | "recent_starred" | "title";
@@ -39,7 +39,6 @@ interface TodoToolbarProps {
   onFilterChange: (f: FilterMode) => void;
   lastSyncedAt?: string;
   syncingNow?: boolean;
-  refreshing?: boolean;
   onManualSync?: () => void;
 }
 
@@ -53,28 +52,31 @@ export function TodoToolbar({
   onFilterChange,
   lastSyncedAt,
   syncingNow = false,
-  refreshing = false,
   onManualSync,
 }: TodoToolbarProps) {
   const activeFilterLabel =
     FILTER_OPTIONS.find((item) => item.value === filter)?.label || "전체";
 
   return (
-    <PageToolbar className="py-3">
-      <h2 className="font-medium text-text-strong">{listName}</h2>
+    <PageToolbar className="gap-3 py-3">
+      <div className="min-w-0">
+        <h2 className="truncate text-base font-semibold text-text-strong">{listName}</h2>
+        <p className="mt-0.5 hidden text-xs text-text-muted md:block">
+          {syncingNow
+            ? "Google 동기화 중"
+            : lastSyncedAt
+              ? `최근 동기화 ${new Date(lastSyncedAt).toLocaleString("ko-KR")}`
+              : "빠른 편집과 계층 정리를 바로 이어서 할 수 있습니다"}
+        </p>
+      </div>
       <PageToolbarGroup className="gap-2">
         <div className="relative">
-          {refreshing ? (
-            <span className="absolute -left-5 top-1/2 -translate-y-1/2 text-primary" aria-label="업데이트 중">
-              <Loader2 size={12} className="animate-spin" />
-            </span>
-          ) : null}
           <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-text-muted" />
           <Input
             placeholder="검색..."
             value={searchQuery}
             onChange={(e) => onSearchChange(e.target.value)}
-            className="h-8 w-40 pl-8"
+            className="h-8 w-full pl-8 md:w-48"
           />
         </div>
 
@@ -99,11 +101,8 @@ export function TodoToolbar({
           </DropdownMenuContent>
         </DropdownMenu>
 
-        <div className="hidden items-center gap-2 text-xs text-text-muted md:flex">
-          <span>최근 동기화: {lastSyncedAt ? new Date(lastSyncedAt).toLocaleString("ko-KR") : "-"}</span>
-        </div>
         <Button
-          variant="secondary"
+          variant="ghost"
           size="icon-sm"
           onClick={onManualSync}
           disabled={!onManualSync || syncingNow}

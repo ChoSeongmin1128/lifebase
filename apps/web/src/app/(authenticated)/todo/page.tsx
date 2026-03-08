@@ -34,7 +34,7 @@ import {
   useSensors,
 } from "@dnd-kit/core";
 import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
-import { ChevronRight, Plus } from "lucide-react";
+import { ChevronRight, Plus, Trash2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { getGoogleAccountDisplayName } from "@/lib/google-account-preferences";
 import { normalizeDueDate, normalizeDueTime } from "@/features/todo/lib/formatDueDate";
@@ -205,7 +205,6 @@ function TodoPageInner() {
 
   const [todos, setTodos] = useState<TodoItem[]>([]);
   const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
   const [hasLoadedTodos, setHasLoadedTodos] = useState(false);
   const [newListName, setNewListName] = useState("");
   const [newListTarget, setNewListTarget] = useState<"local" | "google">("local");
@@ -452,13 +451,11 @@ function TodoPageInner() {
     if (!targetListID) {
       setTodos([]);
       setLoading(false);
-      setRefreshing(false);
       return;
     }
     if (!silent) {
       const showInitialLoading = !hasLoadedTodos;
       setLoading(showInitialLoading);
-      setRefreshing(!showInitialLoading);
     }
     try {
       // 완료 섹션 렌더링을 위해 완료 항목 포함 조회
@@ -482,7 +479,6 @@ function TodoPageInner() {
     } finally {
       if (!silent) {
         setLoading(false);
-        setRefreshing(false);
       }
       setHasLoadedTodos(true);
     }
@@ -1169,8 +1165,8 @@ function TodoPageInner() {
       <div
         key={todo.id}
         className={cn(
-          "mx-2 rounded-xl transition-all",
-          isExpanded && "bg-surface-accent/70 ring-1 ring-border/70"
+          "mx-3 my-0.5 rounded-2xl transition-all",
+          isExpanded && "bg-surface/80 ring-1 ring-border/70 shadow-sm"
         )}
       >
         {isDropTarget && (
@@ -1266,7 +1262,12 @@ function TodoPageInner() {
       {/* Left: Lists — desktop */}
       <div className="hidden md:block w-56 shrink-0 border-r border-border overflow-auto">
         <div className="p-3">
-          <h2 className="mb-2 text-xs font-medium text-text-muted uppercase tracking-wider">목록</h2>
+          <div className="mb-3 flex items-center justify-between">
+            <h2 className="text-xs font-medium uppercase tracking-[0.18em] text-text-muted">목록</h2>
+            <span className="rounded-full border border-border/70 bg-background px-2 py-0.5 text-[10px] text-text-muted">
+              {lists.length}
+            </span>
+          </div>
           {lists.map((list) => (
             <div key={list.id} className="group/list relative">
               <div
@@ -1280,44 +1281,51 @@ function TodoPageInner() {
                   }
                 }}
                 className={cn(
-                  "mb-0.5 flex w-full items-start justify-between rounded-lg px-3 py-2 transition-colors",
+                  "mb-1 flex w-full items-start justify-between rounded-2xl border px-3 py-3 transition-[background-color,border-color,box-shadow]",
                   activeListId === list.id
-                    ? "border-l-2 border-primary bg-surface-accent text-text-strong"
-                    : "text-text-secondary hover:bg-surface-accent/50"
+                    ? "border-primary/25 bg-primary/[0.06] text-text-strong shadow-sm"
+                    : "border-transparent bg-transparent text-text-secondary hover:border-border/70 hover:bg-surface/70"
                 )}
               >
                 <div className="min-w-0 flex-1 text-left">
-                  <p className="truncate text-sm font-medium">{list.name}</p>
-                  <div className={cn(
-                    "mt-0.5 flex items-center gap-1 text-[11px]",
-                    activeListId === list.id ? "text-text-secondary" : "text-text-muted",
-                  )}>
-                    <span className="tabular-nums">진행 {getListActiveCount(list)}</span>
-                    <span>·</span>
-                    <span className="tabular-nums">완료 {getListDoneCount(list)}</span>
+                  <div className="flex items-center gap-2">
+                    <p className="min-w-0 flex-1 truncate text-sm font-semibold">{list.name}</p>
+                    <span
+                      className={cn(
+                        "shrink-0 rounded-full px-2 py-0.5 text-[10px] font-medium tabular-nums",
+                        activeListId === list.id
+                          ? "bg-primary/12 text-primary"
+                          : "bg-surface-accent text-text-muted"
+                      )}
+                    >
+                      {getListActiveCount(list)}
+                    </span>
                   </div>
-                  <p
+                  <div
                     className={cn(
-                      "mt-0.5 truncate text-[11px]",
-                      activeListId === list.id ? "text-text-secondary" : "text-text-muted",
+                      "mt-1.5 flex items-center justify-between gap-2 text-[11px]",
+                      activeListId === list.id ? "text-text-secondary" : "text-text-muted"
                     )}
                   >
-                    {getListSourceLabel(list)}
-                  </p>
+                    <span className="min-w-0 truncate">{getListSourceLabel(list)}</span>
+                    <span className="shrink-0 tabular-nums">완료 {getListDoneCount(list)}</span>
+                  </div>
                 </div>
-                {!list.is_virtual && (
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setListDeleteTarget(list);
-                    }}
-                    className="ml-1 hidden text-text-muted hover:text-error group-hover/list:inline-block text-xs"
-                    aria-label={`${list.name} 목록 삭제`}
-                  >
-                    ×
-                  </button>
-                )}
+                <div className="ml-2 flex h-7 w-7 shrink-0 items-center justify-center">
+                  {!list.is_virtual ? (
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setListDeleteTarget(list);
+                      }}
+                      className="inline-flex h-7 w-7 items-center justify-center rounded-lg text-text-muted opacity-0 transition-[opacity,color,background-color] group-hover/list:opacity-100 hover:bg-surface-accent hover:text-error"
+                      aria-label={`${list.name} 목록 삭제`}
+                    >
+                      <Trash2 size={13} />
+                    </button>
+                  ) : null}
+                </div>
               </div>
             </div>
           ))}
@@ -1390,9 +1398,10 @@ function TodoPageInner() {
           ) : (
             <button
               onClick={() => setShowNewList(true)}
-              className="mt-1 w-full rounded-lg px-3 py-2 text-left text-sm text-text-muted hover:bg-surface-accent/50 transition-colors"
+              className="mt-2 flex w-full items-center gap-2 rounded-2xl border border-dashed border-border/80 px-3 py-2.5 text-left text-sm text-text-muted transition-colors hover:border-primary/25 hover:bg-surface/70 hover:text-text-secondary"
             >
-              + 새 목록
+              <Plus size={14} />
+              새 목록
             </button>
           )}
         </div>
@@ -1496,7 +1505,6 @@ function TodoPageInner() {
           onFilterChange={setFilter}
           lastSyncedAt={lastSyncedAt}
           syncingNow={syncingNow}
-          refreshing={refreshing}
           onManualSync={handleManualSync}
         />
 

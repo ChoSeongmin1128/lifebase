@@ -208,10 +208,10 @@ function ChipButton({
   return (
     <div
       className={cn(
-        "inline-flex min-h-9 items-center gap-2 rounded-full border px-3 py-2 text-xs transition-colors",
+        "inline-flex min-h-9 items-center gap-2 rounded-xl border px-3 py-2 text-xs transition-colors",
         muted
           ? "border-dashed border-border/70 bg-surface-accent/35 text-text-muted"
-          : "border-border/80 bg-background text-text-secondary hover:border-primary/35 hover:bg-surface-accent/65",
+          : "border-border/80 bg-background text-text-secondary hover:border-primary/25 hover:bg-surface-accent/55",
         className
       )}
     >
@@ -478,12 +478,12 @@ export function TodoInlineEditor({
     PRIORITY_OPTIONS.find((option) => option.value === priority) ?? PRIORITY_OPTIONS[2];
 
   return (
-    <div className={cn("space-y-3 pt-1", className)}>
+    <div className={cn("mt-3 space-y-3 rounded-2xl border border-border/70 bg-background/90 p-3 shadow-sm", className)}>
       <Textarea
         value={notes}
         rows={1}
-        className="min-h-[68px] rounded-xl border border-border/70 bg-background px-3 py-2 text-[13px] leading-5 text-text-secondary shadow-none placeholder:text-text-muted/70 focus-visible:ring-1 focus-visible:ring-primary/30"
-        placeholder="세부정보"
+        className="min-h-[76px] rounded-xl border border-border/60 bg-surface/70 px-3 py-2 text-[13px] leading-5 text-text-secondary shadow-none placeholder:text-text-muted/70 focus-visible:ring-1 focus-visible:ring-primary/30"
+        placeholder="메모"
         onClick={(event) => event.stopPropagation()}
         onChange={(event) => setNotes(event.target.value)}
         onBlur={() => {
@@ -495,7 +495,7 @@ export function TodoInlineEditor({
 
       <div className="flex flex-wrap items-center gap-2">
         {listName ? (
-          <span className="rounded-full border border-border/70 bg-background px-2.5 py-1 text-[11px] text-text-muted">
+          <span className="rounded-xl border border-border/70 bg-surface/60 px-2.5 py-1 text-[11px] text-text-muted">
             {listName}
           </span>
         ) : null}
@@ -595,7 +595,7 @@ export function TodoInlineEditor({
         {(dueDate || dueTime) ? (
           <button
             type="button"
-            className="inline-flex min-h-9 items-center gap-1.5 rounded-full border border-transparent px-2.5 py-2 text-xs text-text-muted transition-colors hover:border-border/60 hover:bg-surface-accent/65 hover:text-text-secondary"
+            className="inline-flex min-h-9 items-center gap-1.5 rounded-xl border border-transparent px-2.5 py-2 text-xs text-text-muted transition-colors hover:border-border/60 hover:bg-surface-accent/55 hover:text-text-secondary"
             onClick={(event) => {
               event.stopPropagation();
               applyDueDate("");

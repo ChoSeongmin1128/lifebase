@@ -15,7 +15,6 @@ import {
   DropdownMenuSubContent,
 } from "@/components/ui/dropdown-menu";
 import { Textarea } from "@/components/ui/textarea";
-import { PriorityFlag } from "./PriorityFlag";
 import {
   MoreVertical,
   Pencil,
@@ -184,6 +183,18 @@ export function TodoRow({
   onMoveToList,
 }: TodoRowProps) {
   const sortable = useSortable({ id: todo.id, disabled: !showDragHandle || isOverlay });
+  const priorityMeta = (() => {
+    if (todo.priority === "urgent") {
+      return { label: "긴급", className: "border-error/20 bg-error/8 text-error" };
+    }
+    if (todo.priority === "high") {
+      return { label: "높음", className: "border-caution/20 bg-caution/8 text-caution" };
+    }
+    if (todo.priority === "low") {
+      return { label: "낮음", className: "border-border/70 bg-background text-text-muted" };
+    }
+    return null;
+  })();
 
   const style = isOverlay
     ? { paddingLeft: `${depth * 24 + 16}px` }
@@ -199,13 +210,13 @@ export function TodoRow({
       style={style}
       data-todo-row-id={todo.id}
       className={cn(
-        "group flex items-start gap-2 py-2 pr-4 transition-colors",
-        !isOverlay && !isExpanded && "hover:bg-surface-accent/50",
-        isExpanded && !isOverlay && "bg-transparent",
-        todo.is_pinned && !todo.is_done && !isOverlay && !isExpanded && "bg-surface-accent",
-        todo.is_done && "opacity-60",
+        "group flex items-start gap-3 rounded-2xl border border-transparent py-2.5 pr-4 transition-[background-color,border-color,box-shadow,opacity]",
+        !isOverlay && !isExpanded && "hover:border-border/60 hover:bg-surface/70",
+        isExpanded && !isOverlay && "border-border/70 bg-surface shadow-sm",
+        todo.is_pinned && !todo.is_done && !isOverlay && !isExpanded && "border-primary/15 bg-primary/[0.04]",
+        todo.is_done && "opacity-70",
         isDragging && !isOverlay && "opacity-30",
-        isOverlay && "rounded-lg bg-surface shadow-lg border border-border opacity-90",
+        isOverlay && "border-border bg-surface shadow-lg opacity-90",
       )}
       {...(isOverlay ? {} : sortable.attributes)}
     >
@@ -214,8 +225,8 @@ export function TodoRow({
         <button
           {...(isOverlay ? {} : sortable.listeners)}
           className={cn(
-            "shrink-0 text-text-muted cursor-grab touch-none",
-            isOverlay ? "opacity-50" : "opacity-0 group-hover:opacity-50",
+            "mt-0.5 shrink-0 cursor-grab touch-none text-text-muted transition-opacity",
+            isOverlay ? "opacity-50" : "opacity-0 group-hover:opacity-40",
           )}
         >
           <GripVertical size={14} />
@@ -228,7 +239,7 @@ export function TodoRow({
       {hasChildren ? (
         <button
           onClick={onToggleCollapse}
-          className="shrink-0 text-text-muted hover:text-text-primary transition-colors"
+          className="mt-0.5 shrink-0 rounded-md p-0.5 text-text-muted transition-colors hover:bg-surface-accent hover:text-text-primary"
         >
           {isCollapsed ? <ChevronRight size={14} /> : <ChevronDown size={14} />}
         </button>
@@ -242,9 +253,6 @@ export function TodoRow({
         onCheckedChange={onToggleDone}
         className="mt-0.5 self-start"
       />
-
-      {/* Priority flag */}
-      <PriorityFlag priority={todo.priority} />
 
       {/* Content */}
       <div
@@ -262,7 +270,7 @@ export function TodoRow({
           ) : (
             <span
               className={cn(
-                "block line-clamp-3 break-words text-sm leading-5 text-text-primary",
+                "block line-clamp-3 break-words text-[14px] font-medium leading-5 text-text-primary",
                 todo.is_done && "text-text-muted line-through"
               )}
             >
@@ -270,63 +278,61 @@ export function TodoRow({
             </span>
           )}
           {todo.notes.trim() && !isExpanded ? (
-            <p className="mt-0.5 line-clamp-1 text-xs text-text-muted">
+            <p className="mt-1 line-clamp-1 text-[12px] text-text-muted">
               {todo.notes.trim()}
             </p>
+          ) : null}
+          {!isExpanded && (listLabel || todo.due_date || priorityMeta || (isCollapsed && childCount && childCount.total > 0)) ? (
+            <div className="mt-2 flex flex-wrap items-center gap-1.5">
+              {listLabel ? (
+                <span className="inline-flex items-center rounded-full border border-border/70 bg-background px-2 py-1 text-[11px] text-text-muted">
+                  {listLabel}
+                </span>
+              ) : null}
+              {todo.due_date && !todo.is_done ? (
+                <span
+                  className={cn(
+                    "inline-flex items-center rounded-full border px-2 py-1 text-[11px]",
+                    isOverdue
+                      ? "border-error/20 bg-error/8 font-medium text-error"
+                      : "border-border/70 bg-background text-text-muted"
+                  )}
+                >
+                  {formatDueLabel(todo.due_date, todo.due_time)}
+                </span>
+              ) : null}
+              {priorityMeta ? (
+                <span className={cn("inline-flex items-center gap-1 rounded-full border px-2 py-1 text-[11px]", priorityMeta.className)}>
+                  <Flag size={11} />
+                  {priorityMeta.label}
+                </span>
+              ) : null}
+              {isCollapsed && childCount && childCount.total > 0 ? (
+                <span className="inline-flex items-center rounded-full border border-border/70 bg-background px-2 py-1 text-[11px] text-text-muted">
+                  하위 {childCount.done}/{childCount.total}
+                </span>
+              ) : null}
+            </div>
           ) : null}
           <ExpandableDetails open={Boolean(isExpanded)}>
             {expandedContent}
           </ExpandableDetails>
         </div>
-        {/* Child count badge when collapsed */}
-        {!isExpanded && isCollapsed && childCount && childCount.total > 0 && (
-          <span className="ml-2 inline-flex items-center rounded-full bg-surface-accent px-1.5 py-0.5 text-[10px] text-text-muted">
-            {childCount.done}/{childCount.total}
-          </span>
-        )}
       </div>
-
-      {/* Due badge */}
-      {!isExpanded && listLabel && (
-        <span className="shrink-0 rounded-full bg-surface-accent px-1.5 py-0.5 text-[10px] text-text-muted">
-          {listLabel}
-        </span>
-      )}
-      {!isExpanded && todo.due_date && !todo.is_done && (
-        <span
-          className={cn(
-            "shrink-0 text-[11px]",
-            isOverdue ? "text-error font-medium" : "text-text-muted"
-          )}
-        >
-          {formatDueLabel(todo.due_date, todo.due_time)}
-        </span>
-      )}
 
       {/* Overlay mode: skip interactive buttons */}
       {isOverlay ? null : (
         <>
-          {/* Add subtask button */}
-          {onAddSubtask && !todo.is_done && (
-            <button
-              onClick={onAddSubtask}
-              className="shrink-0 text-text-muted opacity-0 group-hover:opacity-100 transition-opacity hover:text-primary"
-              title="하위 Todo 추가"
-            >
-              <Plus size={14} />
-            </button>
-          )}
-
           {/* Pin */}
           <button
             onClick={onTogglePin}
             className={cn(
-              "shrink-0 transition-opacity",
+              "mt-0.5 shrink-0 rounded-md p-1 transition-colors",
               todo.is_pinned
-                ? "text-primary"
+                ? "text-primary hover:bg-primary/10"
                 : isExpanded
-                  ? "text-text-muted"
-                  : "text-text-muted opacity-0 group-hover:opacity-100"
+                  ? "text-text-muted hover:bg-surface-accent"
+                  : "text-text-muted opacity-0 group-hover:opacity-100 hover:bg-surface-accent"
             )}
           >
             <Pin size={14} fill={todo.is_pinned ? "currentColor" : "none"} />
@@ -337,8 +343,8 @@ export function TodoRow({
             <DropdownMenuTrigger asChild>
               <button
                 className={cn(
-                  "shrink-0 text-text-muted transition-opacity",
-                  isExpanded ? "opacity-100" : "opacity-0 group-hover:opacity-100"
+                  "mt-0.5 shrink-0 rounded-md p-1 text-text-muted transition-colors",
+                  isExpanded ? "opacity-100 hover:bg-surface-accent" : "opacity-0 group-hover:opacity-100 hover:bg-surface-accent"
                 )}
               >
                 <MoreVertical size={14} />
