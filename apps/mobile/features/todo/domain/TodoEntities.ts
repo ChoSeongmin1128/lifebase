@@ -2,12 +2,18 @@ export type MobileTodoItem = {
   id: string;
   list_id?: string;
   title: string;
+  notes: string;
   done: boolean;
   is_done?: boolean;
   priority: string;
   due?: string | null;
-  due_date?: string;
+  due_date?: string | null;
+  due_time?: string | null;
   is_pinned: boolean;
+  starred_at?: string | null;
+  sort_order?: number;
+  created_at?: string;
+  updated_at?: string;
 };
 
 export type MobileTodoList = {

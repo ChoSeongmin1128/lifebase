@@ -11,7 +11,8 @@ type CreateTodoInput struct {
 	ParentID *string `json:"parent_id"`
 	Title    string  `json:"title"`
 	Notes    string  `json:"notes"`
-	Due      *string `json:"due"`
+	DueDate  *string `json:"due_date"`
+	DueTime  *string `json:"due_time"`
 	Priority string  `json:"priority"`
 }
 
@@ -24,7 +25,8 @@ type CreateListInput struct {
 type UpdateTodoInput struct {
 	Title     *string `json:"title"`
 	Notes     *string `json:"notes"`
-	Due       *string `json:"due"`
+	DueDate   *string `json:"due_date"`
+	DueTime   *string `json:"due_time"`
 	Priority  *string `json:"priority"`
 	IsDone    *bool   `json:"is_done"`
 	IsPinned  *bool   `json:"is_pinned"`

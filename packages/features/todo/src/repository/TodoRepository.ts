@@ -5,7 +5,8 @@ export interface CreateTodoParams {
   parentId?: string;
   title: string;
   notes?: string;
-  due?: string | null;
+  dueDate?: string | null;
+  dueTime?: string | null;
   priority?: TodoPriority;
 }
 

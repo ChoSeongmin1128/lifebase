@@ -22,6 +22,7 @@ type TodoSummary struct {
 	ListID   string  `json:"list_id"`
 	Title    string  `json:"title"`
 	DueDate  *string `json:"due_date"`
+	DueTime  *string `json:"due_time"`
 	Priority string  `json:"priority"`
 	IsPinned bool    `json:"is_pinned"`
 }

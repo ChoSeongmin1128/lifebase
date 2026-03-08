@@ -14,7 +14,7 @@ import {
   getFixedMonthFetchRangeWithWeekStart,
 } from "../../lib/calendar/month-grid";
 import type { CalendarData, CalendarEvent, DaySummaryData } from "../../features/calendar/domain/CalendarEntities";
-import { formatDueYYMMDD } from "../../features/todo/lib/formatDueDate";
+import { formatDueLabel } from "../../features/todo/lib/formatDueDate";
 import { formatDescriptionText } from "../../lib/rich-text-description";
 
 const SHOW_SPECIAL_CALENDARS_SETTING_KEY = "calendar_show_special_calendars";
@@ -286,18 +286,24 @@ export default function CalendarScreen() {
     return grouped
       .flat()
       .filter(({ todo }) => {
-        const dueKey = (todo.due || todo.due_date || "").slice(0, 10);
+        const dueKey = (todo.due_date || todo.due || "").slice(0, 10);
         return dueKey === dateKey;
       })
       .map(({ listID, todo }) => ({
         id: todo.id,
         list_id: todo.list_id || listID,
         title: todo.title || "(제목 없음)",
+        notes: todo.notes || "",
         due: todo.due || todo.due_date || null,
+        due_date: todo.due_date || null,
+        due_time: todo.due_time || null,
         priority: todo.priority || "normal",
         is_done: todo.done ?? todo.is_done ?? false,
       }))
       .sort((a, b) => {
+        const timeA = a.due_time || "99:99";
+        const timeB = b.due_time || "99:99";
+        if (timeA !== timeB) return timeA.localeCompare(timeB);
         const rankDiff = getTodoPriorityRank(a.priority) - getTodoPriorityRank(b.priority);
         if (rankDiff !== 0) return rankDiff;
         return (a.title || "").localeCompare(b.title || "");
@@ -656,7 +662,7 @@ export default function CalendarScreen() {
                         </Text>
                         <Text style={styles.summaryMetaText}>
                           우선순위 {todo.priority}
-                          {todo.due ? ` · 기한 ${formatDueYYMMDD(todo.due)}` : ""}
+                          {todo.due_date ? ` · 기한 ${formatDueLabel(todo.due_date, todo.due_time)}` : ""}
                           {todo.is_done ? " · 완료" : ""}
                         </Text>
                       </View>

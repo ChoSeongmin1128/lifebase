@@ -73,7 +73,8 @@ func TestTodoListAndTodoRepoIntegration(t *testing.T) {
 		UserID:    userID,
 		Title:     "Root",
 		Notes:     "N",
-		Due:       strPtr("2026-03-07"),
+		DueDate:   strPtr("2026-03-07"),
+		DueTime:   strPtr("09:30"),
 		Priority:  "high",
 		IsDone:    false,
 		IsPinned:  true,
@@ -118,7 +119,7 @@ func TestTodoListAndTodoRepoIntegration(t *testing.T) {
 	}
 
 	foundTodo, err := todos.FindByID(ctx, userID, rootTodo.ID)
-	if err != nil || foundTodo.ID != rootTodo.ID || foundTodo.Due == nil {
+	if err != nil || foundTodo.ID != rootTodo.ID || foundTodo.DueDate == nil || foundTodo.DueTime == nil {
 		t.Fatalf("find todo by id failed: %v %#v", err, foundTodo)
 	}
 	if _, err := todos.FindByID(ctx, userID, "missing"); err == nil {

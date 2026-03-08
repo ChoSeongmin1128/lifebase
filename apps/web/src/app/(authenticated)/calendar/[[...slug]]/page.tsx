@@ -60,7 +60,7 @@ import {
   getGoogleAccountDisplayName,
 } from "@/lib/google-account-preferences";
 import { getEventEndDateKey, getEventStartDateKey } from "@/lib/calendar/event-date";
-import { formatDueYYMMDD } from "@/features/todo/lib/formatDueDate";
+import { formatDueLabel } from "@/features/todo/lib/formatDueDate";
 import { RichTextDescription } from "@/lib/rich-text-description";
 
 interface EventEditorForm {
@@ -631,12 +631,13 @@ export default function CalendarPage() {
 
     const flattened = grouped.flat();
     const filtered = flattened
-      .filter(({ todo }) => (todo.due || "").slice(0, 10) === dateKey)
+      .filter(({ todo }) => (todo.due_date || "").slice(0, 10) === dateKey)
       .map(({ listID, todo }) => ({
         id: todo.id,
         list_id: todo.list_id || listID,
         title: todo.title || "(제목 없음)",
-        due: todo.due || null,
+        due_date: todo.due_date || null,
+        due_time: todo.due_time || null,
         priority: todo.priority || "normal",
         is_done: todo.is_done,
       }))
@@ -699,7 +700,7 @@ export default function CalendarPage() {
 
         const byDate = new Map<string, DaySummaryData["todos"]>();
         grouped.flat().forEach(({ listID, todo }) => {
-          const dueDate = (todo.due || "").slice(0, 10);
+          const dueDate = (todo.due_date || "").slice(0, 10);
           if (!isValidDateKey(dueDate)) return;
           if (dueDate < startKey || dueDate > endKey) return;
 
@@ -708,7 +709,8 @@ export default function CalendarPage() {
             id: todo.id,
             list_id: todo.list_id || listID,
             title: todo.title || "(제목 없음)",
-            due: todo.due || null,
+            due_date: todo.due_date || null,
+            due_time: todo.due_time || null,
             priority: todo.priority || "normal",
             is_done: todo.is_done,
           });
@@ -1622,7 +1624,7 @@ function YearCompactDayPanel({
                       <p className="mb-2 text-xs font-medium text-text-muted">Todo</p>
                       <div className="space-y-1.5">
                         {summary.todos.map((todo) => {
-                          const dueLabel = formatDueYYMMDD(todo.due);
+                          const dueLabel = formatDueLabel(todo.due_date, todo.due_time);
                           return (
                             <div key={todo.id} className="rounded-md border border-border/70 px-2 py-1.5">
                               <p className={cn("text-sm", todo.is_done ? "text-text-muted line-through" : "text-text-primary")}>

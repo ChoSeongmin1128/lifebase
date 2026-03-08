@@ -12,14 +12,15 @@ import { PageToolbar, PageToolbarGroup } from "@/components/layout/PageToolbar";
 import { Search, ArrowUpDown, Filter, RefreshCw } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-type SortBy = "due" | "priority" | "created_at" | "manual";
+type SortBy = "manual" | "date" | "due" | "recent_starred" | "title";
 type FilterMode = "all" | "has_due" | "has_priority" | "done";
 
 const SORT_OPTIONS: { value: SortBy; label: string }[] = [
-  { value: "due", label: "마감일" },
-  { value: "priority", label: "우선순위" },
-  { value: "created_at", label: "생성일" },
-  { value: "manual", label: "수동" },
+  { value: "manual", label: "내가 정렬한대로" },
+  { value: "date", label: "날짜" },
+  { value: "due", label: "기한" },
+  { value: "recent_starred", label: "최근 별표한 항목" },
+  { value: "title", label: "제목" },
 ];
 
 const FILTER_OPTIONS: { value: FilterMode; label: string }[] = [

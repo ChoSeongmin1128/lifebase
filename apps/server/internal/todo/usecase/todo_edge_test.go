@@ -148,7 +148,8 @@ func TestTodoUseCaseAdditionalBranches(t *testing.T) {
 
 		title := "renamed"
 		notes := "notes"
-		due := "2026-03-09"
+		dueDate := "2026-03-09"
+		dueTime := "14:30"
 		priority := "high"
 		done := true
 		pinned := false
@@ -156,7 +157,8 @@ func TestTodoUseCaseAdditionalBranches(t *testing.T) {
 		if _, err := uc.UpdateTodo(ctx, "u1", parent.ID, portin.UpdateTodoInput{
 			Title:     &title,
 			Notes:     &notes,
-			Due:       &due,
+			DueDate:   &dueDate,
+			DueTime:   &dueTime,
 			Priority:  &priority,
 			IsDone:    &done,
 			IsPinned:  &pinned,

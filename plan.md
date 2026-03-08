@@ -175,7 +175,30 @@ Todo 완료 동기화, Todo 출처 표기, 완료 보존 정책은 유지한다.
 2. 폐기 항목
 특수 캘린더(휴일/생일) 선택/중복 병합 정책은 폐기하고, 공휴일 정책은 `15. KASI 공휴일 표시 현황`을 따른다.
 
-## 14. Google Calendar API 에러 매핑 표준화 계획
+## 14. Todo due 모델 및 정렬 기준 현황
+1. due 저장 모델
+Todo 기한은 `due_date`(날짜)와 선택 `due_time`(시/분)으로 관리한다. `due_time`은 `due_date` 없이 존재할 수 없다.
+
+2. Google Tasks 제약
+Google Tasks 공개 API는 `due`를 RFC3339 문자열로 반환하지만 실제 의미는 date-only다. 따라서 Google 동기화는 `due_date`만 왕복하고 `due_time`은 LifeBase 로컬 확장값으로 유지한다.
+
+3. 표시 규칙
+리스트 행에서는 제목 아래 notes를 1~2줄 미리보기로 노출한다. due는 `due_date`만 있으면 날짜만, `due_date + due_time`이면 시/분까지 표시한다.
+
+4. 정렬 기준
+Todo 정렬은 `manual`, `date`, `due`, `recent_starred`, `title` 5종으로 고정한다.
+
+5. 정렬 의미
+- `manual`: 저장된 `sort_order`
+- `date`: `created_at DESC`
+- `due`: `due_date ASC`, 같은 날짜는 `due_time NULLS LAST` 후 `due_time ASC`
+- `recent_starred`: `starred_at DESC`
+- `title`: locale-aware ASC
+
+6. due 없는 항목 처리
+`due` 정렬에서 `due_date`가 없는 Todo는 항상 뒤로 보낸다.
+
+## 15. Google Calendar API 에러 매핑 표준화 계획
 1. 범위
 Google Calendar/Tasks 연동 중 발생하는 API 오류를 서버 공통 규칙으로 분류한다.
 
@@ -197,7 +220,7 @@ Google Calendar/Tasks 연동 중 발생하는 API 오류를 서버 공통 규칙
 7. 검증
 분류 유닛 테스트와 서버 전체 테스트를 수행하고, 로그/DB 상태(`google_sync_state`, `google_push_outbox`)를 점검한다.
 
-## 15. KASI 공휴일 표시 현황
+## 16. KASI 공휴일 표시 현황
 1. 데이터 소스
 한국 공휴일은 한국천문연구원 `getRestDeInfo`만 사용한다.
 

@@ -26,10 +26,12 @@ type Todo struct {
 	GoogleID  *string    `json:"google_id,omitempty"`
 	Title     string     `json:"title"`
 	Notes     string     `json:"notes"`
-	Due       *string    `json:"due"` // YYYY-MM-DD
+	DueDate   *string    `json:"due_date"`
+	DueTime   *string    `json:"due_time"`
 	Priority  string     `json:"priority"`
 	IsDone    bool       `json:"is_done"`
 	IsPinned  bool       `json:"is_pinned"`
+	StarredAt *time.Time `json:"starred_at,omitempty"`
 	SortOrder int        `json:"sort_order"`
 	DoneAt    *time.Time `json:"done_at,omitempty"`
 	CreatedAt time.Time  `json:"created_at"`

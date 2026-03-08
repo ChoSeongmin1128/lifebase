@@ -104,11 +104,11 @@ func NewTodoRepo(db *pgxpool.Pool) *todoRepo {
 
 func (r *todoRepo) Create(ctx context.Context, todo *domain.Todo) error {
 	_, err := r.db.Exec(ctx,
-		`INSERT INTO todos (id, list_id, user_id, parent_id, google_id, title, notes, due, priority, is_done, is_pinned, sort_order, done_at, created_at, updated_at)
-		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)`,
+		`INSERT INTO todos (id, list_id, user_id, parent_id, google_id, title, notes, due_date, due_time, priority, is_done, is_pinned, starred_at, sort_order, done_at, created_at, updated_at)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)`,
 		todo.ID, todo.ListID, todo.UserID, todo.ParentID, todo.GoogleID,
-		todo.Title, todo.Notes, todo.Due, todo.Priority,
-		todo.IsDone, todo.IsPinned, todo.SortOrder, todo.DoneAt,
+		todo.Title, todo.Notes, todo.DueDate, todo.DueTime, todo.Priority,
+		todo.IsDone, todo.IsPinned, todo.StarredAt, todo.SortOrder, todo.DoneAt,
 		todo.CreatedAt, todo.UpdatedAt,
 	)
 	return err
@@ -118,12 +118,13 @@ func (r *todoRepo) FindByID(ctx context.Context, userID, id string) (*domain.Tod
 	var t domain.Todo
 	err := r.db.QueryRow(ctx,
 		`SELECT id, list_id, user_id, parent_id, google_id, title, notes,
-		        CASE WHEN due IS NULL THEN NULL ELSE to_char(due, 'YYYY-MM-DD') END AS due,
-		        priority, is_done, is_pinned, sort_order, done_at, created_at, updated_at, deleted_at
+		        CASE WHEN due_date IS NULL THEN NULL ELSE to_char(due_date, 'YYYY-MM-DD') END AS due_date,
+		        CASE WHEN due_time IS NULL THEN NULL ELSE to_char(due_time, 'HH24:MI') END AS due_time,
+		        priority, is_done, is_pinned, starred_at, sort_order, done_at, created_at, updated_at, deleted_at
 		 FROM todos WHERE id = $1 AND user_id = $2 AND deleted_at IS NULL`, id, userID,
 	).Scan(&t.ID, &t.ListID, &t.UserID, &t.ParentID, &t.GoogleID,
-		&t.Title, &t.Notes, &t.Due, &t.Priority,
-		&t.IsDone, &t.IsPinned, &t.SortOrder, &t.DoneAt,
+		&t.Title, &t.Notes, &t.DueDate, &t.DueTime, &t.Priority,
+		&t.IsDone, &t.IsPinned, &t.StarredAt, &t.SortOrder, &t.DoneAt,
 		&t.CreatedAt, &t.UpdatedAt, &t.DeletedAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, fmt.Errorf("todo not found")
@@ -133,15 +134,16 @@ func (r *todoRepo) FindByID(ctx context.Context, userID, id string) (*domain.Tod
 
 func (r *todoRepo) ListByList(ctx context.Context, userID, listID string, includeDone bool) ([]*domain.Todo, error) {
 	query := `SELECT id, list_id, user_id, parent_id, google_id, title, notes,
-		         CASE WHEN due IS NULL THEN NULL ELSE to_char(due, 'YYYY-MM-DD') END AS due,
-		         priority, is_done, is_pinned, sort_order, done_at, created_at, updated_at, deleted_at
+		         CASE WHEN due_date IS NULL THEN NULL ELSE to_char(due_date, 'YYYY-MM-DD') END AS due_date,
+		         CASE WHEN due_time IS NULL THEN NULL ELSE to_char(due_time, 'HH24:MI') END AS due_time,
+		         priority, is_done, is_pinned, starred_at, sort_order, done_at, created_at, updated_at, deleted_at
 		 FROM todos WHERE user_id = $1 AND list_id = $2 AND deleted_at IS NULL`
 
 	if !includeDone {
 		query += " AND is_done = FALSE"
 	}
 
-	query += " ORDER BY is_pinned DESC, is_done ASC, sort_order ASC, created_at ASC"
+	query += " ORDER BY is_done ASC, sort_order ASC, created_at ASC"
 
 	rows, err := r.db.Query(ctx, query, userID, listID)
 	if err != nil {
@@ -153,10 +155,10 @@ func (r *todoRepo) ListByList(ctx context.Context, userID, listID string, includ
 
 func (r *todoRepo) Update(ctx context.Context, todo *domain.Todo) error {
 	_, err := r.db.Exec(ctx,
-		`UPDATE todos SET list_id = $3, title = $4, notes = $5, due = $6, priority = $7, is_done = $8, is_pinned = $9, sort_order = $10, done_at = $11, parent_id = $12, updated_at = $13
+		`UPDATE todos SET list_id = $3, title = $4, notes = $5, due_date = $6, due_time = $7, priority = $8, is_done = $9, is_pinned = $10, starred_at = $11, sort_order = $12, done_at = $13, parent_id = $14, updated_at = $15
 		 WHERE id = $1 AND user_id = $2 AND deleted_at IS NULL`,
-		todo.ID, todo.UserID, todo.ListID, todo.Title, todo.Notes, todo.Due, todo.Priority,
-		todo.IsDone, todo.IsPinned, todo.SortOrder, todo.DoneAt, todo.ParentID, todo.UpdatedAt,
+		todo.ID, todo.UserID, todo.ListID, todo.Title, todo.Notes, todo.DueDate, todo.DueTime, todo.Priority,
+		todo.IsDone, todo.IsPinned, todo.StarredAt, todo.SortOrder, todo.DoneAt, todo.ParentID, todo.UpdatedAt,
 	)
 	return err
 }
@@ -182,8 +184,9 @@ func (r *todoRepo) CountPinned(ctx context.Context, userID, listID string) (int,
 func (r *todoRepo) FindChildrenByParentID(ctx context.Context, userID, parentID string) ([]*domain.Todo, error) {
 	rows, err := r.db.Query(ctx,
 		`SELECT id, list_id, user_id, parent_id, google_id, title, notes,
-		        CASE WHEN due IS NULL THEN NULL ELSE to_char(due, 'YYYY-MM-DD') END AS due,
-		        priority, is_done, is_pinned, sort_order, done_at, created_at, updated_at, deleted_at
+		        CASE WHEN due_date IS NULL THEN NULL ELSE to_char(due_date, 'YYYY-MM-DD') END AS due_date,
+		        CASE WHEN due_time IS NULL THEN NULL ELSE to_char(due_time, 'HH24:MI') END AS due_time,
+		        priority, is_done, is_pinned, starred_at, sort_order, done_at, created_at, updated_at, deleted_at
 		 FROM todos WHERE user_id = $1 AND parent_id = $2 AND deleted_at IS NULL
 		 ORDER BY sort_order ASC`, userID, parentID)
 	if err != nil {
@@ -272,8 +275,8 @@ func scanTodosRows(rows pgx.Rows) ([]*domain.Todo, error) {
 	for rows.Next() {
 		var t domain.Todo
 		if err := rows.Scan(&t.ID, &t.ListID, &t.UserID, &t.ParentID, &t.GoogleID,
-			&t.Title, &t.Notes, &t.Due, &t.Priority,
-			&t.IsDone, &t.IsPinned, &t.SortOrder, &t.DoneAt,
+			&t.Title, &t.Notes, &t.DueDate, &t.DueTime, &t.Priority,
+			&t.IsDone, &t.IsPinned, &t.StarredAt, &t.SortOrder, &t.DoneAt,
 			&t.CreatedAt, &t.UpdatedAt, &t.DeletedAt); err != nil {
 			return nil, err
 		}

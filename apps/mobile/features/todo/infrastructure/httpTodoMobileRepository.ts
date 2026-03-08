@@ -15,27 +15,55 @@ interface ApiTodoItemResponse {
   id: string;
   list_id?: string;
   title: string;
+  notes?: string;
   due?: string | null;
   due_date?: string | null;
+  due_time?: string | null;
   priority: string;
   is_done?: boolean;
   done?: boolean;
   is_pinned: boolean;
+  starred_at?: string | null;
+  sort_order?: number;
+  created_at?: string;
+  updated_at?: string;
+}
+
+function normalizeDueDate(value: string | null | undefined): string | null {
+  if (!value) return null;
+  const candidate = value.includes("T") ? value.slice(0, 10) : value;
+  return /^\d{4}-\d{2}-\d{2}$/.test(candidate) ? candidate : null;
+}
+
+function normalizeDueTime(value: string | null | undefined): string | null {
+  if (!value) return null;
+  if (/^\d{2}:\d{2}/.test(value)) return value.slice(0, 5);
+  const match = value.match(/T(\d{2}:\d{2})/);
+  if (match) return match[1];
+  return null;
 }
 
 function toMobileTodoItem(item: ApiTodoItemResponse): MobileTodoItem {
   const done = item.done ?? item.is_done ?? false;
-  const due = item.due ?? item.due_date ?? null;
+  const dueDate = item.due_date ?? normalizeDueDate(item.due);
+  const dueTime = item.due_time ?? normalizeDueTime(item.due);
+  const due = dueDate ? (dueTime ? `${dueDate}T${dueTime}` : dueDate) : null;
   return {
     id: item.id,
     list_id: item.list_id,
     title: item.title,
+    notes: item.notes || "",
     done,
     is_done: done,
     priority: item.priority || "normal",
     due,
-    due_date: due || undefined,
+    due_date: dueDate,
+    due_time: dueTime,
     is_pinned: item.is_pinned,
+    starred_at: item.starred_at ?? null,
+    sort_order: item.sort_order ?? 0,
+    created_at: item.created_at,
+    updated_at: item.updated_at,
   };
 }
 
@@ -69,7 +97,11 @@ export class HttpTodoMobileRepository implements TodoMobileRepository {
 
   async listTodos(listId: string): Promise<MobileTodoItem[]> {
     const token = await this.getToken();
-    const data = await api<TodoResponse>(`/todo?list_id=${encodeURIComponent(listId)}`, { token });
+    const params = new URLSearchParams({
+      list_id: listId,
+      include_done: "true",
+    });
+    const data = await api<TodoResponse>(`/todo?${params.toString()}`, { token });
     return (data.todos || []).map(toMobileTodoItem);
   }
 

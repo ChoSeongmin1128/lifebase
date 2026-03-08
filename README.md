@@ -185,6 +185,10 @@ npx expo start
 - 2단계 계층 (부모-자식)
 - 우선순위 4단계 (urgent/high/normal/low)
 - 고정(Pin) 최대 5개
+- notes 미리보기 표시 (1~2줄)
+- due 모델: `due_date`(필수 날짜) + `due_time`(선택 시간)
+- Google Tasks 공개 API 제약상 동기화는 `due_date`만 왕복하고 `due_time`은 LifeBase 로컬 확장값으로 유지
+- 정렬: `manual` / `date` / `due` / `recent_starred` / `title`
 
 ### 공유
 - 10분 만료 초대 토큰

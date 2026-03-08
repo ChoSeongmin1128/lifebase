@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -86,19 +85,22 @@ func (r *homeRepo) listTodosByDueScope(ctx context.Context, userID, todayDate st
 		 WHERE user_id = $1
 		   AND deleted_at IS NULL
 		   AND is_done = FALSE
-		   AND due IS NOT NULL
-		   AND due %s $2::date`,
+		   AND due_date IS NOT NULL
+		   AND due_date %s $2::date`,
 		op,
 	)
 	listQuery := fmt.Sprintf(
-		`SELECT id, list_id, title, due, priority, is_pinned
+		`SELECT id, list_id, title,
+		        CASE WHEN due_date IS NULL THEN NULL ELSE to_char(due_date, 'YYYY-MM-DD') END AS due_date,
+		        CASE WHEN due_time IS NULL THEN NULL ELSE to_char(due_time, 'HH24:MI') END AS due_time,
+		        priority, is_pinned
 		 FROM todos
 		 WHERE user_id = $1
 		   AND deleted_at IS NULL
 		   AND is_done = FALSE
-		   AND due IS NOT NULL
-		   AND due %s $2::date
-		 ORDER BY due ASC, is_pinned DESC, sort_order ASC, created_at ASC
+		   AND due_date IS NOT NULL
+		   AND due_date %s $2::date
+		 ORDER BY due_date ASC, due_time IS NULL ASC, due_time ASC, is_pinned DESC, sort_order ASC, created_at ASC
 		 LIMIT $3`,
 		op,
 	)
@@ -240,20 +242,16 @@ func scanTodoSummaries(rows pgx.Rows, limit int) ([]domain.TodoSummary, error) {
 	items := make([]domain.TodoSummary, 0, limit)
 	for rows.Next() {
 		var item domain.TodoSummary
-		var dueDate *time.Time
 		if err := rows.Scan(
 			&item.ID,
 			&item.ListID,
 			&item.Title,
-			&dueDate,
+			&item.DueDate,
+			&item.DueTime,
 			&item.Priority,
 			&item.IsPinned,
 		); err != nil {
 			return nil, err
-		}
-		if dueDate != nil {
-			s := dueDate.Format("2006-01-02")
-			item.DueDate = &s
 		}
 		items = append(items, item)
 	}

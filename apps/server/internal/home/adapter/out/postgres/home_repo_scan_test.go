@@ -52,6 +52,10 @@ func (r *fakeRows) Scan(dest ...any) error {
 	return nil
 }
 
+func strPtr(v string) *string {
+	return &v
+}
+
 func TestScanEventSummariesBranches(t *testing.T) {
 	now := time.Now().UTC()
 	colorID := "1"
@@ -70,16 +74,18 @@ func TestScanEventSummariesBranches(t *testing.T) {
 }
 
 func TestScanTodoSummariesBranches(t *testing.T) {
-	now := time.Now().UTC()
 	items, err := scanTodoSummaries(&fakeRows{data: [][]any{
-		{"t1", "l1", "todo", &now, "high", true},
-		{"t2", "l1", "todo2", (*time.Time)(nil), "low", false},
+		{"t1", "l1", "todo", strPtr("2026-03-09"), strPtr("14:30"), "high", true},
+		{"t2", "l1", "todo2", (*string)(nil), (*string)(nil), "low", false},
 	}}, 10)
 	if err != nil || len(items) != 2 {
 		t.Fatalf("scan todo summaries failed: len=%d err=%v", len(items), err)
 	}
 	if items[0].DueDate == nil || *items[0].DueDate == "" {
 		t.Fatal("expected due date formatting")
+	}
+	if items[0].DueTime == nil || *items[0].DueTime != "14:30" {
+		t.Fatal("expected due time formatting")
 	}
 	if items[1].DueDate != nil {
 		t.Fatal("expected nil due date")

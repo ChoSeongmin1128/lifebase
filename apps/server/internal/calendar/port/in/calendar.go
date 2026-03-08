@@ -70,7 +70,8 @@ type DaySummaryTodo struct {
 	ID       string  `json:"id"`
 	ListID   string  `json:"list_id"`
 	Title    string  `json:"title"`
-	Due      *string `json:"due"`
+	DueDate  *string `json:"due_date"`
+	DueTime  *string `json:"due_time"`
 	Priority string  `json:"priority"`
 	IsDone   bool    `json:"is_done"`
 }

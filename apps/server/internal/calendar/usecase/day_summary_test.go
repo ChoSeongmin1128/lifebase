@@ -145,7 +145,7 @@ func TestGetDaySummary_Success(t *testing.T) {
 				ID:       "todo-1",
 				ListID:   "list-1",
 				Title:    "서류 제출",
-				Due:      &due,
+				DueDate:  &due,
 				Priority: "high",
 				IsDone:   false,
 			},

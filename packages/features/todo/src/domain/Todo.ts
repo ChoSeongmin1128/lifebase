@@ -7,10 +7,12 @@ export interface Todo {
   parentId: string | null;
   title: string;
   notes: string;
-  due: string | null;
+  dueDate: string | null;
+  dueTime: string | null;
   priority: TodoPriority;
   isDone: boolean;
   isPinned: boolean;
+  starredAt?: string | null;
   sortOrder: number;
   createdAt: string;
   updatedAt: string;

@@ -1,8 +1,12 @@
+import path from "node:path";
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   output: process.env.TAURI_ENV ? "export" : undefined,
-  transpilePackages: ["@lifebase/design-tokens"],
+  transpilePackages: ["@lifebase/features-todo", "@lifebase/design-tokens"],
+  turbopack: {
+    root: path.join(__dirname, "../.."),
+  },
   images: {
     remotePatterns: [
       {

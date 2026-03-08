@@ -23,6 +23,9 @@ export class CreateTodoUseCase {
     if (!listId) {
       throw new Error("list_id is required");
     }
+    if (input.dueTime && !input.dueDate) {
+      throw new Error("due_date is required when due_time is set");
+    }
 
     const normalizedInput: CreateTodoParams = {
       ...input,

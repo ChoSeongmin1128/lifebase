@@ -39,6 +39,7 @@ import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable"
 import { ChevronRight, Plus } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { getGoogleAccountDisplayName } from "@/lib/google-account-preferences";
+import { normalizeDueDate, normalizeDueTime } from "@/features/todo/lib/formatDueDate";
 import {
   buildTree,
   flattenTree,
@@ -66,6 +67,7 @@ const ALL_LIST_ID = "__all__";
 const TODO_LAST_SYNC_AT_SETTING_KEY = "todo_last_sync_at";
 const TODO_DONE_COLLAPSED_SETTING_KEY = "todo_done_section_collapsed";
 const TODO_LAST_ACTIVE_LIST_ID_SETTING_KEY = "todo_last_active_list_id";
+const TODO_SORT_VALUES: TodoSortBy[] = ["manual", "date", "due", "recent_starred", "title"];
 
 function toErrorMessage(err: unknown, fallback: string): string {
   if (err instanceof Error && err.message.trim()) {
@@ -74,16 +76,103 @@ function toErrorMessage(err: unknown, fallback: string): string {
   return fallback;
 }
 
+function isTodoSortBy(value: string | null | undefined): value is TodoSortBy {
+  return !!value && TODO_SORT_VALUES.includes(value as TodoSortBy);
+}
+
+function compareStrings(a: string, b: string): number {
+  return a.localeCompare(b, "ko");
+}
+
+function compareDatesDesc(a?: string | null, b?: string | null): number {
+  const aTime = a ? new Date(a).getTime() : Number.NEGATIVE_INFINITY;
+  const bTime = b ? new Date(b).getTime() : Number.NEGATIVE_INFINITY;
+  return bTime - aTime;
+}
+
+function compareDue(a: TodoItem, b: TodoItem): number {
+  if (!a.due_date && !b.due_date) return compareDatesDesc(a.created_at, b.created_at);
+  if (!a.due_date) return 1;
+  if (!b.due_date) return -1;
+
+  const dateCmp = a.due_date.localeCompare(b.due_date);
+  if (dateCmp !== 0) return dateCmp;
+
+  if (!a.due_time && !b.due_time) return compareDatesDesc(a.created_at, b.created_at);
+  if (!a.due_time) return 1;
+  if (!b.due_time) return -1;
+
+  const timeCmp = a.due_time.localeCompare(b.due_time);
+  if (timeCmp !== 0) return timeCmp;
+  return compareDatesDesc(a.created_at, b.created_at);
+}
+
+function compareTodos(a: TodoItem, b: TodoItem, sortBy: TodoSortBy): number {
+  if (sortBy === "manual") {
+    const orderCmp = a.sort_order - b.sort_order;
+    if (orderCmp !== 0) return orderCmp;
+    return a.created_at.localeCompare(b.created_at);
+  }
+
+  if (sortBy === "date") {
+    const createdCmp = compareDatesDesc(a.created_at, b.created_at);
+    if (createdCmp !== 0) return createdCmp;
+    return compareStrings(a.title, b.title);
+  }
+
+  if (sortBy === "due") {
+    const dueCmp = compareDue(a, b);
+    if (dueCmp !== 0) return dueCmp;
+    return compareStrings(a.title, b.title);
+  }
+
+  if (sortBy === "recent_starred") {
+    const aStar = a.starred_at ? new Date(a.starred_at).getTime() : Number.NEGATIVE_INFINITY;
+    const bStar = b.starred_at ? new Date(b.starred_at).getTime() : Number.NEGATIVE_INFINITY;
+    if (aStar !== bStar) return bStar - aStar;
+    const createdCmp = compareDatesDesc(a.created_at, b.created_at);
+    if (createdCmp !== 0) return createdCmp;
+    return compareStrings(a.title, b.title);
+  }
+
+  const titleCmp = compareStrings(a.title, b.title);
+  if (titleCmp !== 0) return titleCmp;
+  return compareDatesDesc(a.created_at, b.created_at);
+}
+
+function sortTodoNodes(items: ReturnType<typeof buildTree>, sortBy: TodoSortBy): ReturnType<typeof buildTree> {
+  return [...items]
+    .sort((a, b) => compareTodos(a, b, sortBy))
+    .map((item) => ({
+      ...item,
+      children: sortTodoNodes(item.children, sortBy),
+    }));
+}
+
+function isOverdueTodo(todo: TodoItem): boolean {
+  const dueDate = normalizeDueDate(todo.due_date);
+  const dueTime = normalizeDueTime(todo.due_time);
+  if (!dueDate || todo.is_done) return false;
+  if (dueTime) {
+    return new Date(`${dueDate}T${dueTime}:00`) < new Date();
+  }
+  const now = new Date();
+  const todayKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+  return dueDate < todayKey;
+}
+
 function TodoPageInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const listFromUrl = searchParams.get("list") || "";
+  const sortFromUrl = searchParams.get("sort") || "";
   const quickAction = searchParams.get("quick");
 
   const [lists, setLists] = useState<TodoList[]>([]);
   const [settings, setSettings] = useState<Record<string, string>>({});
   const [settingsLoaded, setSettingsLoaded] = useState(false);
   const [activeListId, setActiveListIdState] = useState<string>(listFromUrl || ALL_LIST_ID);
+  const [sortBy, setSortBy] = useState<TodoSortBy>("date");
   const activeListIdRef = useRef<string>(listFromUrl || ALL_LIST_ID);
 
   const setActiveListId = useCallback((id: string) => {
@@ -97,14 +186,20 @@ function TodoPageInner() {
 
   useEffect(() => {
     if (!activeListId) return;
-    if (listFromUrl !== activeListId) {
-      if (activeListId === ALL_LIST_ID) {
-        router.replace("/todo", { scroll: false });
-      } else {
-        router.replace(`/todo?list=${activeListId}`, { scroll: false });
-      }
+    const params = new URLSearchParams();
+    if (activeListId !== ALL_LIST_ID) {
+      params.set("list", activeListId);
     }
-  }, [activeListId, listFromUrl, router]);
+    if (sortBy) {
+      params.set("sort", sortBy);
+    }
+    const next = params.toString();
+    const target = next ? `/todo?${next}` : "/todo";
+    const current = searchParams.toString() ? `/todo?${searchParams.toString()}` : "/todo";
+    if (target !== current) {
+      router.replace(target, { scroll: false });
+    }
+  }, [activeListId, router, searchParams, sortBy]);
 
   const [todos, setTodos] = useState<TodoItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -115,7 +210,6 @@ function TodoPageInner() {
   const [showNewList, setShowNewList] = useState(false);
   const [editingTodo, setEditingTodo] = useState<TodoItem | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
-  const [sortBy, setSortBy] = useState<TodoSortBy>("due");
   const [filter, setFilter] = useState<TodoFilterMode>("all");
   const [doneCollapsed, setDoneCollapsed] = useState(true);
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
@@ -196,7 +290,13 @@ function TodoPageInner() {
       const next = await getSettings();
       setSettings(next || {});
       const preferredListID = (listFromUrl || next?.[TODO_LAST_ACTIVE_LIST_ID_SETTING_KEY] || ALL_LIST_ID).trim();
+      const preferredSort = isTodoSortBy(sortFromUrl)
+        ? sortFromUrl
+        : isTodoSortBy(next?.todo_default_sort)
+          ? next.todo_default_sort
+          : "date";
       setActiveListId(preferredListID || ALL_LIST_ID);
+      setSortBy(preferredSort);
       setLastSyncedAt(next?.[TODO_LAST_SYNC_AT_SETTING_KEY] || "");
       setDoneCollapsed(next?.[TODO_DONE_COLLAPSED_SETTING_KEY] !== "false");
     } catch {
@@ -206,10 +306,11 @@ function TodoPageInner() {
       if (listFromUrl) {
         setActiveListId(listFromUrl);
       }
+      setSortBy(isTodoSortBy(sortFromUrl) ? sortFromUrl : "date");
     } finally {
       setSettingsLoaded(true);
     }
-  }, [getSettings, listFromUrl, setActiveListId]);
+  }, [getSettings, listFromUrl, setActiveListId, sortFromUrl]);
 
   const loadGoogleAccounts = useCallback(async () => {
     try {
@@ -350,6 +451,17 @@ function TodoPageInner() {
   useEffect(() => { loadSettings(); }, [loadSettings]);
   useEffect(() => {
     if (!settingsLoaded) return;
+    if (listFromUrl && listFromUrl !== activeListIdRef.current) {
+      setActiveListId(listFromUrl);
+    }
+  }, [listFromUrl, setActiveListId, settingsLoaded]);
+  useEffect(() => {
+    if (!settingsLoaded) return;
+    if (!isTodoSortBy(sortFromUrl)) return;
+    setSortBy((prev) => (prev === sortFromUrl ? prev : sortFromUrl));
+  }, [settingsLoaded, sortFromUrl]);
+  useEffect(() => {
+    if (!settingsLoaded) return;
     if (!activeListId) return;
     if (settings[TODO_LAST_ACTIVE_LIST_ID_SETTING_KEY] === activeListId) return;
 
@@ -407,9 +519,10 @@ function TodoPageInner() {
     if (activeListId) {
       params.set("list", activeListId);
     }
+    params.set("sort", sortBy);
     const next = params.toString();
     router.replace(next ? `/todo?${next}` : "/todo", { scroll: false });
-  }, [quickAction, activeListId, realLists, router, setActiveListId]);
+  }, [quickAction, activeListId, realLists, router, setActiveListId, sortBy]);
 
   const handleCreateList = async () => {
     if (!newListName.trim()) return;
@@ -434,7 +547,8 @@ function TodoPageInner() {
 
   const handleCreateTodo = async (data: {
     title: string;
-    due: string | null;
+    dueDate: string | null;
+    dueTime: string | null;
     priority: string;
     notes: string;
     parentId?: string;
@@ -445,7 +559,8 @@ function TodoPageInner() {
         listId: activeListId,
         title: data.title,
         notes: data.notes,
-        due: data.due,
+        dueDate: data.dueDate,
+        dueTime: data.dueTime,
         priority: data.priority as "urgent" | "high" | "normal" | "low",
         parentId: data.parentId,
       });
@@ -585,28 +700,31 @@ function TodoPageInner() {
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
   );
 
-  const isOverdue = (due: string | null) => {
-    if (!due) return false;
-    return new Date(due) < new Date(new Date().toDateString());
-  };
-
   // Filter and search
   let filteredTodos = todos;
   if (searchQuery) {
     const q = searchQuery.toLowerCase();
-    filteredTodos = filteredTodos.filter((t) => t.title.toLowerCase().includes(q));
+    filteredTodos = filteredTodos.filter(
+      (t) => t.title.toLowerCase().includes(q) || t.notes.toLowerCase().includes(q),
+    );
   }
-  if (filter === "has_due") filteredTodos = filteredTodos.filter((t) => t.due);
+  if (filter === "has_due") filteredTodos = filteredTodos.filter((t) => t.due_date);
   if (filter === "has_priority") filteredTodos = filteredTodos.filter((t) => t.priority !== "normal");
   if (filter === "done") filteredTodos = filteredTodos.filter((t) => t.is_done);
 
-  // 상태별로 분리된 트리를 만들면 완료 항목이 부모 상태와 무관하게 누락되지 않는다.
-  const pinnedRoots = buildTree(filteredTodos.filter((t) => t.is_pinned && !t.is_done));
-  const activeRoots = buildTree(filteredTodos.filter((t) => !t.is_pinned && !t.is_done));
-  const doneRoots = buildTree(filteredTodos.filter((t) => t.is_done));
+  const buildSortedRoots = (items: TodoItem[]) => {
+    const roots = buildTree(items);
+    if (sortBy === "manual" && isAllView) {
+      return roots;
+    }
+    return sortTodoNodes(roots, sortBy);
+  };
+
+  // 완료 항목은 별도 섹션에 두고, 나머지는 선택한 정렬 기준을 각 형제 집합에 적용한다.
+  const activeRoots = buildSortedRoots(filteredTodos.filter((t) => !t.is_done));
+  const doneRoots = buildSortedRoots(filteredTodos.filter((t) => t.is_done));
   const showCompletedSection = filter === "done" || !doneCollapsed;
 
-  const pinnedFlat = flattenTree(pinnedRoots, collapsed, dragActiveId);
   const activeFlat = flattenTree(activeRoots, collapsed, dragActiveId);
   const doneFlat = flattenTree(doneRoots, collapsed, dragActiveId);
   const doneDeleteRootIDs = useMemo(() => {
@@ -646,10 +764,7 @@ function TodoPageInner() {
     }
   }, [activeListIdRef, clearingCompleted, deleteTodo, doneDeleteRootIDs, loadLists, loadTodos, toast, triggerTodoSync]);
 
-  const allFlat = useMemo(
-    () => [...pinnedFlat, ...activeFlat, ...doneFlat],
-    [pinnedFlat, activeFlat, doneFlat],
-  );
+  const allFlat = useMemo(() => [...activeFlat, ...doneFlat], [activeFlat, doneFlat]);
   const allFlatIds = useMemo(() => allFlat.map((f) => f.id), [allFlat]);
 
   // Projection for current drag
@@ -779,7 +894,7 @@ function TodoPageInner() {
           todo={todo}
           listLabel={isAllView ? listNameByID.get(todo.list_id) : undefined}
           depth={depth}
-          isOverdue={isOverdue(todo.due)}
+          isOverdue={isOverdueTodo(todo)}
           hasChildren={hasChildren}
           isCollapsed={isCollapsed}
           childCount={childCount}
@@ -801,17 +916,6 @@ function TodoPageInner() {
 
   const todoListContent = (
     <div>
-      {/* Pinned */}
-      {pinnedFlat.length > 0 && (
-        <>
-          <div className="px-4 pt-3 pb-1 text-[10px] font-medium uppercase tracking-wider text-text-muted">
-            고정됨
-          </div>
-          {pinnedFlat.map(renderTodoRow)}
-          <div className="mx-4"><Separator /></div>
-        </>
-      )}
-
       {/* Active */}
       {activeFlat.map(renderTodoRow)}
 
@@ -848,7 +952,7 @@ function TodoPageInner() {
         </>
       )}
 
-      {pinnedFlat.length === 0 && activeFlat.length === 0 && doneFlat.length === 0 && (
+      {activeFlat.length === 0 && doneFlat.length === 0 && (
         <div className="flex flex-col items-center justify-center py-20 text-text-muted">
           <p>Todo가 없습니다</p>
           <p className="mt-1 text-sm">위 버튼으로 추가해 보세요</p>
@@ -1141,7 +1245,7 @@ function TodoPageInner() {
                     todo={activeTodo}
                     listLabel={isAllView ? listNameByID.get(activeTodo.list_id) : undefined}
                     depth={projectedDepth}
-                    isOverdue={isOverdue(activeTodo.due)}
+                    isOverdue={isOverdueTodo(activeTodo)}
                     hasChildren={activeTodo.children.length > 0}
                     isCollapsed={false}
                     showDragHandle
@@ -1202,11 +1306,30 @@ function TodoPageInner() {
               />
               <div className="flex gap-2">
                 <div className="flex-1">
-                  <label className="mb-1 block text-xs text-text-muted">마감일</label>
+                  <label className="mb-1 block text-xs text-text-muted">기한 날짜</label>
                   <Input
                     type="date"
-                    defaultValue={editingTodo.due || ""}
-                    onChange={(e) => handleUpdateTodo(editingTodo.id, { due: e.target.value || null })}
+                    defaultValue={editingTodo.due_date || ""}
+                    onChange={(e) =>
+                      handleUpdateTodo(editingTodo.id, {
+                        due_date: e.target.value || "",
+                        due_time: e.target.value ? (editingTodo.due_time || "") : "",
+                      })
+                    }
+                  />
+                </div>
+                <div className="w-28">
+                  <label className="mb-1 block text-xs text-text-muted">시간</label>
+                  <Input
+                    type="time"
+                    defaultValue={editingTodo.due_time || ""}
+                    disabled={!editingTodo.due_date}
+                    onChange={(e) =>
+                      handleUpdateTodo(editingTodo.id, {
+                        due_date: editingTodo.due_date || "",
+                        due_time: e.target.value || "",
+                      })
+                    }
                   />
                 </div>
                 <div className="flex-1">

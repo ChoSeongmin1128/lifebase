@@ -27,7 +27,7 @@ import {
   ArrowRightLeft,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { formatDueYYMMDD } from "@/features/todo/lib/formatDueDate";
+import { formatDueLabel } from "@/features/todo/lib/formatDueDate";
 
 interface TodoItem {
   id: string;
@@ -35,13 +35,16 @@ interface TodoItem {
   parent_id: string | null;
   title: string;
   notes: string;
-  due: string | null;
+  due_date: string | null;
+  due_time: string | null;
   priority: string;
   is_done: boolean;
   is_pinned: boolean;
+  starred_at?: string | null;
   sort_order: number;
   done_at: string | null;
   created_at: string;
+  updated_at?: string;
 }
 
 interface TodoList {
@@ -155,14 +158,21 @@ export function TodoRow({
 
       {/* Content */}
       <div className="min-w-0 flex-1 cursor-pointer" onClick={onEdit}>
-        <span
-          className={cn(
-            "text-sm text-text-primary",
-            todo.is_done && "text-text-muted line-through"
-          )}
-        >
-          {todo.title}
-        </span>
+        <div className="min-w-0">
+          <span
+            className={cn(
+              "block truncate text-sm text-text-primary",
+              todo.is_done && "text-text-muted line-through"
+            )}
+          >
+            {todo.title}
+          </span>
+          {todo.notes.trim() ? (
+            <p className="mt-0.5 line-clamp-2 text-xs text-text-muted">
+              {todo.notes.trim()}
+            </p>
+          ) : null}
+        </div>
         {/* Child count badge when collapsed */}
         {isCollapsed && childCount && childCount.total > 0 && (
           <span className="ml-2 inline-flex items-center rounded-full bg-surface-accent px-1.5 py-0.5 text-[10px] text-text-muted">
@@ -177,14 +187,14 @@ export function TodoRow({
           {listLabel}
         </span>
       )}
-      {todo.due && !todo.is_done && (
+      {todo.due_date && !todo.is_done && (
         <span
           className={cn(
             "shrink-0 text-[11px]",
             isOverdue ? "text-error font-medium" : "text-text-muted"
           )}
         >
-          {formatDueYYMMDD(todo.due)}
+          {formatDueLabel(todo.due_date, todo.due_time)}
         </span>
       )}
 

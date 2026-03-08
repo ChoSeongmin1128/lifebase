@@ -73,7 +73,8 @@ export interface DaySummaryTodo {
   id: string;
   list_id: string;
   title: string;
-  due: string | null;
+  due_date: string | null;
+  due_time: string | null;
   priority: string;
   is_done: boolean;
 }

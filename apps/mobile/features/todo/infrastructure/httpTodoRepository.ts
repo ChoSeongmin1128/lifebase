@@ -15,10 +15,12 @@ interface ApiTodoResponse {
   parent_id: string | null;
   title: string;
   notes: string;
-  due: string | null;
+  due_date: string | null;
+  due_time: string | null;
   priority: string;
   is_done: boolean;
   is_pinned: boolean;
+  starred_at?: string | null;
   sort_order: number;
   created_at: string;
   updated_at: string;
@@ -32,10 +34,12 @@ function toDomainTodo(data: ApiTodoResponse): Todo {
     parentId: data.parent_id,
     title: data.title,
     notes: data.notes,
-    due: data.due,
+    dueDate: data.due_date,
+    dueTime: data.due_time,
     priority: data.priority as TodoPriority,
     isDone: data.is_done,
     isPinned: data.is_pinned,
+    starredAt: data.starred_at ?? null,
     sortOrder: data.sort_order,
     createdAt: data.created_at,
     updatedAt: data.updated_at,
@@ -54,7 +58,8 @@ export class HttpTodoRepository implements TodoRepository {
       list_id: params.listId,
       title: params.title,
       notes: params.notes || "",
-      due: params.due ?? null,
+      due_date: params.dueDate ?? null,
+      due_time: params.dueDate ? (params.dueTime ?? null) : null,
       priority: params.priority || "normal",
       ...(params.parentId ? { parent_id: params.parentId } : {}),
     };

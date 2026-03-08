@@ -36,6 +36,17 @@ func normalizeParentID(parentID *string) *string {
 	return &id
 }
 
+func normalizeOptionalString(value *string) *string {
+	if value == nil {
+		return nil
+	}
+	trimmed := strings.TrimSpace(*value)
+	if trimmed == "" {
+		return nil
+	}
+	return &trimmed
+}
+
 func NewTodoUseCase(lists portout.TodoListRepository, todos portout.TodoRepository, outbox portout.TodoPushOutbox, deps ...TodoExternalDeps) portin.TodoUseCase {
 	uc := &todoUseCase{lists: lists, todos: todos, outbox: outbox}
 	if len(deps) > 0 {
@@ -243,13 +254,17 @@ func (uc *todoUseCase) CreateTodo(ctx context.Context, userID string, input port
 		ParentID:  parentID,
 		Title:     input.Title,
 		Notes:     input.Notes,
-		Due:       input.Due,
+		DueDate:   normalizeOptionalString(input.DueDate),
+		DueTime:   normalizeOptionalString(input.DueTime),
 		Priority:  priority,
 		IsDone:    false,
 		IsPinned:  false,
 		SortOrder: sortOrder,
 		CreatedAt: now,
 		UpdatedAt: now,
+	}
+	if todo.DueTime != nil && todo.DueDate == nil {
+		return nil, fmt.Errorf("due_time requires due_date")
 	}
 
 	if err := uc.todos.Create(ctx, todo); err != nil {
@@ -306,8 +321,17 @@ func (uc *todoUseCase) UpdateTodo(ctx context.Context, userID, todoID string, in
 	if input.Notes != nil {
 		todo.Notes = *input.Notes
 	}
-	if input.Due != nil {
-		todo.Due = input.Due
+	if input.DueDate != nil {
+		todo.DueDate = normalizeOptionalString(input.DueDate)
+		if todo.DueDate == nil {
+			todo.DueTime = nil
+		}
+	}
+	if input.DueTime != nil {
+		todo.DueTime = normalizeOptionalString(input.DueTime)
+	}
+	if todo.DueTime != nil && todo.DueDate == nil {
+		return nil, fmt.Errorf("due_time requires due_date")
 	}
 	if input.Priority != nil {
 		todo.Priority = *input.Priority
@@ -340,6 +364,10 @@ func (uc *todoUseCase) UpdateTodo(ctx context.Context, userID, todoID string, in
 			if err == nil && count >= 5 {
 				return nil, fmt.Errorf("maximum 5 pinned todos per list")
 			}
+			now := time.Now()
+			todo.StarredAt = &now
+		} else {
+			todo.StarredAt = nil
 		}
 		todo.IsPinned = *input.IsPinned
 	}

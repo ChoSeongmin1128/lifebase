@@ -18,7 +18,8 @@ interface CreateTodoDialogProps {
   onOpenChange: (open: boolean) => void;
   onSubmit: (data: {
     title: string;
-    due: string | null;
+    dueDate: string | null;
+    dueTime: string | null;
     priority: string;
     notes: string;
     parentId?: string;
@@ -42,13 +43,15 @@ export function CreateTodoDialog({
   disabled,
 }: CreateTodoDialogProps) {
   const [title, setTitle] = useState("");
-  const [due, setDue] = useState("");
+  const [dueDate, setDueDate] = useState("");
+  const [dueTime, setDueTime] = useState("");
   const [priority, setPriority] = useState("normal");
   const [notes, setNotes] = useState("");
 
   const reset = () => {
     setTitle("");
-    setDue("");
+    setDueDate("");
+    setDueTime("");
     setPriority("normal");
     setNotes("");
   };
@@ -57,7 +60,8 @@ export function CreateTodoDialog({
     if (!title.trim() || disabled) return;
     onSubmit({
       title: title.trim(),
-      due: due || null,
+      dueDate: dueDate || null,
+      dueTime: dueDate ? (dueTime || null) : null,
       priority,
       notes,
       parentId,
@@ -94,8 +98,23 @@ export function CreateTodoDialog({
               <label className="mb-1 block text-xs text-text-muted">마감일</label>
               <Input
                 type="date"
-                value={due}
-                onChange={(e) => setDue(e.target.value)}
+                value={dueDate}
+                onChange={(e) => {
+                  const nextDate = e.target.value;
+                  setDueDate(nextDate);
+                  if (!nextDate) {
+                    setDueTime("");
+                  }
+                }}
+              />
+            </div>
+            <div className="w-28">
+              <label className="mb-1 block text-xs text-text-muted">시간</label>
+              <Input
+                type="time"
+                value={dueTime}
+                disabled={!dueDate}
+                onChange={(e) => setDueTime(e.target.value)}
               />
             </div>
             <div className="flex-1">

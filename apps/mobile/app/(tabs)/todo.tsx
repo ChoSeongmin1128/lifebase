@@ -13,7 +13,81 @@ import { useTodoActions } from "../../features/todo/ui/hooks/useTodoActions";
 import type { MobileTodoItem as TodoItem, MobileTodoList as TodoList } from "../../features/todo/domain/TodoEntities";
 import { useAuthFlow } from "../../features/auth/ui/hooks/useAuthFlow";
 import type { GoogleAccountSummary } from "../../features/auth/domain/AuthSession";
-import { formatDueYYMMDD } from "../../features/todo/lib/formatDueDate";
+import { formatDueLabel } from "../../features/todo/lib/formatDueDate";
+
+type TodoSortBy = "manual" | "date" | "due" | "recent_starred" | "title";
+
+const SORT_OPTIONS: { value: TodoSortBy; label: string }[] = [
+  { value: "manual", label: "내 순서" },
+  { value: "date", label: "날짜" },
+  { value: "due", label: "기한" },
+  { value: "recent_starred", label: "최근 별표" },
+  { value: "title", label: "제목" },
+];
+
+function compareStrings(a: string, b: string): number {
+  return a.localeCompare(b, "ko");
+}
+
+function compareDatesDesc(a?: string | null, b?: string | null): number {
+  const aTime = a ? new Date(a).getTime() : Number.NEGATIVE_INFINITY;
+  const bTime = b ? new Date(b).getTime() : Number.NEGATIVE_INFINITY;
+  return bTime - aTime;
+}
+
+function compareDue(a: TodoItem, b: TodoItem): number {
+  if (!a.due_date && !b.due_date) return compareDatesDesc(a.created_at, b.created_at);
+  if (!a.due_date) return 1;
+  if (!b.due_date) return -1;
+  const dateCmp = a.due_date.localeCompare(b.due_date);
+  if (dateCmp !== 0) return dateCmp;
+  if (!a.due_time && !b.due_time) return compareDatesDesc(a.created_at, b.created_at);
+  if (!a.due_time) return 1;
+  if (!b.due_time) return -1;
+  const timeCmp = a.due_time.localeCompare(b.due_time);
+  if (timeCmp !== 0) return timeCmp;
+  return compareDatesDesc(a.created_at, b.created_at);
+}
+
+function sortTodos(items: TodoItem[], sortBy: TodoSortBy): TodoItem[] {
+  return [...items].sort((a, b) => {
+    const doneCmp = Number(a.done) - Number(b.done);
+    if (doneCmp !== 0) return doneCmp;
+
+    if (sortBy === "manual") {
+      const pinCmp = Number(b.is_pinned) - Number(a.is_pinned);
+      if (pinCmp !== 0) return pinCmp;
+      const orderCmp = (a.sort_order ?? 0) - (b.sort_order ?? 0);
+      if (orderCmp !== 0) return orderCmp;
+      return compareDatesDesc(a.created_at, b.created_at);
+    }
+
+    if (sortBy === "date") {
+      const createdCmp = compareDatesDesc(a.created_at, b.created_at);
+      if (createdCmp !== 0) return createdCmp;
+      return compareStrings(a.title, b.title);
+    }
+
+    if (sortBy === "due") {
+      const dueCmp = compareDue(a, b);
+      if (dueCmp !== 0) return dueCmp;
+      return compareStrings(a.title, b.title);
+    }
+
+    if (sortBy === "recent_starred") {
+      const aStar = a.starred_at ? new Date(a.starred_at).getTime() : Number.NEGATIVE_INFINITY;
+      const bStar = b.starred_at ? new Date(b.starred_at).getTime() : Number.NEGATIVE_INFINITY;
+      if (aStar !== bStar) return bStar - aStar;
+      const createdCmp = compareDatesDesc(a.created_at, b.created_at);
+      if (createdCmp !== 0) return createdCmp;
+      return compareStrings(a.title, b.title);
+    }
+
+    const titleCmp = compareStrings(a.title, b.title);
+    if (titleCmp !== 0) return titleCmp;
+    return compareDatesDesc(a.created_at, b.created_at);
+  });
+}
 
 export default function TodoScreen() {
   const [lists, setLists] = useState<TodoList[]>([]);
@@ -24,6 +98,7 @@ export default function TodoScreen() {
   const [newListTarget, setNewListTarget] = useState<"local" | "google">("local");
   const [newListGoogleAccountID, setNewListGoogleAccountID] = useState("");
   const [googleAccounts, setGoogleAccounts] = useState<GoogleAccountSummary[]>([]);
+  const [sortBy, setSortBy] = useState<TodoSortBy>("date");
   const [refreshing, setRefreshing] = useState(false);
   const { createTodo, creating } = useCreateTodo();
   const { listLists, createList, listTodos, updateDone } = useTodoActions();
@@ -81,13 +156,13 @@ export default function TodoScreen() {
 
   const toggleDone = async (id: string, done: boolean) => {
     setTodos((prev) =>
-      prev.map((t) => (t.id === id ? { ...t, done: !done } : t))
+      prev.map((t) => (t.id === id ? { ...t, done: !done, is_done: !done } : t))
     );
     try {
       await updateDone(id, !done);
     } catch {
       setTodos((prev) =>
-        prev.map((t) => (t.id === id ? { ...t, done } : t))
+        prev.map((t) => (t.id === id ? { ...t, done, is_done: done } : t))
       );
     }
   };
@@ -133,9 +208,7 @@ export default function TodoScreen() {
     low: "#9CA3AF",
   };
 
-  const pinned = todos.filter((t) => t.is_pinned && !t.done);
-  const active = todos.filter((t) => !t.is_pinned && !t.done);
-  const done = todos.filter((t) => t.done);
+  const sortedTodos = useMemo(() => sortTodos(todos, sortBy), [sortBy, todos]);
 
   const getListSourceLabel = useCallback((list: TodoList) => {
     if (list.source === "local") return "로컬";
@@ -267,7 +340,26 @@ export default function TodoScreen() {
       </View>
 
       <FlatList
-        data={[...pinned, ...active, ...done]}
+        horizontal
+        data={SORT_OPTIONS}
+        keyExtractor={(item) => item.value}
+        style={styles.sortBar}
+        contentContainerStyle={styles.sortBarContent}
+        showsHorizontalScrollIndicator={false}
+        renderItem={({ item }) => (
+          <TouchableOpacity
+            style={[styles.sortChip, sortBy === item.value && styles.sortChipActive]}
+            onPress={() => setSortBy(item.value)}
+          >
+            <Text style={[styles.sortChipText, sortBy === item.value && styles.sortChipTextActive]}>
+              {item.label}
+            </Text>
+          </TouchableOpacity>
+        )}
+      />
+
+      <FlatList
+        data={sortedTodos}
         keyExtractor={(item) => item.id}
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
@@ -289,9 +381,17 @@ export default function TodoScreen() {
                 {item.is_pinned ? "📌 " : ""}
                 {item.title}
               </Text>
-              {item.due_date && (
-                <Text style={styles.dueDate}>{formatDueYYMMDD(item.due_date)}</Text>
-              )}
+              {item.notes ? (
+                <Text
+                  style={[styles.todoNotes, item.done && styles.todoTitleDone]}
+                  numberOfLines={2}
+                >
+                  {item.notes}
+                </Text>
+              ) : null}
+              {item.due_date ? (
+                <Text style={styles.dueDate}>{formatDueLabel(item.due_date, item.due_time)}</Text>
+              ) : null}
             </View>
             <View
               style={[
@@ -337,6 +437,37 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     padding: 12,
     fontSize: 14,
+  },
+  sortBar: {
+    maxHeight: 46,
+    borderBottomWidth: 1,
+    borderBottomColor: "#eee",
+  },
+  sortBarContent: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    gap: 8,
+  },
+  sortChip: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: "#d1d5db",
+    backgroundColor: "#f9fafb",
+    marginRight: 8,
+  },
+  sortChipActive: {
+    backgroundColor: "#111827",
+    borderColor: "#111827",
+  },
+  sortChipText: {
+    fontSize: 12,
+    color: "#4b5563",
+    fontWeight: "500",
+  },
+  sortChipTextActive: {
+    color: "#fff",
   },
   newListRow: {
     paddingHorizontal: 12,
@@ -432,6 +563,7 @@ const styles = StyleSheet.create({
   todoContent: { flex: 1 },
   todoTitle: { fontSize: 15 },
   todoTitleDone: { textDecorationLine: "line-through", color: "#999" },
+  todoNotes: { fontSize: 12, color: "#6b7280", marginTop: 3, lineHeight: 17 },
   dueDate: { fontSize: 11, color: "#999", marginTop: 2 },
   priorityDot: { width: 8, height: 8, borderRadius: 4 },
   empty: { textAlign: "center", marginTop: 60, color: "#999", fontSize: 14 },

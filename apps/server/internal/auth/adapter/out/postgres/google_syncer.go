@@ -574,7 +574,7 @@ func (s *googleAccountSyncer) syncTaskListsAndTodos(
 
 				tag, err := execGoogleSyncFn(ctx, s.db,
 					`UPDATE todos
-					 SET title = $4, notes = $5, due = $6, is_done = $7, done_at = $8, deleted_at = NULL, sort_order = $9, updated_at = $10
+					 SET title = $4, notes = $5, due_date = $6, due_time = NULL, is_done = $7, done_at = $8, deleted_at = NULL, sort_order = $9, updated_at = $10
 					 WHERE user_id = $1 AND list_id = $2 AND google_id = $3`,
 					userID,
 					localListID,
@@ -596,9 +596,9 @@ func (s *googleAccountSyncer) syncTaskListsAndTodos(
 
 				_, err = execGoogleSyncFn(ctx, s.db,
 					`INSERT INTO todos (
-					   id, list_id, user_id, parent_id, google_id, title, notes, due, priority, is_done, is_pinned, sort_order, done_at, created_at, updated_at
+					   id, list_id, user_id, parent_id, google_id, title, notes, due_date, due_time, priority, is_done, is_pinned, sort_order, done_at, created_at, updated_at
 					 ) VALUES (
-					   $1, $2, $3, NULL, $4, $5, $6, $7, 'normal', $8, FALSE, $9, $10, $11, $12
+					   $1, $2, $3, NULL, $4, $5, $6, $7, NULL, 'normal', $8, FALSE, $9, $10, $11, $12
 					 )`,
 					uuid.New().String(),
 					localListID,

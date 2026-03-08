@@ -4,13 +4,16 @@ export interface TodoItem {
   parent_id: string | null;
   title: string;
   notes: string;
-  due: string | null;
+  due_date: string | null;
+  due_time: string | null;
   priority: string;
   is_done: boolean;
   is_pinned: boolean;
+  starred_at?: string | null;
   sort_order: number;
   done_at: string | null;
   created_at: string;
+  updated_at?: string;
 }
 
 export interface TodoNode extends TodoItem {

@@ -299,7 +299,8 @@ func (uc *calendarUseCase) GetDaySummary(
 				ID:       row.ID,
 				ListID:   row.ListID,
 				Title:    row.Title,
-				Due:      row.Due,
+				DueDate:  row.DueDate,
+				DueTime:  row.DueTime,
 				Priority: row.Priority,
 				IsDone:   row.IsDone,
 			})

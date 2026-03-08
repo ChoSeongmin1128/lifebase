@@ -54,16 +54,19 @@ func (r *daySummaryTodoRepo) ListByDueDate(
 	includeDone bool,
 ) ([]calendarportout.DaySummaryTodo, error) {
 	query := `SELECT id, list_id, title,
-	                 CASE WHEN due IS NULL THEN NULL ELSE to_char(due, 'YYYY-MM-DD') END AS due,
+	                 CASE WHEN due_date IS NULL THEN NULL ELSE to_char(due_date, 'YYYY-MM-DD') END AS due_date,
+	                 CASE WHEN due_time IS NULL THEN NULL ELSE to_char(due_time, 'HH24:MI') END AS due_time,
 	                 priority, is_done
 	            FROM todos
 	           WHERE user_id = $1
 	             AND deleted_at IS NULL
-	             AND due = $2::date`
+	             AND due_date = $2::date`
 	if !includeDone {
 		query += " AND is_done = FALSE"
 	}
 	query += ` ORDER BY
+	             due_time IS NULL ASC,
+	             due_time ASC,
 	             CASE priority
 	               WHEN 'urgent' THEN 0
 	               WHEN 'high' THEN 1
@@ -109,7 +112,8 @@ func scanDaySummaryTodoRows(rows pgx.Rows) ([]calendarportout.DaySummaryTodo, er
 			&item.ID,
 			&item.ListID,
 			&item.Title,
-			&item.Due,
+			&item.DueDate,
+			&item.DueTime,
 			&item.Priority,
 			&item.IsDone,
 		); err != nil {

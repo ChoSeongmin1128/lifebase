@@ -459,7 +459,7 @@ func (p *googlePushProcessor) loadTodo(ctx context.Context, userID, todoID strin
 	var row localTodo
 	err := p.db.QueryRow(ctx,
 		`SELECT t.id, t.google_id, t.title, t.notes,
-		        CASE WHEN t.due IS NULL THEN NULL ELSE to_char(t.due, 'YYYY-MM-DD') END AS due_date,
+		        CASE WHEN t.due_date IS NULL THEN NULL ELSE to_char(t.due_date, 'YYYY-MM-DD') END AS due_date,
 		        t.is_done, t.updated_at, t.deleted_at, l.google_id, l.google_account_id
 		   FROM todos t
 		   JOIN todo_lists l ON l.id = t.list_id AND l.user_id = t.user_id
