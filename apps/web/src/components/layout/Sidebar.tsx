@@ -1,32 +1,13 @@
 "use client";
 
 import Link from "next/link";
-import { Suspense, useState } from "react";
-import { usePathname } from "next/navigation";
+import { useMemo } from "react";
+import { usePathname, useSearchParams } from "next/navigation";
 import Image from "next/image";
-import {
-  House,
-  Cloud,
-  Calendar,
-  CheckCircle2,
-  Image as ImageIcon,
-  Settings,
-  LogOut,
-  PanelLeft,
-  ChevronRight,
-} from "lucide-react";
+import { LogOut, PanelLeft, ChevronRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { SidebarItem } from "./SidebarItem";
-import { CloudSubnav } from "./CloudSubnav";
-
-const NAV_ITEMS = [
-  { href: "/home", label: "Home", icon: House },
-  { href: "/cloud", label: "Cloud", icon: Cloud },
-  { href: "/calendar", label: "Calendar", icon: Calendar },
-  { href: "/todo", label: "Todo", icon: CheckCircle2 },
-  { href: "/gallery", label: "Gallery", icon: ImageIcon },
-  { href: "/settings", label: "Settings", icon: Settings },
-] as const;
+import { APP_NAV_ITEMS, getSidebarSubnavItems, isNavItemActive, normalizeSettingsHref } from "./navigation";
 
 interface SidebarProps {
   expanded: boolean;
@@ -36,7 +17,11 @@ interface SidebarProps {
 
 export function Sidebar({ expanded, onToggle, onLogout }: SidebarProps) {
   const pathname = usePathname();
-  const [cloudSubnavOpen, setCloudSubnavOpen] = useState(false);
+  const searchParams = useSearchParams();
+  const subnavItems = useMemo(
+    () => getSidebarSubnavItems(pathname, new URLSearchParams(searchParams.toString())),
+    [pathname, searchParams]
+  );
 
   return (
     <aside
@@ -46,7 +31,7 @@ export function Sidebar({ expanded, onToggle, onLogout }: SidebarProps) {
       )}
     >
       {/* Header */}
-      <div className="flex items-center gap-2 px-3 py-3 border-b border-border">
+      <div className="flex min-h-[64px] items-center gap-2 border-b border-border px-3 py-3">
         <button
           onClick={onToggle}
           className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-text-secondary hover:bg-surface-accent transition-colors"
@@ -70,42 +55,46 @@ export function Sidebar({ expanded, onToggle, onLogout }: SidebarProps) {
       </div>
 
       {/* Nav */}
-      <nav className="flex-1 py-2 space-y-0.5">
-        {NAV_ITEMS.map(({ href, label, icon: Icon }) => {
-          const isActive = pathname.startsWith(href);
-          const isCloudItem = href === "/cloud";
+      <nav className="flex-1 space-y-1 px-2 py-2">
+        {APP_NAV_ITEMS.map(({ href, label, icon: Icon, hasSubnav }) => {
+          const isActive = isNavItemActive(pathname, href);
+          const isOpen = expanded && hasSubnav && isActive;
+          const linkHref = normalizeSettingsHref(href);
           return (
             <div key={href}>
               <SidebarItem
-                href={href}
+                href={linkHref}
                 label={label}
                 icon={<Icon size={18} />}
                 isActive={isActive}
                 expanded={expanded}
-                onClick={isCloudItem ? (event) => {
-                  if (isActive) {
-                    event.preventDefault();
-                    setCloudSubnavOpen((prev) => !prev);
-                  } else {
-                    setCloudSubnavOpen(false);
-                  }
-                } : () => {
-                  setCloudSubnavOpen(false);
-                }}
-                endIcon={isCloudItem ? (
+                endIcon={hasSubnav ? (
                   <ChevronRight
                     size={14}
                     className={cn(
                       "transition-transform duration-200",
-                      cloudSubnavOpen && isActive ? "rotate-90" : ""
+                      isOpen ? "rotate-90" : ""
                     )}
                   />
                 ) : undefined}
               />
-              {isCloudItem && isActive && expanded && cloudSubnavOpen && (
-                <Suspense fallback={null}>
-                  <CloudSubnav />
-                </Suspense>
+              {isOpen && subnavItems.length > 0 && (
+                <div className="ml-8 mr-1.5 space-y-0.5 pb-1">
+                  {subnavItems.map((item) => (
+                    <Link
+                      key={item.href}
+                      href={item.href}
+                      className={cn(
+                        "flex items-center rounded-md px-2.5 py-1.5 text-xs transition-colors",
+                        item.isActive
+                          ? "bg-surface-accent/80 font-medium text-text-strong"
+                          : "text-text-muted hover:bg-surface-accent/70 hover:text-text-secondary"
+                      )}
+                    >
+                      {item.label}
+                    </Link>
+                  ))}
+                </div>
               )}
             </div>
           );

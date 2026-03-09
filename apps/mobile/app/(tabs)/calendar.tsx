@@ -667,18 +667,29 @@ export default function CalendarScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#fff" },
+  container: { flex: 1, backgroundColor: "#F7F8F6", padding: 16 },
   header: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    padding: 16,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    borderWidth: 1,
+    borderColor: "#D8DFDC",
+    backgroundColor: "#FFFFFF",
+    borderRadius: 20,
+    marginBottom: 12,
   },
-  nav: { fontSize: 18, padding: 8, color: "#333" },
-  title: { fontSize: 18, fontWeight: "600" },
+  nav: { fontSize: 18, padding: 8, color: "#43514D" },
+  title: { fontSize: 20, fontWeight: "700", color: "#111111" },
   specialToggleRow: {
     paddingHorizontal: 16,
-    paddingBottom: 8,
+    paddingVertical: 12,
+    borderWidth: 1,
+    borderColor: "#D8DFDC",
+    backgroundColor: "#FFFFFF",
+    borderRadius: 20,
+    marginBottom: 12,
   },
   specialActionsRow: {
     flexDirection: "row",
@@ -687,7 +698,7 @@ const styles = StyleSheet.create({
   },
   specialActionChip: {
     borderWidth: 1,
-    borderColor: "#d1d5db",
+    borderColor: "#D8DFDC",
     borderRadius: 999,
     paddingHorizontal: 10,
     paddingVertical: 5,
@@ -695,12 +706,12 @@ const styles = StyleSheet.create({
   },
   specialActionText: {
     fontSize: 11,
-    color: "#374151",
+    color: "#43514D",
     fontWeight: "500",
   },
   specialSectionTitle: {
     fontSize: 11,
-    color: "#6b7280",
+    color: "#7B8784",
     marginBottom: 4,
   },
   specialScroll: {
@@ -715,17 +726,17 @@ const styles = StyleSheet.create({
   specialToggle: {
     alignSelf: "flex-start",
     borderWidth: 1,
-    borderColor: "#ddd",
+    borderColor: "#D8DFDC",
     borderRadius: 999,
     paddingHorizontal: 12,
     paddingVertical: 6,
     backgroundColor: "#fff",
   },
   specialToggleOn: {
-    backgroundColor: "#111827",
-    borderColor: "#111827",
+    backgroundColor: "#1B998B",
+    borderColor: "#1B998B",
   },
-  specialToggleText: { fontSize: 12, color: "#4b5563" },
+  specialToggleText: { fontSize: 12, color: "#5E6B67" },
   specialToggleTextOn: { color: "#fff" },
   weekHeader: {
     flexDirection: "row",

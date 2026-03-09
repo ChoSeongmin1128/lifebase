@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { PageToolbar, PageToolbarGroup } from "@/components/layout/PageToolbar";
 import { useHomeActions } from "@/features/home/ui/hooks/useHomeActions";
@@ -52,7 +53,8 @@ function getTodoBadge(todo: HomeSummaryTodo): string {
   return todo.due_date ? formatDueLabel(todo.due_date, todo.due_time) : "기한 없음";
 }
 
-export default function HomePage() {
+function HomePageInner() {
+  const searchParams = useSearchParams();
   const { getSummary } = useHomeActions();
   const [summary, setSummary] = useState<HomeSummary | null>(null);
   const [loading, setLoading] = useState(true);
@@ -88,6 +90,14 @@ export default function HomePage() {
   useEffect(() => {
     loadSummary();
   }, [loadSummary]);
+
+  useEffect(() => {
+    const focus = searchParams.get("focus");
+    if (!focus) return;
+    const target = document.getElementById(`home-${focus}`);
+    if (!target) return;
+    target.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, [searchParams]);
 
   const usedBytes = summary?.storage.used_bytes ?? 0;
   const quotaBytes = summary?.storage.quota_bytes ?? 0;
@@ -147,48 +157,48 @@ export default function HomePage() {
       <PageToolbar>
         <PageToolbarGroup>
           <h2 className="text-lg font-semibold text-text-strong">Home</h2>
-          <span className="text-sm text-text-muted">오늘 요약</span>
+          <span className="text-sm text-text-muted">오늘 흐름을 한 화면에서 정리합니다.</span>
         </PageToolbarGroup>
         <Button variant="secondary" size="sm" onClick={loadSummary}>
           새로고침
         </Button>
       </PageToolbar>
 
-      <div className="flex-1 overflow-auto p-4 md:p-6">
+      <div className="flex-1 overflow-auto bg-surface-accent/35 px-4 py-4 md:px-6 lg:px-8">
         {loading ? (
           <div className="mx-auto grid w-full max-w-[1200px] gap-4 md:grid-cols-2 xl:grid-cols-3">
             {Array.from({ length: 5 }).map((_, idx) => (
-              <div key={idx} className="h-40 animate-pulse rounded-xl border border-border bg-surface-accent/40" />
+              <div key={idx} className="h-40 animate-pulse rounded-2xl border border-border/70 bg-background/70" />
             ))}
           </div>
         ) : error ? (
-          <div className="mx-auto flex w-full max-w-[1200px] flex-col items-center justify-center gap-3 rounded-xl border border-border bg-surface px-6 py-12 text-center">
+          <div className="mx-auto flex w-full max-w-[1200px] flex-col items-center justify-center gap-3 rounded-2xl border border-border/70 bg-background/90 px-6 py-12 text-center">
             <p className="text-sm text-error">{error}</p>
             <Button variant="secondary" size="sm" onClick={loadSummary}>다시 시도</Button>
           </div>
         ) : (
           <div className="mx-auto w-full max-w-[1200px] space-y-4">
-            <section className="rounded-xl border border-border bg-surface p-4">
+            <section id="home-summary" className="rounded-2xl border border-border/70 bg-background/90 p-4">
               <div className="mb-3 flex items-center justify-between">
                 <h3 className="text-sm font-semibold text-text-strong">오늘 요약</h3>
               </div>
               <div className="grid gap-2 sm:grid-cols-3">
-                <div className="rounded-lg bg-surface-accent/60 px-3 py-2">
+                <div className="rounded-xl border border-border/60 bg-surface-accent/70 px-3 py-2">
                   <p className="text-xs text-text-muted">오늘 일정</p>
                   <p className="tabular-nums text-lg font-semibold text-text-strong">{todayEventCount}</p>
                 </div>
-                <div className="rounded-lg bg-surface-accent/60 px-3 py-2">
+                <div className="rounded-xl border border-border/60 bg-surface-accent/70 px-3 py-2">
                   <p className="text-xs text-text-muted">지난 Todo</p>
                   <p className="tabular-nums text-lg font-semibold text-text-strong">{overdueTodoCount}</p>
                 </div>
-                <div className="rounded-lg bg-surface-accent/60 px-3 py-2">
+                <div className="rounded-xl border border-border/60 bg-surface-accent/70 px-3 py-2">
                   <p className="text-xs text-text-muted">저장공간</p>
                   <p className="tabular-nums text-lg font-semibold text-text-strong">{usagePercent.toFixed(1)}%</p>
                 </div>
               </div>
             </section>
 
-            <section className="rounded-xl border border-border bg-surface p-4">
+            <section className="rounded-2xl border border-border/70 bg-background/90 p-4">
               <div className="mb-3 flex items-center justify-between">
                 <h3 className="text-sm font-semibold text-text-strong">빠른 액션</h3>
               </div>
@@ -219,7 +229,7 @@ export default function HomePage() {
 
             <div className="grid gap-4 xl:grid-cols-12 xl:items-stretch">
               <div className="space-y-4 xl:col-span-8 xl:grid xl:grid-rows-2 xl:gap-4 xl:space-y-0">
-                <section className="rounded-xl border border-border bg-surface p-4 xl:h-full min-h-[220px] flex flex-col">
+                <section id="home-calendar" className="flex min-h-[220px] flex-col rounded-2xl border border-border/70 bg-background/90 p-4 xl:h-full">
                   <div className="mb-3 flex items-center justify-between">
                     <h3 className="text-sm font-semibold text-text-strong">캘린더</h3>
                     <Link href="/calendar" className="text-xs text-primary">전체 보기</Link>
@@ -267,7 +277,7 @@ export default function HomePage() {
                   </div>
                 </section>
 
-                <section className="rounded-xl border border-border bg-surface p-4 xl:h-full min-h-[220px] flex flex-col">
+                <section id="home-todo" className="flex min-h-[220px] flex-col rounded-2xl border border-border/70 bg-background/90 p-4 xl:h-full">
                   <div className="mb-3 flex items-center justify-between">
                     <h3 className="text-sm font-semibold text-text-strong">Todo</h3>
                     <Link href="/todo" className="text-xs text-primary">전체 보기</Link>
@@ -305,7 +315,7 @@ export default function HomePage() {
               </div>
 
               <div className="space-y-4 xl:col-span-4 xl:grid xl:grid-rows-2 xl:gap-4 xl:space-y-0">
-                <section className="rounded-xl border border-border bg-surface p-4 xl:h-full min-h-[220px] flex flex-col">
+                <section id="home-files" className="flex min-h-[220px] flex-col rounded-2xl border border-border/70 bg-background/90 p-4 xl:h-full">
                   <div className="mb-3 flex items-center justify-between">
                     <h3 className="text-sm font-semibold text-text-strong">최근 파일</h3>
                     <Link href="/cloud?section=recent" className="text-xs text-primary">전체 보기</Link>
@@ -322,7 +332,7 @@ export default function HomePage() {
                   </div>
                 </section>
 
-                <section className="rounded-xl border border-border bg-surface p-4 xl:h-full min-h-[220px] flex flex-col">
+                <section id="home-storage" className="flex min-h-[220px] flex-col rounded-2xl border border-border/70 bg-background/90 p-4 xl:h-full">
                   <div className="mb-3 flex items-center justify-between">
                     <h3 className="text-sm font-semibold text-text-strong">저장공간</h3>
                     <Link href="/cloud" className="text-xs text-primary">Cloud 열기</Link>
@@ -367,5 +377,13 @@ export default function HomePage() {
         )}
       </div>
     </div>
+  );
+}
+
+export default function HomePage() {
+  return (
+    <Suspense fallback={<div className="flex h-full items-center justify-center text-text-muted">불러오는 중...</div>}>
+      <HomePageInner />
+    </Suspense>
   );
 }

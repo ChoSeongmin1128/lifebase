@@ -6,7 +6,7 @@ export function PageToolbar({ className, ...props }: PageToolbarProps) {
   return (
     <div
       className={cn(
-        "flex flex-wrap items-center justify-between gap-2 border-b border-border px-4 md:px-6 py-3",
+        "flex min-h-[64px] flex-wrap items-center justify-between gap-3 border-b border-border bg-background px-4 py-3 md:px-6 lg:px-8",
         className
       )}
       {...props}

@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from "react";
+import { Suspense, useState, useEffect, useCallback, useRef } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useGalleryActions } from "@/features/gallery/ui/hooks/useGalleryActions";
 import { Button } from "@/components/ui/button";
 import {
@@ -50,15 +51,33 @@ interface MediaFile {
 type ViewMode = "grid" | "list" | "date";
 type MediaType = "all" | "image" | "video";
 type SortBy = "taken_at" | "created_at" | "name" | "size";
-export default function GalleryPage() {
+
+function parseViewMode(value: string | null): ViewMode {
+  if (value === "list" || value === "date") return value;
+  return "grid";
+}
+
+function parseMediaType(value: string | null): MediaType {
+  if (value === "image" || value === "video") return value;
+  return "all";
+}
+
+function parseSortBy(value: string | null): SortBy {
+  if (value === "created_at" || value === "name" || value === "size") return value;
+  return "taken_at";
+}
+
+function GalleryPageInner() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
   const [items, setItems] = useState<MediaFile[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [hasLoadedItems, setHasLoadedItems] = useState(false);
-  const [viewMode, setViewMode] = useState<ViewMode>("grid");
-  const [mediaType, setMediaType] = useState<MediaType>("all");
-  const [sortBy, setSortBy] = useState<SortBy>("taken_at");
-  const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
+  const [viewMode, setViewMode] = useState<ViewMode>(() => parseViewMode(searchParams.get("view")));
+  const [mediaType, setMediaType] = useState<MediaType>(() => parseMediaType(searchParams.get("media")));
+  const [sortBy, setSortBy] = useState<SortBy>(() => parseSortBy(searchParams.get("sort")));
+  const [sortDir, setSortDir] = useState<"asc" | "desc">(() => (searchParams.get("order") === "asc" ? "asc" : "desc"));
   const [nextCursor, setNextCursor] = useState<string>("");
   const [loadingMore, setLoadingMore] = useState(false);
   const [selectedFile, setSelectedFile] = useState<MediaFile | null>(null);
@@ -106,6 +125,33 @@ export default function GalleryPage() {
   );
 
   useEffect(() => { loadMedia(); }, [loadMedia]);
+
+  useEffect(() => {
+    const nextView = parseViewMode(searchParams.get("view"));
+    const nextMedia = parseMediaType(searchParams.get("media"));
+    const nextSort = parseSortBy(searchParams.get("sort"));
+    const nextOrder = searchParams.get("order") === "asc" ? "asc" : "desc";
+
+    setViewMode((prev) => (prev === nextView ? prev : nextView));
+    setMediaType((prev) => (prev === nextMedia ? prev : nextMedia));
+    setSortBy((prev) => (prev === nextSort ? prev : nextSort));
+    setSortDir((prev) => (prev === nextOrder ? prev : nextOrder));
+  }, [searchParams]);
+
+  useEffect(() => {
+    const params = new URLSearchParams(searchParams.toString());
+    params.set("view", viewMode);
+    params.set("sort", sortBy);
+    params.set("order", sortDir);
+    if (mediaType === "all") params.delete("media");
+    else params.set("media", mediaType);
+
+    const current = searchParams.toString() ? `/gallery?${searchParams.toString()}` : "/gallery";
+    const next = params.toString() ? `/gallery?${params.toString()}` : "/gallery";
+    if (current !== next) {
+      router.replace(next, { scroll: false });
+    }
+  }, [mediaType, router, searchParams, sortBy, sortDir, viewMode]);
 
   useEffect(() => {
     if (!sentinelRef.current || !nextCursor) return;
@@ -207,13 +253,16 @@ export default function GalleryPage() {
       <div className="flex h-full flex-col">
         {/* Header */}
         <PageToolbar>
-          <div className="flex items-center gap-2">
-            <h1 className="text-lg font-semibold text-text-strong">갤러리</h1>
-            {refreshing ? (
-              <span className="text-primary" aria-label="업데이트 중">
-                <Loader2 size={12} className="animate-spin" />
-              </span>
-            ) : null}
+          <div className="min-w-0">
+            <div className="flex items-center gap-2">
+              <h1 className="text-lg font-semibold text-text-strong">갤러리</h1>
+              {refreshing ? (
+                <span className="text-primary" aria-label="업데이트 중">
+                  <Loader2 size={12} className="animate-spin" />
+                </span>
+              ) : null}
+            </div>
+            <p className="text-xs text-text-muted">미디어 탐색과 필터 상태를 URL과 함께 유지합니다.</p>
           </div>
           <PageToolbarGroup>
             {/* Media type filter */}
@@ -279,95 +328,99 @@ export default function GalleryPage() {
         </PageToolbar>
 
         {/* Content */}
-        <div className="relative flex-1 overflow-auto p-4">
-          {loading ? (
-            <div className="flex items-center justify-center py-20 text-text-muted">불러오는 중...</div>
-          ) : items.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-20 text-text-muted">
-              <ImageIcon size={48} className="text-border" />
-              <p className="mt-3">미디어 파일이 없습니다</p>
-              <p className="mt-1 text-sm">Cloud에 이미지나 동영상을 업로드하면 여기에 표시됩니다</p>
-            </div>
-          ) : viewMode === "grid" ? (
-            <div className="grid grid-cols-[repeat(auto-fill,minmax(100px,1fr))] md:grid-cols-[repeat(auto-fill,minmax(150px,1fr))] gap-2">
-              {items.map((file) => <GridItem key={file.id} file={file} />)}
-            </div>
-          ) : viewMode === "list" ? (
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-border text-left text-text-muted">
-                  <th className="w-12 px-2 py-2 font-normal"></th>
-                  <th className="px-4 py-2 font-normal">이름</th>
-                  <th className="hidden md:table-cell w-24 px-4 py-2 font-normal">크기</th>
-                  <th className="hidden md:table-cell w-36 px-4 py-2 font-normal">날짜</th>
-                </tr>
-              </thead>
-              <tbody>
-                {items.map((file) => (
-                  <tr
-                    key={file.id}
-                    className="cursor-pointer border-b border-border/50 hover:bg-surface-accent/50"
-                    onClick={() => setSelectedFile(file)}
-                  >
-                    <td className="px-2 py-1">
-                      <div className="relative h-8 w-8 overflow-hidden rounded bg-surface-accent">
-                        {file.thumb_status === "done" ? (
-                          <ThumbnailImage
-                            fileId={file.id}
-                            size="small"
-                            alt=""
-                            fill
-                            sizes="32px"
-                            className="object-cover"
-                            fallback={
+        <div className="flex-1 overflow-auto bg-surface-accent/35">
+          <div className="relative px-4 py-4 md:px-6 lg:px-8">
+            {loading ? (
+              <div className="flex items-center justify-center py-20 text-text-muted">불러오는 중...</div>
+            ) : items.length === 0 ? (
+              <div className="rounded-2xl border border-border/70 bg-background/90 px-6 py-16 text-center text-text-muted">
+                <ImageIcon size={48} className="mx-auto text-border" />
+                <p className="mt-3">미디어 파일이 없습니다</p>
+                <p className="mt-1 text-sm">Cloud에 이미지나 동영상을 업로드하면 여기에 표시됩니다</p>
+              </div>
+            ) : viewMode === "grid" ? (
+              <div className="grid grid-cols-[repeat(auto-fill,minmax(100px,1fr))] gap-2 md:grid-cols-[repeat(auto-fill,minmax(150px,1fr))]">
+                {items.map((file) => <GridItem key={file.id} file={file} />)}
+              </div>
+            ) : viewMode === "list" ? (
+              <div className="overflow-hidden rounded-2xl border border-border/70 bg-background/90">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-border text-left text-text-muted">
+                      <th className="w-12 px-2 py-2 font-normal"></th>
+                      <th className="px-4 py-2 font-normal">이름</th>
+                      <th className="hidden w-24 px-4 py-2 font-normal md:table-cell">크기</th>
+                      <th className="hidden w-36 px-4 py-2 font-normal md:table-cell">날짜</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {items.map((file) => (
+                      <tr
+                        key={file.id}
+                        className="cursor-pointer border-b border-border/50 hover:bg-surface-accent/50"
+                        onClick={() => setSelectedFile(file)}
+                      >
+                        <td className="px-2 py-1">
+                          <div className="relative h-8 w-8 overflow-hidden rounded bg-surface-accent">
+                            {file.thumb_status === "done" ? (
+                              <ThumbnailImage
+                                fileId={file.id}
+                                size="small"
+                                alt=""
+                                fill
+                                sizes="32px"
+                                className="object-cover"
+                                fallback={
+                                  <div className="flex h-full w-full items-center justify-center">
+                                    <ThumbStatusIcon status="failed" />
+                                  </div>
+                                }
+                              />
+                            ) : (
                               <div className="flex h-full w-full items-center justify-center">
-                                <ThumbStatusIcon status="failed" />
+                                <ThumbStatusIcon status={file.thumb_status} />
                               </div>
-                            }
-                          />
-                        ) : (
-                          <div className="flex h-full w-full items-center justify-center">
-                            <ThumbStatusIcon status={file.thumb_status} />
+                            )}
                           </div>
-                        )}
-                      </div>
-                    </td>
-                    <td className="px-4 py-1">
-                      <div className="flex items-center gap-2">
-                        {file.mime_type.startsWith("video/") && (
-                          <Film size={12} className="shrink-0 text-text-muted" />
-                        )}
-                        <span className="truncate text-text-primary">{file.name}</span>
-                        <ExtensionBadge filename={file.name} className="shrink-0" />
-                      </div>
-                    </td>
-                    <td className="hidden md:table-cell px-4 py-1 text-text-muted">
-                      {formatSize(file.size_bytes)}
-                    </td>
-                    <td className="hidden md:table-cell px-4 py-1 text-text-muted">
-                      {formatDate(file.taken_at || file.created_at)}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          ) : (
-            <div className="space-y-6">
-              {groupByDate(items).map((group) => (
-                <div key={group.date}>
-                  <h3 className="mb-2 text-sm font-medium text-text-secondary">{formatDate(group.date)}</h3>
-                  <div className="grid grid-cols-[repeat(auto-fill,minmax(100px,1fr))] md:grid-cols-[repeat(auto-fill,minmax(150px,1fr))] gap-2">
-                    {group.items.map((file) => <GridItem key={file.id} file={file} />)}
+                        </td>
+                        <td className="px-4 py-1">
+                          <div className="flex items-center gap-2">
+                            {file.mime_type.startsWith("video/") && (
+                              <Film size={12} className="shrink-0 text-text-muted" />
+                            )}
+                            <span className="truncate text-text-primary">{file.name}</span>
+                            <ExtensionBadge filename={file.name} className="shrink-0" />
+                          </div>
+                        </td>
+                        <td className="hidden px-4 py-1 text-text-muted md:table-cell">
+                          {formatSize(file.size_bytes)}
+                        </td>
+                        <td className="hidden px-4 py-1 text-text-muted md:table-cell">
+                          {formatDate(file.taken_at || file.created_at)}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <div className="space-y-6">
+                {groupByDate(items).map((group) => (
+                  <div key={group.date}>
+                    <h3 className="mb-2 text-sm font-medium text-text-secondary">{formatDate(group.date)}</h3>
+                    <div className="grid grid-cols-[repeat(auto-fill,minmax(100px,1fr))] gap-2 md:grid-cols-[repeat(auto-fill,minmax(150px,1fr))]">
+                      {group.items.map((file) => <GridItem key={file.id} file={file} />)}
+                    </div>
                   </div>
-                </div>
-              ))}
-            </div>
-          )}
+                ))}
+              </div>
+            )}
 
-          {nextCursor && <div ref={sentinelRef} className="h-4" />}
-          {loadingMore && (
-            <div className="py-4 text-center text-sm text-text-muted">더 불러오는 중...</div>
-          )}
+            {nextCursor && <div ref={sentinelRef} className="h-4" />}
+            {loadingMore && (
+              <div className="py-4 text-center text-sm text-text-muted">더 불러오는 중...</div>
+            )}
+          </div>
         </div>
 
         {/* Preview Modal */}
@@ -414,5 +467,13 @@ export default function GalleryPage() {
         )}
       </div>
     </TooltipProvider>
+  );
+}
+
+export default function GalleryPage() {
+  return (
+    <Suspense fallback={<div className="flex h-full items-center justify-center text-text-muted">불러오는 중...</div>}>
+      <GalleryPageInner />
+    </Suspense>
   );
 }

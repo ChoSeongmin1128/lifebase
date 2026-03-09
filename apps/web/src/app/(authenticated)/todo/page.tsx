@@ -70,6 +70,7 @@ const TODO_LAST_SYNC_AT_SETTING_KEY = "todo_last_sync_at";
 const TODO_DONE_COLLAPSED_SETTING_KEY = "todo_done_section_collapsed";
 const TODO_LAST_ACTIVE_LIST_ID_SETTING_KEY = "todo_last_active_list_id";
 const TODO_SORT_VALUES: TodoSortBy[] = ["manual", "due", "recent_starred", "title"];
+type TodoScope = "all" | "due" | "starred" | "completed";
 
 function toErrorMessage(err: unknown, fallback: string): string {
   if (err instanceof Error && err.message.trim()) {
@@ -85,6 +86,11 @@ function isTodoSortBy(value: string | null | undefined): value is TodoSortBy {
 function resolveTodoSort(value: string | null | undefined): TodoSortBy | null {
   if (value === "date") return "due";
   return isTodoSortBy(value) ? value : null;
+}
+
+function resolveTodoScope(value: string | null | undefined): TodoScope {
+  if (value === "due" || value === "starred" || value === "completed") return value;
+  return "all";
 }
 
 function compareStrings(a: string, b: string): number {
@@ -167,6 +173,7 @@ function TodoPageInner() {
   const searchParams = useSearchParams();
   const listFromUrl = searchParams.get("list") || "";
   const sortFromUrl = searchParams.get("sort") || "";
+  const scopeFromUrl = resolveTodoScope(searchParams.get("scope"));
   const quickAction = searchParams.get("quick");
 
   const [lists, setLists] = useState<TodoList[]>([]);
@@ -194,13 +201,16 @@ function TodoPageInner() {
     if (sortBy) {
       params.set("sort", sortBy);
     }
+    if (scopeFromUrl !== "all") {
+      params.set("scope", scopeFromUrl);
+    }
     const next = params.toString();
     const target = next ? `/todo?${next}` : "/todo";
     const current = searchParams.toString() ? `/todo?${searchParams.toString()}` : "/todo";
     if (target !== current) {
       router.replace(target, { scroll: false });
     }
-  }, [activeListId, router, searchParams, sortBy]);
+  }, [activeListId, router, scopeFromUrl, searchParams, sortBy]);
 
   const [todos, setTodos] = useState<TodoItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -603,9 +613,12 @@ function TodoPageInner() {
       params.set("list", activeListId);
     }
     params.set("sort", sortBy);
+    if (scopeFromUrl !== "all") {
+      params.set("scope", scopeFromUrl);
+    }
     const next = params.toString();
     router.replace(next ? `/todo?${next}` : "/todo", { scroll: false });
-  }, [quickAction, activeListId, realLists, router, setActiveListId, sortBy]);
+  }, [quickAction, activeListId, realLists, router, scopeFromUrl, setActiveListId, sortBy]);
 
   useEffect(() => {
     if (!editingTodoId) return;
@@ -883,6 +896,13 @@ function TodoPageInner() {
       (t) => t.title.toLowerCase().includes(q) || t.notes.toLowerCase().includes(q),
     );
   }
+  if (scopeFromUrl === "due") {
+    filteredTodos = filteredTodos.filter((todo) => !!todo.due_date && !todo.is_done);
+  } else if (scopeFromUrl === "starred") {
+    filteredTodos = filteredTodos.filter((todo) => !!todo.starred_at);
+  } else if (scopeFromUrl === "completed") {
+    filteredTodos = filteredTodos.filter((todo) => todo.is_done);
+  }
   const buildSortedRoots = (items: TodoItem[]) => {
     const roots = buildTree(items);
     if (sortBy === "manual" && isAllView) {
@@ -893,9 +913,9 @@ function TodoPageInner() {
 
   // 루트 기준으로 섹션을 나눠 부모-자식 체인이 완료 상태 분리로 끊어지지 않게 유지한다.
   const sectionRoots = buildSortedRoots(filteredTodos);
-  const activeRoots = sectionRoots.filter((root) => !root.is_done);
-  const doneRoots = sectionRoots.filter((root) => root.is_done);
-  const showCompletedSection = !doneCollapsed;
+  const activeRoots = scopeFromUrl === "completed" ? [] : sectionRoots.filter((root) => !root.is_done);
+  const doneRoots = scopeFromUrl === "completed" ? sectionRoots : sectionRoots.filter((root) => root.is_done);
+  const showCompletedSection = scopeFromUrl === "completed" || !doneCollapsed;
 
   const activeFlat = flattenTree(activeRoots, new Set(), dragActiveId);
   const doneFlat = flattenTree(doneRoots, new Set(), dragActiveId);

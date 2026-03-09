@@ -60,16 +60,23 @@ export default function CloudScreen() {
 
   return (
     <View style={styles.container}>
-      {path.length > 1 && (
-        <TouchableOpacity style={styles.breadcrumb} onPress={goBack}>
-          <Text style={styles.breadcrumbText}>
-            ← {path[path.length - 2].name}
-          </Text>
+      <View style={styles.headerCard}>
+        <Text style={styles.screenTitle}>Cloud</Text>
+        <Text style={styles.screenSubtitle}>파일과 폴더를 같은 작업 톤으로 탐색합니다.</Text>
+      </View>
+      {path.length > 1 ? (
+        <TouchableOpacity style={styles.breadcrumbCard} onPress={goBack}>
+          <Text style={styles.breadcrumbText}>← {path[path.length - 2].name}</Text>
         </TouchableOpacity>
+      ) : (
+        <View style={styles.breadcrumbCard}>
+          <Text style={styles.breadcrumbText}>내 파일</Text>
+        </View>
       )}
       <FlatList
         data={items}
         keyExtractor={(item) => item.id}
+        contentContainerStyle={styles.listContent}
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
         }
@@ -109,15 +116,42 @@ export default function CloudScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#fff" },
-  breadcrumb: { padding: 12, borderBottomWidth: 1, borderBottomColor: "#eee" },
-  breadcrumbText: { fontSize: 14, color: "#666" },
+  container: { flex: 1, backgroundColor: "#F7F8F6", padding: 16 },
+  headerCard: {
+    borderWidth: 1,
+    borderColor: "#D8DFDC",
+    backgroundColor: "#FFFFFF",
+    borderRadius: 20,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    marginBottom: 12,
+  },
+  screenTitle: { fontSize: 20, fontWeight: "700", color: "#111111" },
+  screenSubtitle: { marginTop: 4, fontSize: 13, color: "#5E6B67" },
+  breadcrumbCard: {
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    borderWidth: 1,
+    borderColor: "#D8DFDC",
+    backgroundColor: "#FFFFFF",
+    borderRadius: 16,
+    marginBottom: 12,
+  },
+  breadcrumbText: { fontSize: 14, color: "#5E6B67", fontWeight: "500" },
+  listContent: {
+    paddingBottom: 16,
+    borderWidth: 1,
+    borderColor: "#D8DFDC",
+    borderRadius: 20,
+    overflow: "hidden",
+    backgroundColor: "#FFFFFF",
+  },
   row: {
     flexDirection: "row",
     alignItems: "center",
     padding: 14,
     borderBottomWidth: 1,
-    borderBottomColor: "#f0f0f0",
+    borderBottomColor: "#E5ECE9",
   },
   iconWrap: {
     width: 28,
@@ -130,6 +164,6 @@ const styles = StyleSheet.create({
   iconLabel: { fontSize: 10, fontWeight: "700" },
   info: { flex: 1 },
   name: { fontSize: 15, fontWeight: "500" },
-  meta: { fontSize: 12, color: "#999", marginTop: 2 },
-  empty: { textAlign: "center", marginTop: 60, color: "#999", fontSize: 14 },
+  meta: { fontSize: 12, color: "#7B8784", marginTop: 2 },
+  empty: { textAlign: "center", marginTop: 60, color: "#7B8784", fontSize: 14 },
 });

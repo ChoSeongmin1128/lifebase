@@ -165,6 +165,7 @@ npx expo start
 ### Home
 - 오늘 일정/지난 Todo/최근 파일/저장공간 요약
 - 빠른 액션: 일정 추가, Todo 추가, 파일 업로드
+- Web/Desktop Home은 인증 이후 공통 page shell 안에서 동작하고, 사이드바 보조 내비는 `?focus=summary|calendar|todo|files|storage`로 각 섹션에 직접 진입한다
 
 ### Cloud
 - 파일 업로드/다운로드/삭제/이동/이름변경
@@ -193,6 +194,7 @@ npx expo start
 - 격자/리스트/날짜별 뷰
 - 미디어 타입 필터, 무한 스크롤
 - EXIF 메타데이터 추출 (촬영일/GPS/카메라)
+- Web/Desktop Gallery는 공통 page shell을 사용하고, 뷰/미디어 타입/정렬 상태를 URL에 반영해 새로고침과 딥링크에서 같은 상태를 복원한다
 
 ### Calendar
 - 캘린더 CRUD + 이벤트 CRUD
@@ -218,6 +220,7 @@ npx expo start
 - Web Todo는 `전체`/목록 전환 시 기존 목록을 유지한 채 백그라운드 refresh로 갱신한다
 - Web/Desktop Todo는 제목을 최대 3줄까지 노출하고, 확장된 행 자체에서 제목을 바로 수정한다
 - Web/Desktop Todo 목록은 차분한 surface형 행을 기본으로 하고, 목록/기한 메타는 제목 아래 칩으로 정리하며 우측 액션은 hover·확장 상태에서만 최소 노출한다
+- Web/Desktop Todo 보조 내비는 `?scope=all|due|starred|completed`를 사용해 같은 화면 문법 안에서 범위를 전환한다
 - 부모/자식 Todo는 접기 없이 항상 표시하고, 체크박스 왼쪽 gutter와 행 세로 밀도는 더 촘촘하게 유지한다
 - Web/Desktop Todo 최상단 툴바는 현재 목록 드롭다운을 제목처럼 사용하고, 목록 전환/생성/삭제를 같은 줄에서 처리한다
 - 최상단 툴바의 현재 목록 드롭다운과 액션 버튼은 고정 폭을 유지해 목록 이름 길이에 따라 주변 컨트롤 위치가 흔들리지 않게 한다
@@ -235,7 +238,8 @@ npx expo start
 - ACL: viewer(읽기)/editor(수정)
 
 ### Settings
-- 5탭: 일반/캘린더/Todo/알림/Cloud
+- Web/Desktop Settings는 공통 page shell 안에서 좌측 섹션 레일을 사용하고 `/settings/general`, `/settings/calendar`, `/settings/todo`, `/settings/notifications`, `/settings/cloud` route로 직접 진입한다
+- Mobile Settings는 같은 섹션 구조를 상단 세그먼트 칩으로 번역한다
 - 테마 (라이트/다크/시스템)
 - 방해 금지 시간 설정
 - Google 계정 연결/별칭/색상/동기화 설정

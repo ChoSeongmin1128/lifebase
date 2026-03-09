@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { Suspense, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import {
   isAuthenticated,
@@ -44,7 +44,9 @@ export default function AuthenticatedLayout({
 
   return (
     <div className="flex h-screen flex-col md:flex-row">
-      <Sidebar expanded={expanded} onToggle={toggle} onLogout={handleLogout} />
+      <Suspense fallback={null}>
+        <Sidebar expanded={expanded} onToggle={toggle} onLogout={handleLogout} />
+      </Suspense>
 
       <main className="flex-1 overflow-auto pb-14 md:pb-0">
         {children}
