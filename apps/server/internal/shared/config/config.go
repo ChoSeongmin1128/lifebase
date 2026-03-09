@@ -72,7 +72,7 @@ func Load() (*Config, error) {
 	loadEnvFiles(rootDir)
 
 	port, _ := strconv.Atoi(getEnv("SERVER_PORT", "38117"))
-	accessExpiry, _ := time.ParseDuration(getEnv("JWT_ACCESS_EXPIRY", "15m"))
+	accessExpiry, _ := time.ParseDuration(getEnv("JWT_ACCESS_EXPIRY", "1h"))
 	refreshExpiry, _ := time.ParseDuration(getEnv("JWT_REFRESH_EXPIRY", "720h"))
 
 	return &Config{

@@ -12,6 +12,9 @@
 - Google OAuth로 사용자 인증 후, 서버에서 자체 JWT(Access Token + Refresh Token)를 발급한다
 - 클라이언트는 이후 요청에 JWT Access Token을 사용한다
 - Google OAuth 토큰은 서버에서 Google API 호출(Calendar/Tasks 동기화 등)에 사용한다
+- LifeBase Access Token 유효 기간은 1시간이다. (`JWT_ACCESS_EXPIRY=1h`)
+- LifeBase Refresh Token 유효 기간은 30일이다. (`JWT_REFRESH_EXPIRY=720h`)
+- Refresh 시 기존 Refresh Token은 즉시 폐기하고, 새 Access Token + 새 Refresh Token을 다시 발급한다
 
 ## LifeBase Refresh Token 정책
 - 유효 기간: 30일
@@ -22,8 +25,14 @@
 ## 토큰 갱신 흐름
 1. 클라이언트가 API 요청 시 Access Token 만료 감지
 2. 프론트엔드에서 백엔드 리프레시 API 호출
-3. 서버가 Refresh Token 검증 후 새로운 Access Token 발급
-4. 클라이언트가 새 토큰으로 원래 요청 재시도
+3. 서버가 Refresh Token 검증 후 기존 Refresh Token을 폐기하고 새로운 Access Token + Refresh Token을 발급
+4. 클라이언트가 저장된 토큰 쌍을 새 값으로 교체
+5. 클라이언트가 새 Access Token으로 원래 요청 재시도
+
+## 클라이언트 갱신 정책
+- Web은 Access Token 만료 임박 시 선제 갱신하고, 401 응답 시 1회 refresh 후 재시도한다
+- Mobile도 401 응답 시 1회 refresh 후 재시도한다
+- Refresh 실패 시 저장된 토큰을 삭제하고 로그인 화면으로 복귀한다
 
 ## Google OAuth Refresh Token 만료 시 처리
 - Google 토큰이 만료되어도 LifeBase 자체 로그인은 유지한다
