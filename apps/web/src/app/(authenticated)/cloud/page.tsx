@@ -29,7 +29,7 @@ import { CloudFolderHeader, type CloudPathEntry } from "@/components/cloud/Cloud
 import { FileIcon } from "@/components/cloud/FileIcon";
 import { ThumbnailImage } from "@/components/cloud/ThumbnailImage";
 import { BulkActionBar } from "@/components/cloud/BulkActionBar";
-import { PageToolbar, PageToolbarGroup } from "@/components/layout/PageToolbar";
+import { PageHeader, PageToolbar, PageToolbarGroup } from "@/components/layout/PageToolbar";
 import { useToast } from "@/components/providers/ToastProvider";
 import {
   CLOUD_SECTION_ITEMS,
@@ -1505,6 +1505,15 @@ function CloudPageInner() {
       }}
       onDrop={handleDrop}
     >
+      <PageHeader
+        title="Cloud"
+        actions={(
+          <Button size="sm" onClick={() => void refreshVisibleItems()}>
+            새로고침
+          </Button>
+        )}
+      />
+
       {showFolderHeader && (
         <CloudFolderHeader
           path={displayPath}

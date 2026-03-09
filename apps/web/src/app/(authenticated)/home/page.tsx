@@ -4,7 +4,7 @@ import Link from "next/link";
 import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
-import { PageToolbar, PageToolbarGroup } from "@/components/layout/PageToolbar";
+import { PageHeader } from "@/components/layout/PageToolbar";
 import { useHomeActions } from "@/features/home/ui/hooks/useHomeActions";
 import type { HomeSummary, HomeSummaryEvent, HomeSummaryTodo } from "@/features/home/domain/HomeSummary";
 import { CalendarPlus, CheckCircle2, Upload } from "lucide-react";
@@ -154,15 +154,14 @@ function HomePageInner() {
 
   return (
     <div className="flex h-full flex-col">
-      <PageToolbar>
-        <PageToolbarGroup>
-          <h2 className="text-lg font-semibold text-text-strong">Home</h2>
-          <span className="text-sm text-text-muted">오늘 흐름을 한 화면에서 정리합니다.</span>
-        </PageToolbarGroup>
-        <Button variant="secondary" size="sm" onClick={loadSummary}>
-          새로고침
-        </Button>
-      </PageToolbar>
+      <PageHeader
+        title="Home"
+        actions={(
+          <Button variant="secondary" size="sm" onClick={loadSummary}>
+            새로고침
+          </Button>
+        )}
+      />
 
       <div className="flex-1 overflow-auto bg-surface-accent/35 px-4 py-4 md:px-6 lg:px-8">
         {loading ? (

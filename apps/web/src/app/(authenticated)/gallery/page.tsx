@@ -19,7 +19,7 @@ import {
 } from "@/components/ui/tooltip";
 import { ExtensionBadge } from "@/components/gallery/ExtensionBadge";
 import { ThumbnailImage } from "@/components/cloud/ThumbnailImage";
-import { PageToolbar, PageToolbarGroup } from "@/components/layout/PageToolbar";
+import { PageHeader, PageToolbar, PageToolbarGroup } from "@/components/layout/PageToolbar";
 import {
   LayoutGrid,
   List,
@@ -251,19 +251,16 @@ function GalleryPageInner() {
   return (
     <TooltipProvider>
       <div className="flex h-full flex-col">
-        {/* Header */}
+        <PageHeader
+          title="Gallery"
+          actions={(
+            <Button size="sm" onClick={() => void loadMedia()} disabled={loading || refreshing}>
+              {refreshing ? "새로고침 중..." : "새로고침"}
+            </Button>
+          )}
+        />
+
         <PageToolbar>
-          <div className="min-w-0">
-            <div className="flex items-center gap-2">
-              <h1 className="text-lg font-semibold text-text-strong">갤러리</h1>
-              {refreshing ? (
-                <span className="text-primary" aria-label="업데이트 중">
-                  <Loader2 size={12} className="animate-spin" />
-                </span>
-              ) : null}
-            </div>
-            <p className="text-xs text-text-muted">미디어 탐색과 필터 상태를 URL과 함께 유지합니다.</p>
-          </div>
           <PageToolbarGroup>
             {/* Media type filter */}
             <div className="flex rounded-lg border border-border">

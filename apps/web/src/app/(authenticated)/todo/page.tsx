@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useMemo, useRef, Suspense } from "rea
 import { useRouter, useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { PageHeader } from "@/components/layout/PageToolbar";
 import {
   Dialog,
   DialogContent,
@@ -1222,6 +1223,15 @@ function TodoPageInner() {
   return (
     <div className="flex h-full min-w-0 flex-col">
       <div className="flex min-w-0 flex-1 flex-col">
+        <PageHeader
+          title="Todo"
+          actions={(
+            <Button size="sm" onClick={handleManualSync} disabled={syncingNow}>
+              {syncingNow ? "동기화 중..." : "새로고침"}
+            </Button>
+          )}
+        />
+
         <TodoToolbar
           currentListName={activeList?.name || "Todo"}
           lists={lists.map((list) => ({

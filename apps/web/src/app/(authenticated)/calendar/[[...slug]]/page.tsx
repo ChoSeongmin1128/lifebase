@@ -45,14 +45,14 @@ import { ViewDropdown, type CalendarViewMode } from "@/components/calendar/ViewD
 import { YearCompactView } from "@/components/calendar/YearCompactView";
 import { YearTimelineView } from "@/components/calendar/YearTimelineView";
 import { QuickCreatePopover } from "@/components/calendar/QuickCreatePopover";
-import { PageToolbar, PageToolbarGroup } from "@/components/layout/PageToolbar";
+import { PageHeader, PageToolbar, PageToolbarGroup } from "@/components/layout/PageToolbar";
 import {
   getFixedMonthFetchRangeWithWeekStart,
   buildFixedMonthGridWithWeekStart,
   type MonthCell,
 } from "@/lib/calendar/month-grid";
 import { Badge } from "@/components/ui/badge";
-import { ChevronLeft, ChevronRight, Filter, RefreshCw } from "lucide-react";
+import { ChevronLeft, ChevronRight, Filter } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
   MULTI_ACCOUNT_FALLBACK_COLORS,
@@ -1242,6 +1242,15 @@ export default function CalendarPage() {
 
   return (
     <div className="flex h-full flex-col">
+      <PageHeader
+        title="Calendar"
+        actions={(
+          <Button variant="secondary" size="sm" onClick={handleManualSync} disabled={syncingNow}>
+            {syncingNow ? "동기화 중..." : "새로고침"}
+          </Button>
+        )}
+      />
+
       <PageToolbar>
         <PageToolbarGroup>
           <Button variant="secondary" size="sm" className="rounded-full" onClick={goToday}>오늘</Button>
@@ -1314,15 +1323,6 @@ export default function CalendarPage() {
           <div className="hidden items-center gap-2 text-xs text-text-muted md:flex">
             <span>최근 동기화: {lastSyncedAt ? new Date(lastSyncedAt).toLocaleString("ko-KR") : "-"}</span>
           </div>
-          <Button
-            variant="secondary"
-            size="icon-sm"
-            onClick={handleManualSync}
-            disabled={syncingNow}
-            title="지금 동기화"
-          >
-            <RefreshCw className={cn("h-4 w-4", syncingNow && "animate-spin")} />
-          </Button>
           <ViewDropdown view={view} onChange={handleViewChange} />
           <QuickCreatePopover
             key={`${quickDefaultStart}|${quickDefaultEnd}|${defaultCalendarID}`}

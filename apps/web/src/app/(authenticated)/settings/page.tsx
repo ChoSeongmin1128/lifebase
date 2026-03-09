@@ -12,7 +12,7 @@ import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Input } from "@/components/ui/input";
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@/components/ui/select";
-import { PageToolbar, PageToolbarGroup } from "@/components/layout/PageToolbar";
+import { PageHeader } from "@/components/layout/PageToolbar";
 import { Sun, Moon, Monitor } from "lucide-react";
 import {
   ACCOUNT_COLOR_PALETTE,
@@ -252,21 +252,11 @@ export default function SettingsPage() {
 
   return (
     <div className="flex h-full flex-col">
-      <PageToolbar>
-        <PageToolbarGroup className="min-w-0 flex-1">
-          <div className="min-w-0">
-            <h2 className="text-lg font-semibold text-text-strong">Settings</h2>
-            <p className="text-xs text-text-muted">섹션별 설정을 같은 작업 셸 안에서 정리합니다.</p>
-          </div>
-        </PageToolbarGroup>
-        <div className="hidden text-sm text-text-muted md:block">
-          {SETTINGS_SECTIONS.find((section) => section.id === activeSection)?.label}
-        </div>
-      </PageToolbar>
+      <PageHeader title="Settings" />
 
       <div className="flex-1 overflow-auto bg-surface-accent/35">
-        <div className="mx-auto flex w-full max-w-[1320px] flex-col gap-4 px-4 py-4 md:px-6 lg:flex-row lg:items-start lg:px-8">
-          <div className="flex gap-2 overflow-x-auto rounded-2xl border border-border/70 bg-background/90 p-1 lg:sticky lg:top-4 lg:w-56 lg:flex-col lg:overflow-visible">
+        <div className="mx-auto w-full max-w-3xl px-4 py-4 md:px-6 lg:px-8">
+          <div className="mb-4 flex gap-2 overflow-x-auto rounded-2xl border border-border/70 bg-background/90 p-1 md:hidden">
             {SETTINGS_SECTIONS.map((section) => (
               <button
                 key={section.id}
@@ -283,13 +273,13 @@ export default function SettingsPage() {
             ))}
           </div>
 
-          <div className="min-w-0 flex-1">
+          <div className="min-w-0">
             {loading ? (
               <div className="flex items-center justify-center rounded-2xl border border-border/70 bg-background/90 py-20 text-text-muted">
                 불러오는 중...
               </div>
             ) : (
-              <div className="mx-auto max-w-3xl space-y-6">
+              <div className="space-y-6">
                 {activeSection === "general" && (
                   <>
                     <SettingsCard title="테마">
