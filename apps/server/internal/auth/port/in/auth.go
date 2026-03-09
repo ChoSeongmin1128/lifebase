@@ -2,7 +2,13 @@ package in
 
 import (
 	"context"
+	"errors"
 	"time"
+)
+
+var (
+	ErrAdminAccessDenied      = errors.New("admin access denied")
+	ErrAdminAccessCheckFailed = errors.New("admin access check failed")
 )
 
 type LoginResult struct {

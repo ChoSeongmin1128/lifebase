@@ -5,10 +5,10 @@ import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import {
   clearAdminTokens,
+  getAdminAccessToken,
   isAdminAuthenticated,
-  isAdminTokenExpiringSoon,
-  refreshAdminAccessToken,
 } from "@/features/admin/infrastructure/admin-auth";
+import { adminApi } from "@/features/admin/infrastructure/http-admin-api";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -42,25 +42,45 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   const pathname = usePathname();
   const router = useRouter();
   const isPublicPath = pathname ? PUBLIC_PATHS.has(pathname) : false;
+  const [authReady, setAuthReady] = useState<boolean>(isPublicPath);
   const [adminTheme, setAdminTheme] = useState<ThemeMode>(() => {
     if (typeof window === "undefined") return "light";
     return parseStoredTheme(window.localStorage.getItem(ADMIN_THEME_STORAGE_KEY), "light");
   });
 
   useEffect(() => {
-    if (isPublicPath) return;
-    if (!isAdminAuthenticated()) {
-      router.replace("/admin/login");
-      return;
-    }
-    if (isAdminTokenExpiringSoon()) {
-      refreshAdminAccessToken().then((token) => {
-        if (!token) {
-          clearAdminTokens();
-          router.replace("/admin/login");
-        }
-      });
-    }
+    let active = true;
+    const runValidation = async () => {
+      if (isPublicPath) {
+        if (active) setAuthReady(true);
+        return;
+      }
+      if (!isAdminAuthenticated()) {
+        if (active) setAuthReady(false);
+        router.replace("/admin/login");
+        return;
+      }
+      if (active) setAuthReady(false);
+      const token = getAdminAccessToken();
+      if (!token) {
+        clearAdminTokens();
+        router.replace("/admin/login");
+        return;
+      }
+      try {
+        await adminApi("/admin/users?limit=1", { token });
+        if (!active) return;
+        setAuthReady(true);
+      } catch {
+        if (!active) return;
+        clearAdminTokens();
+        router.replace("/admin/login");
+      }
+    };
+    void runValidation();
+    return () => {
+      active = false;
+    };
   }, [isPublicPath, router]);
 
   useEffect(() => {
@@ -100,6 +120,14 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
 
   if (isPublicPath) {
     return <>{children}</>;
+  }
+
+  if (!authReady) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-background text-text-muted">
+        관리자 권한 확인 중...
+      </div>
+    );
   }
 
   return (

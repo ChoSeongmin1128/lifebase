@@ -17,6 +17,10 @@ type UserRepository interface {
 	UpdateStorageUsed(ctx context.Context, userID string, usedBytes int64) error
 }
 
+type AdminAccessRepository interface {
+	IsActiveAdmin(ctx context.Context, userID string) (bool, error)
+}
+
 type GoogleAccountRepository interface {
 	FindByGoogleID(ctx context.Context, googleID string) (*domain.GoogleAccount, error)
 	FindByID(ctx context.Context, userID, id string) (*domain.GoogleAccount, error)

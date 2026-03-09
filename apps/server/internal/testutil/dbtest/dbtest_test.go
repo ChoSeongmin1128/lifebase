@@ -23,8 +23,8 @@ type fakeT struct {
 	fatal   string
 }
 
-func (f *fakeT) Helper() {}
-func (f *fakeT) Skip(args ...any) { f.skipped = true }
+func (f *fakeT) Helper()                           {}
+func (f *fakeT) Skip(args ...any)                  { f.skipped = true }
 func (f *fakeT) Fatalf(format string, args ...any) { f.fatal = fmt.Sprintf(format, args...) }
 
 type fakeRows struct {
@@ -33,9 +33,9 @@ type fakeRows struct {
 	err         error
 }
 
-func (r *fakeRows) Close() {}
-func (r *fakeRows) Err() error { return r.err }
-func (r *fakeRows) CommandTag() pgconn.CommandTag { return pgconn.CommandTag{} }
+func (r *fakeRows) Close()                                       {}
+func (r *fakeRows) Err() error                                   { return r.err }
+func (r *fakeRows) CommandTag() pgconn.CommandTag                { return pgconn.CommandTag{} }
 func (r *fakeRows) FieldDescriptions() []pgconn.FieldDescription { return nil }
 func (r *fakeRows) Next() bool {
 	if len(r.nextResults) == 0 {
@@ -47,8 +47,8 @@ func (r *fakeRows) Next() bool {
 }
 func (r *fakeRows) Scan(dest ...any) error { return r.scanErr }
 func (r *fakeRows) Values() ([]any, error) { return nil, nil }
-func (r *fakeRows) RawValues() [][]byte { return nil }
-func (r *fakeRows) Conn() *pgx.Conn { return nil }
+func (r *fakeRows) RawValues() [][]byte    { return nil }
+func (r *fakeRows) Conn() *pgx.Conn        { return nil }
 
 func TestOpenPoolBranches(t *testing.T) {
 	db, skip, err := openPool(context.Background(), "")
@@ -56,13 +56,31 @@ func TestOpenPoolBranches(t *testing.T) {
 		t.Fatalf("expected skip branch, got db=%v skip=%v err=%v", db, skip, err)
 	}
 
+	if _, skip, err := openPool(context.Background(), "postgres://seongmin@localhost:5432/lifebase_dev?sslmode=disable"); err == nil || skip || !strings.Contains(err.Error(), "lifebase_test") {
+		t.Fatalf("expected non-test database refusal, got skip=%v err=%v", skip, err)
+	}
+
 	if _, skip, err := openPool(context.Background(), "://bad"); err == nil || skip {
 		t.Fatalf("expected invalid dsn error, got skip=%v err=%v", skip, err)
+	}
+
+	if _, skip, err := openPool(context.Background(), "postgres://seongmin@localhost:5432/lifebase_test?pool_max_conns=bad"); err == nil || skip {
+		t.Fatalf("expected open config error, got skip=%v err=%v", skip, err)
 	}
 
 	if _, skip, err := openPool(context.Background(), "postgres://seongmin@localhost:1/lifebase_test?sslmode=disable"); err == nil || skip {
 		t.Fatalf("expected ping/open error, got skip=%v err=%v", skip, err)
 	}
+
+	dsn := strings.TrimSpace(os.Getenv("LIFEBASE_TEST_DATABASE_URL"))
+	if dsn == "" {
+		t.Skip("requires LIFEBASE_TEST_DATABASE_URL for openPool success branch")
+	}
+	db, skip, err = openPool(context.Background(), dsn)
+	if err != nil || skip || db == nil {
+		t.Fatalf("expected openPool success, got db=%v skip=%v err=%v", db, skip, err)
+	}
+	db.Close()
 }
 
 func TestMigrationDirBranches(t *testing.T) {
@@ -83,6 +101,21 @@ func TestMigrationDirBranches(t *testing.T) {
 	}
 	if !strings.HasSuffix(filepath.ToSlash(dir), "apps/server/migrations") {
 		t.Fatalf("unexpected migration dir: %s", dir)
+	}
+}
+
+func TestValidateTestDSNAndDatabaseNameFromDSN(t *testing.T) {
+	if err := validateTestDSN("postgres://seongmin@localhost:5432/lifebase_test?sslmode=disable"); err != nil {
+		t.Fatalf("expected lifebase_test to pass, got %v", err)
+	}
+	if err := validateTestDSN("postgres://seongmin@localhost:5432/lifebase_dev?sslmode=disable"); err == nil || !strings.Contains(err.Error(), "lifebase_test") {
+		t.Fatalf("expected lifebase_test enforcement error, got %v", err)
+	}
+	if err := validateTestDSN("://bad"); err == nil || !strings.Contains(err.Error(), "parse test db dsn") {
+		t.Fatalf("expected parse error, got %v", err)
+	}
+	if _, err := databaseNameFromDSN("postgres://seongmin@localhost:5432/?sslmode=disable"); err == nil || !strings.Contains(err.Error(), "database name is empty") {
+		t.Fatalf("expected empty database name error, got %v", err)
 	}
 }
 
@@ -749,8 +782,8 @@ func TestApplyMigrationsWithInjectedHooks(t *testing.T) {
 			t.Fatalf("mkdir migrations: %v", err)
 		}
 		files := map[string]string{
-			"001_first.sql": "-- +goose Up\nSELECT 1;\n-- +goose Down\nSELECT 2;",
-			"002_empty.sql": "-- +goose Up\n-- +goose NO TRANSACTION\n\n-- +goose Down\nSELECT 2;",
+			"001_first.sql":  "-- +goose Up\nSELECT 1;\n-- +goose Down\nSELECT 2;",
+			"002_empty.sql":  "-- +goose Up\n-- +goose NO TRANSACTION\n\n-- +goose Down\nSELECT 2;",
 			"003_second.sql": "-- +goose Up\nSELECT 3;\n-- +goose Down\nSELECT 4;",
 		}
 		for name, body := range files {

@@ -134,6 +134,15 @@ func (m *mockRefreshRepo) DeleteByHash(_ context.Context, tokenHash string) erro
 }
 func (m *mockRefreshRepo) DeleteExpired(context.Context) error { return nil }
 
+type mockAdminAccessRepo struct {
+	ok  bool
+	err error
+}
+
+func (m *mockAdminAccessRepo) IsActiveAdmin(context.Context, string) (bool, error) {
+	return m.ok, m.err
+}
+
 type mockGoogleAuthClient struct {
 	url           string
 	exchangeToken *portout.OAuthToken
@@ -249,6 +258,7 @@ func baseUC() *authUseCase {
 			RefreshExpiry: 24 * time.Hour,
 		},
 		users:         &mockUserRepo{},
+		admins:        &mockAdminAccessRepo{ok: true},
 		googleAccts:   &mockGoogleAccountRepo{},
 		refreshTokens: &mockRefreshRepo{},
 		googleAuth:    &mockGoogleAuthClient{url: "https://auth/"},
@@ -597,6 +607,7 @@ func TestAuthUseCaseAdditionalBranches(t *testing.T) {
 	constructed := NewAuthUseCase(
 		uc.jwt,
 		uc.users,
+		uc.admins,
 		uc.googleAccts,
 		uc.refreshTokens,
 		uc.googleAuth,
@@ -615,6 +626,25 @@ func TestAuthUseCaseAdditionalBranches(t *testing.T) {
 	if _, err := uc.HandleCallback(context.Background(), "code"); err != nil {
 		t.Fatalf("HandleCallback wrapper failed: %v", err)
 	}
+
+	admins := uc.admins.(*mockAdminAccessRepo)
+	admins.ok = false
+	if _, err := uc.HandleCallbackForApp(context.Background(), "code", "admin"); !errors.Is(err, portin.ErrAdminAccessDenied) {
+		t.Fatalf("expected admin access denied, got %v", err)
+	}
+	admins.ok = true
+	users.findByEmailUser = nil
+	users.findByEmailErr = errors.New("not found")
+	if _, err := uc.HandleCallbackForApp(context.Background(), "code", "admin"); !errors.Is(err, portin.ErrAdminAccessDenied) {
+		t.Fatalf("expected admin access denied when user missing, got %v", err)
+	}
+	users.findByEmailErr = nil
+	users.findByEmailUser = &domain.User{ID: "u-admin", Email: "x@y.com", Name: "Name"}
+	admins.err = errors.New("admin lookup failed")
+	if _, err := uc.HandleCallbackForApp(context.Background(), "code", "admin"); !errors.Is(err, portin.ErrAdminAccessCheckFailed) {
+		t.Fatalf("expected admin access check failure, got %v", err)
+	}
+	admins.err = nil
 
 	auth.exchangeErr = errors.New("exchange failed")
 	if err := uc.LinkGoogleAccount(context.Background(), "u1", "code", "web"); err == nil {
@@ -694,6 +724,58 @@ func TestAuthUseCaseAdditionalBranches(t *testing.T) {
 	}); err == nil {
 		t.Fatal("expected upsert list accounts error")
 	}
+}
+
+func TestEnsureAdminLoginAllowed(t *testing.T) {
+	ctx := context.Background()
+	userInfo := &portout.OAuthUserInfo{Email: "admin@example.com"}
+
+	t.Run("non_admin_app_bypasses_check", func(t *testing.T) {
+		uc := baseUC()
+		if err := uc.ensureAdminLoginAllowed(ctx, "web", userInfo); err != nil {
+			t.Fatalf("expected non-admin app to bypass check, got %v", err)
+		}
+	})
+
+	t.Run("missing_admin_repository", func(t *testing.T) {
+		uc := baseUC()
+		uc.admins = nil
+		if err := uc.ensureAdminLoginAllowed(ctx, "admin", userInfo); !errors.Is(err, portin.ErrAdminAccessCheckFailed) {
+			t.Fatalf("expected admin access check failed, got %v", err)
+		}
+	})
+
+	t.Run("missing_user_without_repo_error", func(t *testing.T) {
+		uc := baseUC()
+		users := uc.users.(*mockUserRepo)
+		users.findByEmailUser = nil
+		users.findByEmailErr = nil
+		if err := uc.ensureAdminLoginAllowed(ctx, "admin", userInfo); !errors.Is(err, portin.ErrAdminAccessDenied) {
+			t.Fatalf("expected admin access denied, got %v", err)
+		}
+	})
+
+	t.Run("existing_admin_passes", func(t *testing.T) {
+		uc := baseUC()
+		users := uc.users.(*mockUserRepo)
+		admins := uc.admins.(*mockAdminAccessRepo)
+		users.findByEmailUser = &domain.User{ID: "u-admin", Email: userInfo.Email}
+		admins.ok = true
+		if err := uc.ensureAdminLoginAllowed(ctx, "admin", userInfo); err != nil {
+			t.Fatalf("expected admin access allowed, got %v", err)
+		}
+	})
+
+	t.Run("existing_non_admin_is_denied", func(t *testing.T) {
+		uc := baseUC()
+		users := uc.users.(*mockUserRepo)
+		admins := uc.admins.(*mockAdminAccessRepo)
+		users.findByEmailUser = &domain.User{ID: "u-admin", Email: userInfo.Email}
+		admins.ok = false
+		if err := uc.ensureAdminLoginAllowed(ctx, "admin", userInfo); !errors.Is(err, portin.ErrAdminAccessDenied) {
+			t.Fatalf("expected admin access denied, got %v", err)
+		}
+	})
 }
 
 type errorReader struct{}

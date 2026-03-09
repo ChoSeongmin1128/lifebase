@@ -23,7 +23,16 @@ function CallbackContent() {
         setAdminTokens(data.access_token, data.refresh_token);
         router.replace("/admin");
       } catch (e) {
-        setError(e instanceof Error ? e.message : "관리자 로그인에 실패했습니다.");
+        const message = e instanceof Error ? e.message : "관리자 로그인에 실패했습니다.";
+        if (message === "admin access denied") {
+          setError("관리자 계정이 아닙니다.");
+          return;
+        }
+        if (message === "admin check failed") {
+          setError("관리자 권한 확인에 실패했습니다.");
+          return;
+        }
+        setError(message);
       } finally {
         sessionStorage.removeItem("oauth_state_admin");
       }

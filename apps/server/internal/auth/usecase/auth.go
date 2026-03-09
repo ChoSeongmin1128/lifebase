@@ -32,6 +32,7 @@ const defaultStorageQuotaBytes int64 = 1 << 40 // 1TB
 type authUseCase struct {
 	jwt             JWTOptions
 	users           portout.UserRepository
+	admins          portout.AdminAccessRepository
 	googleAccts     portout.GoogleAccountRepository
 	refreshTokens   portout.RefreshTokenRepository
 	googleAuth      portout.GoogleAuthClient
@@ -44,6 +45,7 @@ type authUseCase struct {
 func NewAuthUseCase(
 	jwt JWTOptions,
 	users portout.UserRepository,
+	admins portout.AdminAccessRepository,
 	googleAccts portout.GoogleAccountRepository,
 	refreshTokens portout.RefreshTokenRepository,
 	googleAuth portout.GoogleAuthClient,
@@ -55,6 +57,7 @@ func NewAuthUseCase(
 	return &authUseCase{
 		jwt:             jwt,
 		users:           users,
+		admins:          admins,
 		googleAccts:     googleAccts,
 		refreshTokens:   refreshTokens,
 		googleAuth:      googleAuth,
@@ -88,6 +91,10 @@ func (uc *authUseCase) HandleCallbackForApp(ctx context.Context, code, app strin
 		return nil, fmt.Errorf("fetch user info: %w", err)
 	}
 
+	if err := uc.ensureAdminLoginAllowed(ctx, app, userInfo); err != nil {
+		return nil, err
+	}
+
 	user, err := uc.findOrCreateUser(ctx, userInfo)
 	if err != nil {
 		return nil, fmt.Errorf("find or create user: %w", err)
@@ -103,6 +110,29 @@ func (uc *authUseCase) HandleCallbackForApp(ctx context.Context, code, app strin
 	})
 
 	return uc.issueTokens(ctx, user.ID)
+}
+
+func (uc *authUseCase) ensureAdminLoginAllowed(ctx context.Context, app string, userInfo *portout.OAuthUserInfo) error {
+	if app != "admin" {
+		return nil
+	}
+	if uc.admins == nil {
+		return fmt.Errorf("%w: admin repository is not configured", portin.ErrAdminAccessCheckFailed)
+	}
+
+	user, err := uc.users.FindByEmail(ctx, userInfo.Email)
+	if err != nil || user == nil {
+		return portin.ErrAdminAccessDenied
+	}
+
+	ok, err := uc.admins.IsActiveAdmin(ctx, user.ID)
+	if err != nil {
+		return fmt.Errorf("%w: %v", portin.ErrAdminAccessCheckFailed, err)
+	}
+	if !ok {
+		return portin.ErrAdminAccessDenied
+	}
+	return nil
 }
 
 func (uc *authUseCase) ListGoogleAccounts(ctx context.Context, userID string) ([]portin.GoogleAccountSummary, error) {

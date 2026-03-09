@@ -43,7 +43,9 @@ func (m *mockAuthUC) HandleCallbackForApp(context.Context, string, string) (*por
 func (m *mockAuthUC) ListGoogleAccounts(context.Context, string) ([]portin.GoogleAccountSummary, error) {
 	return m.accounts, m.accountsErr
 }
-func (m *mockAuthUC) LinkGoogleAccount(context.Context, string, string, string) error { return m.linkErr }
+func (m *mockAuthUC) LinkGoogleAccount(context.Context, string, string, string) error {
+	return m.linkErr
+}
 func (m *mockAuthUC) SyncGoogleAccount(context.Context, string, string, portin.SyncGoogleAccountInput) error {
 	return m.syncErr
 }
@@ -130,6 +132,20 @@ func TestAuthHandlerHandleCallback(t *testing.T) {
 	h.HandleCallback(rec, authReq(http.MethodPost, "/auth/callback", `{"code":"ok","app":"admin"}`))
 	if rec.Code != http.StatusUnauthorized {
 		t.Fatalf("expected 401, got %d", rec.Code)
+	}
+
+	uc.callbackErr = portin.ErrAdminAccessDenied
+	rec = httptest.NewRecorder()
+	h.HandleCallback(rec, authReq(http.MethodPost, "/auth/callback", `{"code":"ok","app":"admin"}`))
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("expected 403, got %d", rec.Code)
+	}
+
+	uc.callbackErr = portin.ErrAdminAccessCheckFailed
+	rec = httptest.NewRecorder()
+	h.HandleCallback(rec, authReq(http.MethodPost, "/auth/callback", `{"code":"ok","app":"admin"}`))
+	if rec.Code != http.StatusInternalServerError {
+		t.Fatalf("expected 500, got %d", rec.Code)
 	}
 }
 

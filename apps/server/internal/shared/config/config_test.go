@@ -267,3 +267,16 @@ func TestLoadInvalidNumericAndDurationFallbackToZero(t *testing.T) {
 		t.Fatalf("expected zero refresh expiry, got %s", cfg.JWT.RefreshExpiry)
 	}
 }
+
+func TestLoadDatabaseDefaultUsesDevelopmentDatabase(t *testing.T) {
+	t.Setenv("DATABASE_URL", "")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("load config: %v", err)
+	}
+
+	if cfg.Database.URL != "postgres://seongmin@localhost:5432/lifebase_dev?sslmode=disable" {
+		t.Fatalf("expected development database fallback, got %q", cfg.Database.URL)
+	}
+}

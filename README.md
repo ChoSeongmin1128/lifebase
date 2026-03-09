@@ -179,7 +179,7 @@ npx expo start
 - Web Cloud 파일/폴더 삭제는 우측 하단 Undo 토스트 5초를 제공하고, 시간 경과 후 휴지통 이동을 확정한다
 - 폴더 삭제/복원/휴지통 비우기는 하위 폴더·파일까지 재귀로 함께 처리하고, 휴지통에서도 폴더 내부를 탐색할 수 있다
 - Web/Desktop Cloud는 `cmd/ctrl+a`로 현재 보이는 항목 전체 선택을 지원하고, 클립보드는 다중 파일 `copy/cut/paste`, `Esc` 선택/클립보드 해제를 지원한다
-- Web Cloud `새 파일` 기본 확장자는 `txt`를 사용하고, 필요할 때만 `md`로 바꿔 생성한다
+- Web Cloud `새 파일` 기본 확장자는 `txt`를 사용하고, 확장자 토글도 `.txt`를 먼저 보여준 뒤 필요할 때만 `md`로 바꿔 생성한다
 - 파일 검색 (pg_trgm)
 - 정렬: 이름/크기/수정일/생성일
 - Web/Mobile 공통 파일 타입 아이콘 색상 토큰 적용
@@ -238,6 +238,7 @@ npx expo start
 
 ### Admin
 - 관리자 전용 OAuth 로그인 (`/admin/auth/callback`)
+- `app=admin` 로그인은 `admin_users.is_active=true` 계정에만 토큰 발급
 - 사용자 목록/상세 조회, 스토리지 사용량 재계산/초기화
 - 사용자 할당량 수정 (숫자 + 단위 입력, B/KB/MB/GB/TB 표시)
 - Google 계정 상태 제어 (정상/재인증 필요/해지)
@@ -271,6 +272,28 @@ LIFEBASE_TEST_DATABASE_URL='postgres://<user>@localhost:5432/lifebase_test?sslmo
 go test -p 1 ./... -coverprofile=/tmp/lifebase-cover.out
 go tool cover -func=/tmp/lifebase-cover.out | tail -n 1
 ```
+
+DB 분리 기준:
+- 개발 서버: `DATABASE_URL=postgres://<user>@localhost:5432/lifebase_dev?sslmode=disable`
+- 테스트 전용: `LIFEBASE_TEST_DATABASE_URL=postgres://<user>@localhost:5432/lifebase_test?sslmode=disable`
+- `apps/server/internal/testutil/dbtest`는 `lifebase_test`가 아닌 DB를 테스트 대상으로 거부
+
+DB 백업/복구:
+```bash
+cd apps/server
+DATABASE_URL='postgres://<user>@localhost:5432/lifebase?sslmode=disable' pnpm backup:db
+bash ../../scripts/backup-db.sh
+pnpm restore:db -- --file /Volumes/WDRedPlus/LifeBase/backups/manual/<backup-file>.dump
+```
+
+- 수동 백업 기본 경로: `/Volumes/WDRedPlus/LifeBase/backups/manual`
+- 자동 백업 경로: `/Volumes/WDRedPlus/LifeBase/backups/{hourly,daily,weekly}`
+- 자동 백업 보관: `hourly 14개`, `daily 14개`, `weekly 8개`
+- 자동 백업은 운영 DB `lifebase`만 대상으로 하고, `scripts/backup-db.sh`가 `SERVER_ENV=production` 기준으로 실행
+- 자동 백업/최근 백업 체크를 실제 운영에서 돌릴 때는 placeholder `.env.production.local` 대신 실제 `DATABASE_URL=.../lifebase`를 process env 또는 실제 운영 env 파일로 주입해야 한다
+- `scripts/check-recent-db-backup.sh`는 운영 DB 대상 파괴적 작업 전에 최근 6시간 이내 백업이 없으면 실패
+- 복구는 `pg_restore --clean --if-exists` 기반이므로 대상 DB를 덮어쓴다
+- macOS 자동화는 `resources/launchd/cc.lifebase.db-backup.plist`를 `~/Library/LaunchAgents/`로 복사해 `launchctl load`로 등록한다
 
 백엔드 테스트 정책:
 - 백엔드 변경은 항상 TDD(`Fail -> Pass -> Refactor`)로 진행

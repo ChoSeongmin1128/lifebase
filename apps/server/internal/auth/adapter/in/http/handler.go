@@ -2,6 +2,7 @@ package http
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
@@ -73,6 +74,14 @@ func (h *AuthHandler) HandleCallback(w http.ResponseWriter, r *http.Request) {
 
 	result, err := h.auth.HandleCallbackForApp(r.Context(), req.Code, app)
 	if err != nil {
+		if errors.Is(err, portin.ErrAdminAccessDenied) {
+			response.Error(w, http.StatusForbidden, "ADMIN_FORBIDDEN", "admin access denied")
+			return
+		}
+		if errors.Is(err, portin.ErrAdminAccessCheckFailed) {
+			response.Error(w, http.StatusInternalServerError, "ADMIN_CHECK_FAILED", "admin check failed")
+			return
+		}
 		response.Error(w, http.StatusUnauthorized, "AUTH_FAILED", "authentication failed")
 		return
 	}

@@ -1594,18 +1594,18 @@ function CloudPageInner() {
           />
           <div className="flex items-center gap-1">
             <Button
-              variant={newFileExtension === "md" ? "secondary" : "ghost"}
-              size="sm"
-              onClick={() => setNewFileExtension("md")}
-            >
-              .md
-            </Button>
-            <Button
               variant={newFileExtension === "txt" ? "secondary" : "ghost"}
               size="sm"
               onClick={() => setNewFileExtension("txt")}
             >
               .txt
+            </Button>
+            <Button
+              variant={newFileExtension === "md" ? "secondary" : "ghost"}
+              size="sm"
+              onClick={() => setNewFileExtension("md")}
+            >
+              .md
             </Button>
           </div>
           <Button size="sm" disabled={creatingFile} onClick={handleCreateFile}>

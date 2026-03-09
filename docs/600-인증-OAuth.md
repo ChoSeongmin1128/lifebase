@@ -71,6 +71,7 @@
   - `web` → `${WEB_URL}/auth/callback`
   - `admin` → `${ADMIN_URL}/admin/auth/callback`
 - Google OAuth 콘솔 Authorized redirect URI에 위 두 경로를 모두 등록해야 한다.
+- `app=admin` 콜백은 Google 인증 성공만으로 완료되지 않는다. 서버는 기존 사용자와 `admin_users.is_active=true` 권한을 함께 확인한 뒤에만 admin 토큰을 발급한다.
 
 ## 사용자 격리 원칙
 - 사용자 간 정보가 완전히 격리되어야 한다

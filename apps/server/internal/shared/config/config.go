@@ -85,7 +85,7 @@ func Load() (*Config, error) {
 			APIOrigin:   getEnv("API_URL", "http://localhost:38117"),
 		},
 		Database: DatabaseConfig{
-			URL: getEnv("DATABASE_URL", "postgres://seongmin@localhost:5432/lifebase?sslmode=disable"),
+			URL: getEnv("DATABASE_URL", "postgres://seongmin@localhost:5432/lifebase_dev?sslmode=disable"),
 		},
 		Redis: RedisConfig{
 			URL: getEnv("REDIS_URL", "redis://localhost:6379"),

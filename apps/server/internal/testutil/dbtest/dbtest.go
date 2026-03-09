@@ -3,6 +3,7 @@ package dbtest
 import (
 	"context"
 	"fmt"
+	"net/url"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -16,14 +17,14 @@ import (
 )
 
 var (
-	migrateOnce sync.Once
-	migrateErr  error
-	readDirFn   = os.ReadDir
-	readFileFn  = os.ReadFile
-	callerFn    = runtime.Caller
-	openPoolFn  = openPool
-	resetTablesFn = resetTables
-	applyMigrationsFn = applyMigrations
+	migrateOnce        sync.Once
+	migrateErr         error
+	readDirFn          = os.ReadDir
+	readFileFn         = os.ReadFile
+	callerFn           = runtime.Caller
+	openPoolFn         = openPool
+	resetTablesFn      = resetTables
+	applyMigrationsFn  = applyMigrations
 	usersTableExistsFn = func(ctx context.Context, db *pgxpool.Pool) (bool, error) {
 		var usersTableExists bool
 		err := db.QueryRow(ctx,
@@ -93,6 +94,9 @@ func openPool(ctx context.Context, dsn string) (*pgxpool.Pool, bool, error) {
 	if dsn == "" {
 		return nil, true, nil
 	}
+	if err := validateTestDSN(dsn); err != nil {
+		return nil, false, err
+	}
 	timeoutCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 
@@ -105,6 +109,29 @@ func openPool(ctx context.Context, dsn string) (*pgxpool.Pool, bool, error) {
 		return nil, false, fmt.Errorf("ping test db: %w", err)
 	}
 	return db, false, nil
+}
+
+func validateTestDSN(dsn string) error {
+	dbName, err := databaseNameFromDSN(dsn)
+	if err != nil {
+		return fmt.Errorf("parse test db dsn: %w", err)
+	}
+	if dbName != "lifebase_test" {
+		return fmt.Errorf("refusing to use non-test database %q; LIFEBASE_TEST_DATABASE_URL must point to lifebase_test", dbName)
+	}
+	return nil
+}
+
+func databaseNameFromDSN(dsn string) (string, error) {
+	parsed, err := url.Parse(dsn)
+	if err != nil {
+		return "", err
+	}
+	name := strings.TrimPrefix(parsed.Path, "/")
+	if name == "" {
+		return "", fmt.Errorf("database name is empty")
+	}
+	return name, nil
 }
 
 func resetTables(ctx context.Context, db *pgxpool.Pool) error {

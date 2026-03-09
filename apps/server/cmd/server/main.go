@@ -64,13 +64,13 @@ var (
 	googlePushOutboxInterval  = 5 * time.Second
 	holidayRefreshInterval    = 3 * time.Hour
 	holidayRefreshStartupWait = 15 * time.Second
-	loadConfig               = config.Load
-	newDBPool                = pgxpool.New
-	pingDBPool               = func(ctx context.Context, pool *pgxpool.Pool) error { return pool.Ping(ctx) }
-	closeDBPool              = func(pool *pgxpool.Pool) { pool.Close() }
-	listenAndServeHTTPServer = func(srv *http.Server) error { return srv.ListenAndServe() }
-	shutdownHTTPServer       = func(srv *http.Server, ctx context.Context) error { return srv.Shutdown(ctx) }
-	exitProcess              = os.Exit
+	loadConfig                = config.Load
+	newDBPool                 = pgxpool.New
+	pingDBPool                = func(ctx context.Context, pool *pgxpool.Pool) error { return pool.Ping(ctx) }
+	closeDBPool               = func(pool *pgxpool.Pool) { pool.Close() }
+	listenAndServeHTTPServer  = func(srv *http.Server) error { return srv.ListenAndServe() }
+	shutdownHTTPServer        = func(srv *http.Server, ctx context.Context) error { return srv.Shutdown(ctx) }
+	exitProcess               = os.Exit
 )
 
 func main() {
@@ -162,6 +162,7 @@ func main() {
 			RefreshExpiry: cfg.JWT.RefreshExpiry,
 		},
 		userRepo,
+		adminRepo,
 		googleAccountRepo,
 		refreshTokenRepo,
 		authOAuthClient,
