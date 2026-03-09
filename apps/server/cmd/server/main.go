@@ -293,6 +293,7 @@ func main() {
 				r.Patch("/files/{fileID}/rename", cloudHandler.RenameFile)
 				r.Patch("/files/{fileID}/move", cloudHandler.MoveFile)
 				r.Patch("/files/{fileID}/copy", cloudHandler.CopyFile)
+				r.Delete("/files/{fileID}/discard", cloudHandler.DiscardFile)
 				r.Delete("/files/{fileID}", cloudHandler.DeleteFile)
 
 				// Trash

@@ -68,11 +68,16 @@ interface CloudClipboardItem {
   itemType: ClipboardItemType;
   itemID: string;
   itemName: string;
+  parentFolderID: string | null;
 }
 interface CloudClipboard {
   mode: ClipboardMode;
   items: CloudClipboardItem[];
   summary: string;
+}
+interface ClipboardApplySuccess {
+  item: CloudClipboardItem;
+  copiedFile?: CloudFile;
 }
 interface CloudDragItem {
   itemType: ClipboardItemType;
@@ -101,6 +106,7 @@ const TRASH_ROOT_PATH_ENTRY: CloudPathEntry = { id: null, name: "휴지통" };
 const DELETE_UNDO_WINDOW_MS = 5_000;
 const cloudPathCache = new Map<string, CloudPathEntry[]>();
 const cloudFolderCache = new Map<string, FolderData>();
+let cloudClipboardCache: CloudClipboard | null = null;
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 const getCloudLocationKey = (section: CloudSection, folderId: string | null) => `${section}:${folderId || "root"}`;
@@ -197,7 +203,7 @@ function CloudPageInner() {
   const [draggingItem, setDraggingItem] = useState<CloudDragItem | null>(null);
   const [dropTargetFolderId, setDropTargetFolderId] = useState<string | null>(null);
   const [movingItemKey, setMovingItemKey] = useState<string | null>(null);
-  const [clipboard, setClipboard] = useState<CloudClipboard | null>(null);
+  const [clipboard, setClipboard] = useState<CloudClipboard | null>(() => cloudClipboardCache);
   const [clipboardBusy, setClipboardBusy] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [viewMode, setViewMode] = useState<ViewMode>("list");
@@ -525,6 +531,10 @@ function CloudPageInner() {
   }, [buildCloudHref, hasLegacyFolderQuery, folderQuery, quickAction, router]);
 
   useEffect(() => {
+    cloudClipboardCache = clipboard;
+  }, [clipboard]);
+
+  useEffect(() => {
     if (!isMyFilesSection && !isTrashSection) {
       return;
     }
@@ -615,6 +625,12 @@ function CloudPageInner() {
     const lowerName = file.name.toLowerCase();
     if (lowerName.endsWith(".md") || lowerName.endsWith(".txt")) return true;
     return file.mime_type.startsWith("text/");
+  };
+
+  const handleItemOpen = (item: FolderItem) => {
+    if ((isMyFilesSection || isTrashSection) && item.type === "folder" && item.folder) {
+      navigateToFolder(item.folder);
+    }
   };
 
   const openTextEditor = async (file: CloudFile) => {
@@ -976,6 +992,15 @@ function CloudPageInner() {
     };
   };
 
+  const getDragItemsFromSelection = (dragItem: CloudDragItem) => {
+    if (!selectedIds.has(dragItem.itemID)) return [dragItem];
+
+    const selectedItems = getSelectedItems();
+    if (selectedItems.length <= 1) return [dragItem];
+
+    return selectedItems.map((item) => getDragItemFromRow(item));
+  };
+
   const parseDraggedItem = (raw: string): CloudDragItem | null => {
     if (!raw) return null;
     try {
@@ -1009,31 +1034,80 @@ function CloudPageInner() {
     return true;
   };
 
+  const getDroppableDragItems = (dragItem: CloudDragItem, folderId: string) => {
+    const candidates = getDragItemsFromSelection(dragItem);
+    const seen = new Set<string>();
+    const movable: CloudDragItem[] = [];
+
+    for (const candidate of candidates) {
+      const key = `${candidate.itemType}:${candidate.itemID}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      if (canDropToFolder(candidate, folderId)) {
+        movable.push(candidate);
+      }
+    }
+
+    return { candidates, movable };
+  };
+
   const isUploadDragEvent = (e: React.DragEvent) => Array.from(e.dataTransfer.types).includes("Files");
 
   const handleMoveItemToFolder = async (dragItem: CloudDragItem, folderId: string) => {
     if (!authed || !isMyFilesSection || movingItemKey) return;
-    if (!canDropToFolder(dragItem, folderId)) return;
+    const { candidates, movable } = getDroppableDragItems(dragItem, folderId);
+    if (movable.length === 0) return;
 
-    setMovingItemKey(`${dragItem.itemType}:${dragItem.itemID}`);
+    setMovingItemKey(`move:${folderId}`);
     try {
-      if (dragItem.itemType === "file") {
-        await cloud.moveFile(dragItem.itemID, folderId);
-      } else {
-        await cloud.moveFolder(dragItem.itemID, folderId);
+      const results = await Promise.allSettled(
+        movable.map((item) => (
+          item.itemType === "file"
+            ? cloud.moveFile(item.itemID, folderId)
+            : cloud.moveFolder(item.itemID, folderId)
+        )),
+      );
+
+      const movedItemIDs = new Set<string>();
+      const failedCount = results.reduce((count, result, index) => {
+        if (result.status === "fulfilled") {
+          movedItemIDs.add(movable[index].itemID);
+          return count;
+        }
+        return count + 1;
+      }, 0);
+
+      if (movedItemIDs.size > 0) {
+        setSelectedIds((prev) => {
+          let changed = false;
+          const next = new Set(prev);
+          for (const itemID of movedItemIDs) {
+            if (next.delete(itemID)) {
+              changed = true;
+            }
+          }
+          return changed ? next : prev;
+        });
+        await loadItems();
       }
-      setSelectedIds((prev) => {
-        if (!prev.has(dragItem.itemID)) return prev;
-        const next = new Set(prev);
-        next.delete(dragItem.itemID);
-        return next;
-      });
-      await loadItems();
-    } catch (err) {
-      const prefix = dragItem.itemType === "folder" ? "폴더 이동에 실패했습니다" : "파일 이동에 실패했습니다";
-      console.error(prefix, err);
-      const msg = err instanceof Error ? err.message : "알 수 없는 오류";
-      toast.error(prefix, msg);
+
+      if (failedCount > 0) {
+        if (movable.length === 1 && candidates.length === 1) {
+          const prefix = dragItem.itemType === "folder" ? "폴더 이동에 실패했습니다" : "파일 이동에 실패했습니다";
+          const failure = results[0];
+          const reason = failure.status === "rejected" ? failure.reason : null;
+          console.error(prefix, reason);
+          toast.error(prefix, reason instanceof Error ? reason.message : "알 수 없는 오류");
+        } else {
+          console.error("Cloud move failed", results);
+          toast.warning("일부 항목 이동 실패", `${failedCount}개 항목을 처리하지 못했습니다.`);
+        }
+      }
+
+      const skippedCount = candidates.length - movable.length;
+      if (skippedCount > 0) {
+        toast.warning("일부 항목 이동 건너뜀", `${skippedCount}개 항목은 같은 폴더 또는 자기 자신 폴더로 이동할 수 없습니다.`);
+      }
     } finally {
       setMovingItemKey(null);
     }
@@ -1043,7 +1117,7 @@ function CloudPageInner() {
     if (!isMyFilesSection || movingItemKey) return;
     const dragItem = getDraggedItem(e);
     if (!dragItem) return;
-    if (!canDropToFolder(dragItem, folderId)) return;
+    if (getDroppableDragItems(dragItem, folderId).movable.length === 0) return;
 
     e.preventDefault();
     e.stopPropagation();
@@ -1084,12 +1158,14 @@ function CloudPageInner() {
         itemType: "folder",
         itemID: item.folder!.id,
         itemName: item.folder!.name,
+        parentFolderID: item.folder!.parent_id,
       };
     }
     return {
       itemType: "file",
       itemID: item.file!.id,
       itemName: item.file!.name,
+      parentFolderID: item.file!.folder_id,
     };
   }, []);
 
@@ -1112,24 +1188,63 @@ function CloudPageInner() {
     setClipboardFromItems(mode, [item]);
   }, [setClipboardFromItems]);
 
+  const undoClipboardApply = useCallback(async (mode: ClipboardMode, applied: ClipboardApplySuccess[]) => {
+    if (applied.length === 0) return;
+
+    const results = await Promise.allSettled(
+      applied.map((entry) => {
+        if (mode === "copy") {
+          return cloud.discardFile(entry.copiedFile!.id);
+        }
+        return entry.item.itemType === "file"
+          ? cloud.moveFile(entry.item.itemID, entry.item.parentFolderID)
+          : cloud.moveFolder(entry.item.itemID, entry.item.parentFolderID);
+      }),
+    );
+
+    const failedCount = results.filter((result) => result.status === "rejected").length;
+    await refreshVisibleItems();
+
+    if (failedCount > 0) {
+      toast.warning(
+        mode === "copy" ? "일부 복사 취소 실패" : "일부 이동 취소 실패",
+        `${failedCount}개 항목을 되돌리지 못했습니다.`,
+      );
+      return;
+    }
+
+    toast.success(mode === "copy"
+      ? (applied.length === 1 ? "복사 취소됨" : `파일 ${applied.length}개 복사 취소됨`)
+      : (applied.length === 1 ? "이동 취소됨" : `항목 ${applied.length}개 이동 취소됨`));
+  }, [cloud, refreshVisibleItems, toast]);
+
   const applyClipboardToFolder = useCallback(async (targetFolderID: string | null) => {
     if (!authed || !isMyFilesSection || !clipboard || clipboardBusy) return;
 
     setClipboardBusy(true);
     try {
       const results = await Promise.allSettled(
-        clipboard.items.map((item) => {
+        clipboard.items.map(async (item) => {
           if (item.itemType === "file") {
-            return clipboard.mode === "copy"
-              ? cloud.copyFile(item.itemID, targetFolderID)
-              : cloud.moveFile(item.itemID, targetFolderID);
+            if (clipboard.mode === "copy") {
+              const copiedFile = await cloud.copyFile(item.itemID, targetFolderID);
+              return { item, copiedFile };
+            }
+            await cloud.moveFile(item.itemID, targetFolderID);
+            return { item } satisfies ClipboardApplySuccess;
           }
-          return clipboard.mode === "copy"
-            ? cloud.copyFolder(item.itemID, targetFolderID)
-            : cloud.moveFolder(item.itemID, targetFolderID);
+          if (clipboard.mode === "copy") {
+            await cloud.copyFolder(item.itemID, targetFolderID);
+            return { item } satisfies ClipboardApplySuccess;
+          }
+          await cloud.moveFolder(item.itemID, targetFolderID);
+          return { item } satisfies ClipboardApplySuccess;
         }),
       );
 
+      const applied = results.flatMap((result) => (
+        result.status === "fulfilled" ? [result.value] : []
+      ));
       const failedItems = clipboard.items.filter((_, index) => results[index].status === "rejected");
       if (clipboard.mode === "cut") {
         if (failedItems.length === 0) {
@@ -1148,10 +1263,24 @@ function CloudPageInner() {
       }
 
       await loadItems();
+
+      if (applied.length > 0) {
+        toast.show({
+          variant: "warning",
+          title: clipboard.mode === "copy"
+            ? (applied.length === 1 ? "파일 복사됨" : `파일 ${applied.length}개 복사됨`)
+            : (applied.length === 1 ? "항목 이동됨" : `항목 ${applied.length}개 이동됨`),
+          duration: DELETE_UNDO_WINDOW_MS,
+          actionLabel: "실행 취소",
+          onAction: () => {
+            void undoClipboardApply(clipboard.mode, applied);
+          },
+        });
+      }
     } finally {
       setClipboardBusy(false);
     }
-  }, [authed, clipboard, clipboardBusy, cloud, isMyFilesSection, loadItems, toast]);
+  }, [authed, clipboard, clipboardBusy, cloud, isMyFilesSection, loadItems, toast, undoClipboardApply]);
 
   const getSelectedItems = useCallback(() => {
     if (!isMyFilesSection || selectedIds.size === 0) return [];
@@ -1163,6 +1292,18 @@ function CloudPageInner() {
       return !!id && selectedIds.has(id);
     });
   }, [isMyFilesSection, items, searchResults, selectedIds]);
+
+  const handleBulkCopy = useCallback(() => {
+    const selectedItems = getSelectedItems();
+    if (selectedItems.length === 0) return;
+    setClipboardFromItems("copy", selectedItems);
+  }, [getSelectedItems, setClipboardFromItems]);
+
+  const handleBulkMove = useCallback(() => {
+    const selectedItems = getSelectedItems();
+    if (selectedItems.length === 0) return;
+    setClipboardFromItems("cut", selectedItems);
+  }, [getSelectedItems, setClipboardFromItems]);
 
   const isClipboardCutItem = useCallback((itemType: ClipboardItemType, itemID: string) => {
     if (clipboard?.mode !== "cut") return false;
@@ -1655,6 +1796,8 @@ function CloudPageInner() {
           {isMyFilesSection && (
             <BulkActionBar
               count={selectedIds.size}
+              onCopy={handleBulkCopy}
+              onMove={handleBulkMove}
               onDownload={handleBulkDownload}
               onDelete={handleBulkDelete}
               onClear={() => setSelectedIds(new Set())}
@@ -1771,8 +1914,10 @@ function CloudPageInner() {
                 const isSelected = selectedIds.has(id);
                 const recentPath = isRecentSection && item.type === "file" ? formatRecentFilePath(item) : "";
                 const isDropTarget = isMyFilesSection && item.type === "folder" && dropTargetFolderId === id;
-                const isDraggingItem =
-                  isMyFilesSection && draggingItem?.itemType === item.type && draggingItem.itemID === id;
+                const isDraggingItem = isMyFilesSection && !!draggingItem && (
+                  (draggingItem.itemType === item.type && draggingItem.itemID === id)
+                  || (selectedIds.has(draggingItem.itemID) && selectedIds.has(id))
+                );
                 const isCutClipboardItem = isClipboardCutItem(item.type, id);
                 const itemToken = item.type === "folder"
                   ? getCloudItemToken({ type: "folder" })
@@ -1815,16 +1960,7 @@ function CloudPageInner() {
                       void handleFolderDrop(e, item.folder!.id);
                     }}
                     onDoubleClick={() => {
-                      if ((isMyFilesSection || isTrashSection) && item.type === "folder" && item.folder) {
-                        navigateToFolder(item.folder);
-                      }
-                      else if (!isTrashSection && item.type === "file" && item.file) {
-                        if (isMyFilesSection && isEditableTextFile(item.file)) {
-                          openTextEditor(item.file);
-                        } else {
-                          handleDownload(item.file);
-                        }
-                      }
+                      handleItemOpen(item);
                     }}
                   >
                     <td className="px-4 md:px-6 py-2">
@@ -1999,8 +2135,10 @@ function CloudPageInner() {
               const isSelected = selectedIds.has(id);
               const recentPath = isRecentSection && item.type === "file" ? formatRecentFilePath(item) : "";
               const isDropTarget = isMyFilesSection && item.type === "folder" && dropTargetFolderId === id;
-              const isDraggingItem =
-                isMyFilesSection && draggingItem?.itemType === item.type && draggingItem.itemID === id;
+              const isDraggingItem = isMyFilesSection && !!draggingItem && (
+                (draggingItem.itemType === item.type && draggingItem.itemID === id)
+                || (selectedIds.has(draggingItem.itemID) && selectedIds.has(id))
+              );
               const isCutClipboardItem = isClipboardCutItem(item.type, id);
               const itemToken = item.type === "folder"
                 ? getCloudItemToken({ type: "folder" })
@@ -2044,8 +2182,7 @@ function CloudPageInner() {
                   }}
                   onClick={() => toggleSelect(id)}
                   onDoubleClick={() => {
-                    if (isMyFilesSection && item.type === "folder" && item.folder) navigateToFolder(item.folder);
-                    else if (isMyFilesSection && item.type === "file" && item.file) handleDownload(item.file);
+                    handleItemOpen(item);
                   }}
                 >
                   {/* 4:3 미리보기 영역 */}

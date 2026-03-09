@@ -401,12 +401,30 @@ func (uc *cloudUseCase) MoveFile(ctx context.Context, userID, fileID string, new
 	return uc.files.Update(ctx, file)
 }
 
-func (uc *cloudUseCase) CopyFile(ctx context.Context, userID, fileID string, targetFolderID *string) error {
+func (uc *cloudUseCase) CopyFile(ctx context.Context, userID, fileID string, targetFolderID *string) (*domain.File, error) {
 	source, err := uc.files.FindByID(ctx, userID, fileID)
 	if err != nil || source == nil {
-		return fmt.Errorf("file not found")
+		return nil, fmt.Errorf("file not found")
 	}
 	return uc.copyFileToFolder(ctx, userID, source, targetFolderID)
+}
+
+func (uc *cloudUseCase) DiscardFile(ctx context.Context, userID, fileID string) error {
+	file, err := uc.files.FindByID(ctx, userID, fileID)
+	if err != nil || file == nil {
+		return fmt.Errorf("file not found")
+	}
+
+	if err := uc.storage.Delete(file.StoragePath); err != nil {
+		return fmt.Errorf("delete file data: %w", err)
+	}
+	if err := uc.files.HardDelete(ctx, fileID); err != nil {
+		return fmt.Errorf("delete file record: %w", err)
+	}
+	if err := uc.files.UpdateStorageUsed(ctx, userID, -file.SizeBytes); err != nil {
+		return fmt.Errorf("update storage used: %w", err)
+	}
+	return nil
 }
 
 func (uc *cloudUseCase) DeleteFile(ctx context.Context, userID, fileID string) error {
@@ -975,28 +993,28 @@ func folderDepth(folder *domain.Folder, folders map[string]*domain.Folder) int {
 	return depth
 }
 
-func (uc *cloudUseCase) copyFileToFolder(ctx context.Context, userID string, source *domain.File, targetFolderID *string) error {
+func (uc *cloudUseCase) copyFileToFolder(ctx context.Context, userID string, source *domain.File, targetFolderID *string) (*domain.File, error) {
 	if targetFolderID != nil {
 		folder, err := uc.folders.FindByID(ctx, userID, *targetFolderID)
 		if err != nil || folder == nil {
-			return fmt.Errorf("target folder not found")
+			return nil, fmt.Errorf("target folder not found")
 		}
 	}
 
 	resolvedName, err := uc.resolveFileName(ctx, userID, targetFolderID, source.Name)
 	if err != nil {
-		return fmt.Errorf("resolve filename: %w", err)
+		return nil, fmt.Errorf("resolve filename: %w", err)
 	}
 
 	data, err := uc.storage.Read(source.StoragePath)
 	if err != nil {
-		return fmt.Errorf("read source file: %w", err)
+		return nil, fmt.Errorf("read source file: %w", err)
 	}
 
 	newFileID := uuid.New().String()
 	storagePath, err := uc.storage.Save(userID, newFileID, data)
 	if err != nil {
-		return fmt.Errorf("save copied file: %w", err)
+		return nil, fmt.Errorf("save copied file: %w", err)
 	}
 
 	now := time.Now()
@@ -1015,11 +1033,11 @@ func (uc *cloudUseCase) copyFileToFolder(ctx context.Context, userID string, sou
 	}
 	if err := uc.files.Create(ctx, copied); err != nil {
 		_ = uc.storage.Delete(storagePath)
-		return fmt.Errorf("create copied file record: %w", err)
+		return nil, fmt.Errorf("create copied file record: %w", err)
 	}
 
 	if err := uc.files.UpdateStorageUsed(ctx, userID, source.SizeBytes); err != nil {
-		return fmt.Errorf("update storage used: %w", err)
+		return nil, fmt.Errorf("update storage used: %w", err)
 	}
 
 	if uc.queue != nil {
@@ -1031,5 +1049,5 @@ func (uc *cloudUseCase) copyFileToFolder(ctx context.Context, userID string, sou
 		})
 	}
 
-	return nil
+	return copied, nil
 }

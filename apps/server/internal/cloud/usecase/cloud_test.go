@@ -664,39 +664,71 @@ func TestCloudUseCaseFileFlows(t *testing.T) {
 		t.Fatalf("move file: %v", err)
 	}
 
-	if err := uc.CopyFile(ctx, "u1", "missing", nil); err == nil {
+	if _, err := uc.CopyFile(ctx, "u1", "missing", nil); err == nil {
 		t.Fatal("expected file not found")
 	}
-	if err := uc.CopyFile(ctx, "u1", "source", strPtr("none")); err == nil {
+	if _, err := uc.CopyFile(ctx, "u1", "source", strPtr("none")); err == nil {
 		t.Fatal("expected target folder not found")
 	}
 	files.existsErr = errors.New("exists fail")
-	if err := uc.CopyFile(ctx, "u1", "source", &folder.ID); err == nil {
+	if _, err := uc.CopyFile(ctx, "u1", "source", &folder.ID); err == nil {
 		t.Fatal("expected resolve filename error")
 	}
 	files.existsErr = nil
 	storage.readErr = errors.New("read fail")
-	if err := uc.CopyFile(ctx, "u1", "source", &folder.ID); err == nil {
+	if _, err := uc.CopyFile(ctx, "u1", "source", &folder.ID); err == nil {
 		t.Fatal("expected read source file error")
 	}
 	storage.readErr = nil
 	storage.saveErr = errors.New("save fail")
-	if err := uc.CopyFile(ctx, "u1", "source", &folder.ID); err == nil {
+	if _, err := uc.CopyFile(ctx, "u1", "source", &folder.ID); err == nil {
 		t.Fatal("expected save copied file error")
 	}
 	storage.saveErr = nil
 	files.createErr = errors.New("create copied fail")
-	if err := uc.CopyFile(ctx, "u1", "source", &folder.ID); err == nil {
+	if _, err := uc.CopyFile(ctx, "u1", "source", &folder.ID); err == nil {
 		t.Fatal("expected create copied file record error")
 	}
 	files.createErr = nil
 	files.updateStorageErr = errors.New("update storage fail")
-	if err := uc.CopyFile(ctx, "u1", "source", &folder.ID); err == nil {
+	if _, err := uc.CopyFile(ctx, "u1", "source", &folder.ID); err == nil {
 		t.Fatal("expected update storage used error")
 	}
 	files.updateStorageErr = nil
-	if err := uc.CopyFile(ctx, "u1", "source", &folder.ID); err != nil {
+	copied, err := uc.CopyFile(ctx, "u1", "source", &folder.ID)
+	if err != nil {
 		t.Fatalf("copy file: %v", err)
+	}
+	if copied == nil || copied.ID == "" || copied.FolderID == nil || *copied.FolderID != folder.ID {
+		t.Fatalf("unexpected copied file: %#v", copied)
+	}
+
+	if err := uc.DiscardFile(ctx, "u1", "missing"); err == nil {
+		t.Fatal("expected discard file not found")
+	}
+	storage.deleteErr = errors.New("delete storage fail")
+	if err := uc.DiscardFile(ctx, "u1", copied.ID); err == nil {
+		t.Fatal("expected discard storage delete error")
+	}
+	storage.deleteErr = nil
+	storage.data[copied.StoragePath] = []byte("source")
+	files.hardErr = errors.New("hard delete fail")
+	if err := uc.DiscardFile(ctx, "u1", copied.ID); err == nil {
+		t.Fatal("expected discard hard delete error")
+	}
+	files.hardErr = nil
+	storage.data[copied.StoragePath] = []byte("source")
+	files.updateStorageErr = errors.New("update storage fail")
+	if err := uc.DiscardFile(ctx, "u1", copied.ID); err == nil {
+		t.Fatal("expected discard storage used error")
+	}
+	files.updateStorageErr = nil
+	copied, err = uc.CopyFile(ctx, "u1", "source", &folder.ID)
+	if err != nil {
+		t.Fatalf("copy file for discard retry: %v", err)
+	}
+	if err := uc.DiscardFile(ctx, "u1", copied.ID); err != nil {
+		t.Fatalf("discard file: %v", err)
 	}
 
 	if err := uc.DeleteFile(ctx, "u1", utf.ID); err != nil {

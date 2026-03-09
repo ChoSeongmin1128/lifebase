@@ -96,6 +96,10 @@ export class ManageCloudUseCase {
     return this.repo.copyFile(fileId, folderId);
   }
 
+  discardFile(fileId: string) {
+    return this.repo.discardFile(fileId);
+  }
+
   createFolder(name: string, parentId?: string | null) {
     const normalized = name.trim();
     if (!normalized) {

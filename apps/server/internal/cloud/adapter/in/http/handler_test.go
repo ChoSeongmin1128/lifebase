@@ -25,37 +25,38 @@ type mockCloudUC struct {
 	fileRes   *domain.File
 	fileData  []byte
 
-	listFolderItems []portin.FolderItem
-	listTrashItems  []portin.FolderItem
-	listViewItems   []portin.FolderItem
-	listStarsItems  []portin.StarItem
-	searchItems     []*domain.File
-	lastUploadMime  string
+	listFolderItems   []portin.FolderItem
+	listTrashItems    []portin.FolderItem
+	listViewItems     []portin.FolderItem
+	listStarsItems    []portin.StarItem
+	searchItems       []*domain.File
+	lastUploadMime    string
 	lastTrashFolderID *string
 
-	createFolderErr error
-	getFolderErr    error
+	createFolderErr   error
+	getFolderErr      error
 	getTrashFolderErr error
-	listFolderErr   error
-	renameFolderErr error
-	moveFolderErr   error
-	copyFolderErr   error
-	deleteFolderErr error
+	listFolderErr     error
+	renameFolderErr   error
+	moveFolderErr     error
+	copyFolderErr     error
+	deleteFolderErr   error
 
-	uploadErr          error
-	getFileErr         error
-	downloadErr        error
-	getFileContentErr  error
-	renameFileErr      error
-	updateContentErr   error
-	moveFileErr        error
-	copyFileErr        error
-	deleteFileErr      error
+	uploadErr         error
+	getFileErr        error
+	downloadErr       error
+	getFileContentErr error
+	renameFileErr     error
+	updateContentErr  error
+	moveFileErr       error
+	copyFileErr       error
+	discardFileErr    error
+	deleteFileErr     error
 
-	restoreErr    error
-	emptyTrashErr error
-	listRecentErr error
-	listSharedErr error
+	restoreErr     error
+	emptyTrashErr  error
+	listRecentErr  error
+	listSharedErr  error
 	listStarredErr error
 
 	starErr   error
@@ -66,14 +67,22 @@ type mockCloudUC struct {
 func (m *mockCloudUC) CreateFolder(context.Context, string, *string, string) (*domain.Folder, error) {
 	return m.folderRes, m.createFolderErr
 }
-func (m *mockCloudUC) GetFolder(context.Context, string, string) (*domain.Folder, error) { return m.folderRes, m.getFolderErr }
+func (m *mockCloudUC) GetFolder(context.Context, string, string) (*domain.Folder, error) {
+	return m.folderRes, m.getFolderErr
+}
 func (m *mockCloudUC) ListFolder(context.Context, string, *string, string, string) ([]portin.FolderItem, error) {
 	return m.listFolderItems, m.listFolderErr
 }
-func (m *mockCloudUC) RenameFolder(context.Context, string, string, string) error { return m.renameFolderErr }
-func (m *mockCloudUC) MoveFolder(context.Context, string, string, *string) error   { return m.moveFolderErr }
-func (m *mockCloudUC) CopyFolder(context.Context, string, string, *string) error   { return m.copyFolderErr }
-func (m *mockCloudUC) DeleteFolder(context.Context, string, string) error          { return m.deleteFolderErr }
+func (m *mockCloudUC) RenameFolder(context.Context, string, string, string) error {
+	return m.renameFolderErr
+}
+func (m *mockCloudUC) MoveFolder(context.Context, string, string, *string) error {
+	return m.moveFolderErr
+}
+func (m *mockCloudUC) CopyFolder(context.Context, string, string, *string) error {
+	return m.copyFolderErr
+}
+func (m *mockCloudUC) DeleteFolder(context.Context, string, string) error { return m.deleteFolderErr }
 func (m *mockCloudUC) GetTrashFolder(context.Context, string, string) (*domain.Folder, error) {
 	return m.folderRes, m.getTrashFolderErr
 }
@@ -82,37 +91,50 @@ func (m *mockCloudUC) UploadFile(_ context.Context, _ string, _ *string, _ strin
 	m.lastUploadMime = mimeType
 	return m.fileRes, m.uploadErr
 }
-func (m *mockCloudUC) GetFile(context.Context, string, string) (*domain.File, error) { return m.fileRes, m.getFileErr }
+func (m *mockCloudUC) GetFile(context.Context, string, string) (*domain.File, error) {
+	return m.fileRes, m.getFileErr
+}
 func (m *mockCloudUC) DownloadFile(context.Context, string, string) ([]byte, *domain.File, error) {
 	return m.fileData, m.fileRes, m.downloadErr
 }
 func (m *mockCloudUC) GetFileContent(context.Context, string, string) (string, *domain.File, error) {
 	return "hello", m.fileRes, m.getFileContentErr
 }
-func (m *mockCloudUC) RenameFile(context.Context, string, string, string) error { return m.renameFileErr }
+func (m *mockCloudUC) RenameFile(context.Context, string, string, string) error {
+	return m.renameFileErr
+}
 func (m *mockCloudUC) UpdateFileContent(context.Context, string, string, string) error {
 	return m.updateContentErr
 }
 func (m *mockCloudUC) MoveFile(context.Context, string, string, *string) error { return m.moveFileErr }
-func (m *mockCloudUC) CopyFile(context.Context, string, string, *string) error { return m.copyFileErr }
-func (m *mockCloudUC) DeleteFile(context.Context, string, string) error        { return m.deleteFileErr }
+func (m *mockCloudUC) CopyFile(context.Context, string, string, *string) (*domain.File, error) {
+	return m.fileRes, m.copyFileErr
+}
+func (m *mockCloudUC) DiscardFile(context.Context, string, string) error { return m.discardFileErr }
+func (m *mockCloudUC) DeleteFile(context.Context, string, string) error  { return m.deleteFileErr }
 
 func (m *mockCloudUC) ListTrash(_ context.Context, _ string, folderID *string) ([]portin.FolderItem, error) {
 	m.lastTrashFolderID = folderID
 	return m.listTrashItems, m.listFolderErr
 }
-func (m *mockCloudUC) RestoreItem(context.Context, string, string, string) error       { return m.restoreErr }
-func (m *mockCloudUC) EmptyTrash(context.Context, string) error                         { return m.emptyTrashErr }
+func (m *mockCloudUC) RestoreItem(context.Context, string, string, string) error { return m.restoreErr }
+func (m *mockCloudUC) EmptyTrash(context.Context, string) error                  { return m.emptyTrashErr }
 
-func (m *mockCloudUC) ListRecent(context.Context, string) ([]portin.FolderItem, error) { return m.listViewItems, m.listRecentErr }
-func (m *mockCloudUC) ListShared(context.Context, string) ([]portin.FolderItem, error) { return m.listViewItems, m.listSharedErr }
+func (m *mockCloudUC) ListRecent(context.Context, string) ([]portin.FolderItem, error) {
+	return m.listViewItems, m.listRecentErr
+}
+func (m *mockCloudUC) ListShared(context.Context, string) ([]portin.FolderItem, error) {
+	return m.listViewItems, m.listSharedErr
+}
 func (m *mockCloudUC) ListStarred(context.Context, string) ([]portin.FolderItem, error) {
 	return m.listViewItems, m.listStarredErr
 }
 
-func (m *mockCloudUC) ListStars(context.Context, string) ([]portin.StarItem, error) { return m.listStarsItems, m.listFolderErr }
-func (m *mockCloudUC) StarItem(context.Context, string, string, string) error        { return m.starErr }
-func (m *mockCloudUC) UnstarItem(context.Context, string, string, string) error      { return m.unstarErr }
+func (m *mockCloudUC) ListStars(context.Context, string) ([]portin.StarItem, error) {
+	return m.listStarsItems, m.listFolderErr
+}
+func (m *mockCloudUC) StarItem(context.Context, string, string, string) error   { return m.starErr }
+func (m *mockCloudUC) UnstarItem(context.Context, string, string, string) error { return m.unstarErr }
 func (m *mockCloudUC) Search(context.Context, string, string) ([]*domain.File, error) {
 	return m.searchItems, m.searchErr
 }
@@ -471,8 +493,11 @@ func TestCloudHandlerFiles(t *testing.T) {
 	rec = httptest.NewRecorder()
 	req = withParam(cloudReq(http.MethodPost, "/files/file1/copy", `{}`), "fileID", "file1")
 	h.CopyFile(rec, req)
-	if rec.Code != http.StatusNoContent {
-		t.Fatalf("expected 204, got %d", rec.Code)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rec.Code)
+	}
+	if !strings.Contains(rec.Body.String(), `"id":"file1"`) {
+		t.Fatalf("expected copied file payload, got %s", rec.Body.String())
 	}
 	rec = httptest.NewRecorder()
 	req = withParam(cloudReq(http.MethodPost, "/files/file1/copy", `{`), "fileID", "file1")
@@ -488,6 +513,20 @@ func TestCloudHandlerFiles(t *testing.T) {
 		t.Fatalf("expected 400, got %d", rec.Code)
 	}
 	uc.copyFileErr = nil
+
+	rec = httptest.NewRecorder()
+	req = withParam(cloudReq(http.MethodDelete, "/files/file1/discard", ""), "fileID", "file1")
+	h.DiscardFile(rec, req)
+	if rec.Code != http.StatusNoContent {
+		t.Fatalf("expected 204, got %d", rec.Code)
+	}
+	uc.discardFileErr = errors.New("discard fail")
+	rec = httptest.NewRecorder()
+	h.DiscardFile(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", rec.Code)
+	}
+	uc.discardFileErr = nil
 
 	rec = httptest.NewRecorder()
 	req = withParam(cloudReq(http.MethodDelete, "/files/file1", ""), "fileID", "file1")
@@ -521,7 +560,7 @@ func TestCloudHandlerUploadFileReadError(t *testing.T) {
 func TestCloudHandlerUploadFileDefaultMime(t *testing.T) {
 	now := time.Now()
 	uc := &mockCloudUC{
-		fileRes: &domain.File{ID: "file1", Name: "a.txt", MimeType: "text/plain", CreatedAt: now, UpdatedAt: now},
+		fileRes:  &domain.File{ID: "file1", Name: "a.txt", MimeType: "text/plain", CreatedAt: now, UpdatedAt: now},
 		fileData: []byte("hello"),
 	}
 	h := NewCloudHandler(uc)

@@ -304,8 +304,20 @@ func (h *CloudHandler) CopyFile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := h.cloud.CopyFile(r.Context(), userID, fileID, req.FolderID); err != nil {
+	file, err := h.cloud.CopyFile(r.Context(), userID, fileID, req.FolderID)
+	if err != nil {
 		response.Error(w, http.StatusBadRequest, "COPY_FAILED", err.Error())
+		return
+	}
+	response.JSON(w, http.StatusOK, file)
+}
+
+func (h *CloudHandler) DiscardFile(w http.ResponseWriter, r *http.Request) {
+	userID := middleware.GetUserID(r.Context())
+	fileID := chi.URLParam(r, "fileID")
+
+	if err := h.cloud.DiscardFile(r.Context(), userID, fileID); err != nil {
+		response.Error(w, http.StatusBadRequest, "DISCARD_FAILED", err.Error())
 		return
 	}
 	response.NoContent(w)

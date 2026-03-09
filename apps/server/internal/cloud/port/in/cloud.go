@@ -37,7 +37,8 @@ type CloudUseCase interface {
 	RenameFile(ctx context.Context, userID, fileID, newName string) error
 	UpdateFileContent(ctx context.Context, userID, fileID, content string) error
 	MoveFile(ctx context.Context, userID, fileID string, newFolderID *string) error
-	CopyFile(ctx context.Context, userID, fileID string, targetFolderID *string) error
+	CopyFile(ctx context.Context, userID, fileID string, targetFolderID *string) (*domain.File, error)
+	DiscardFile(ctx context.Context, userID, fileID string) error
 	DeleteFile(ctx context.Context, userID, fileID string) error
 
 	// Trash

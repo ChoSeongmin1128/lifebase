@@ -218,11 +218,19 @@ export class HttpCloudRepository implements CloudRepository {
     });
   }
 
-  async copyFile(fileId: string, folderId?: string | null): Promise<void> {
+  async copyFile(fileId: string, folderId?: string | null): Promise<CloudFile> {
     const token = this.getToken();
-    await api(`/cloud/files/${fileId}/copy`, {
+    return api<CloudFile>(`/cloud/files/${fileId}/copy`, {
       method: "PATCH",
       body: { folder_id: folderId ?? null },
+      token,
+    });
+  }
+
+  async discardFile(fileId: string): Promise<void> {
+    const token = this.getToken();
+    await api(`/cloud/files/${fileId}/discard`, {
+      method: "DELETE",
       token,
     });
   }
