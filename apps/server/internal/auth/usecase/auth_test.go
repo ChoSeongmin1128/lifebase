@@ -400,6 +400,9 @@ func TestFindOrCreateUser(t *testing.T) {
 	if user.ID == "" || users.created == nil {
 		t.Fatalf("expected created user, got %#v", user)
 	}
+	if users.created.StorageQuotaBytes != defaultStorageQuotaBytes {
+		t.Fatalf("expected default storage quota %d, got %d", defaultStorageQuotaBytes, users.created.StorageQuotaBytes)
+	}
 	if !bootstrap.called {
 		t.Fatal("expected bootstrap call")
 	}

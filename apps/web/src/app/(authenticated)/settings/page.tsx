@@ -711,7 +711,7 @@ export default function SettingsPage() {
                       </SettingRow>
                       <Separator />
                       <SettingRow label="할당량">
-                        <span className="text-sm text-text-muted">1 TB</span>
+                        <span className="text-sm text-text-muted">계정별 할당량 적용</span>
                       </SettingRow>
                     </SettingsCard>
                     <SettingsCard title="Cloud 정렬">

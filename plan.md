@@ -198,6 +198,7 @@ Web은 `GET /api/v1/home/summary`를 사용해 오늘 일정, 지난/오늘 Todo
 - 사이드바 보조 내비는 `?focus=summary|calendar|todo|files|storage`를 사용해 섹션 위치를 직접 복원한다
 - 빠른 액션 딥링크 연결
 - 저장공간 카드와 파일 타입별 breakdown 표시
+- 신규 사용자 기본 스토리지 할당량은 15GB를 기준으로 운영하고, 기존 사용자 할당량은 유지한다
 
 3. 후속 작업
 - Desktop/Mobile 전용 Home 화면 확장

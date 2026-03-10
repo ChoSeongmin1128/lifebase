@@ -27,7 +27,7 @@ type JWTOptions struct {
 	RefreshExpiry time.Duration
 }
 
-const defaultStorageQuotaBytes int64 = 1 << 40 // 1TB
+const defaultStorageQuotaBytes int64 = 15 * (1 << 30) // 15GB
 
 type authUseCase struct {
 	jwt             JWTOptions
