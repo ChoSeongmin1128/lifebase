@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useCallback, useContext, useMemo, useRef, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { CheckCircle2, Info, TriangleAlert, X, XCircle } from "lucide-react";
 
 type ToastVariant = "success" | "info" | "warning" | "error";
@@ -47,6 +47,7 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
   const nextID = useRef(1);
   const dedupe = useRef<Map<string, number>>(new Map());
   const timers = useRef<Map<number, number>>(new Map());
+  const stackRef = useRef<HTMLDivElement>(null);
 
   const dismiss = useCallback((id: number) => {
     setToasts((prev) => prev.filter((item) => item.id !== id));
@@ -96,6 +97,31 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
     error: (title, description) => show({ variant: "error", title, description }),
   }), [show]);
 
+  useEffect(() => {
+    const stack = stackRef.current;
+    if (!stack) return;
+
+    const root = document.documentElement;
+    const updateOffset = () => {
+      root.style.setProperty("--lb-toast-stack-height", `${stack.offsetHeight}px`);
+    };
+
+    updateOffset();
+
+    if (typeof ResizeObserver === "undefined") {
+      return () => {
+        root.style.removeProperty("--lb-toast-stack-height");
+      };
+    }
+
+    const observer = new ResizeObserver(updateOffset);
+    observer.observe(stack);
+    return () => {
+      observer.disconnect();
+      root.style.removeProperty("--lb-toast-stack-height");
+    };
+  }, [toasts]);
+
   const getVariantClass = (variant: ToastVariant) => {
     switch (variant) {
       case "success":
@@ -127,7 +153,10 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
   return (
     <ToastContext.Provider value={api}>
       {children}
-      <div className="pointer-events-none fixed bottom-4 right-4 z-[120] flex w-[min(92vw,360px)] flex-col gap-2 max-sm:left-1/2 max-sm:right-auto max-sm:-translate-x-1/2">
+      <div
+        ref={stackRef}
+        className="pointer-events-none fixed bottom-4 right-4 z-[120] flex w-[min(92vw,360px)] flex-col gap-2 max-sm:left-1/2 max-sm:right-auto max-sm:-translate-x-1/2"
+      >
         {toasts.map((toast) => (
           <div
             key={toast.id}

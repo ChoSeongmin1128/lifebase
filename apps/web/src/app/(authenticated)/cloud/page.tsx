@@ -109,6 +109,15 @@ interface CloudSelectionSession {
   baseSelectedIds: Set<string>;
 }
 
+interface FileSystemEntryLike {
+  isDirectory: boolean;
+  isFile: boolean;
+}
+
+type DragDataTransferItem = DataTransferItem & {
+  webkitGetAsEntry?: () => FileSystemEntryLike | null;
+};
+
 const INTERNAL_ITEM_DRAG_TYPE = "application/x-lifebase-cloud-item";
 const ROOT_PATH_ENTRY: CloudPathEntry = { id: null, name: "보관함" };
 const TRASH_ROOT_PATH_ENTRY: CloudPathEntry = { id: null, name: "휴지통" };
@@ -223,6 +232,7 @@ function CloudPageInner() {
   const [searchResults, setSearchResults] = useState<CloudFile[] | null>(null);
   const [dragOver, setDragOver] = useState(false);
   const [dragFileCount, setDragFileCount] = useState(0);
+  const [dragHasDirectory, setDragHasDirectory] = useState(false);
   const [draggingItem, setDraggingItem] = useState<CloudDragItem | null>(null);
   const [dropTargetFolderId, setDropTargetFolderId] = useState<string | null>(null);
   const [movingItemKey, setMovingItemKey] = useState<string | null>(null);
@@ -756,6 +766,32 @@ function CloudPageInner() {
       })),
     ]);
   }, [authed, currentFolderID, getUploadTargetFolderName, isMyFilesSection]);
+
+  const inspectDragPayload = useCallback((dataTransfer: DataTransfer) => {
+    const items = Array.from(dataTransfer.items || []);
+    let directoryCount = 0;
+    const files: File[] = [];
+
+    items.forEach((item) => {
+      if (item.kind !== "file") return;
+      const entry = (item as DragDataTransferItem).webkitGetAsEntry?.();
+      if (entry?.isDirectory) {
+        directoryCount += 1;
+        return;
+      }
+      const file = item.getAsFile();
+      if (file) {
+        files.push(file);
+      }
+    });
+
+    const fallbackFiles = files.length > 0 ? files : Array.from(dataTransfer.files || []);
+    return {
+      files: fallbackFiles,
+      directoryCount,
+      visibleItemCount: items.length > 0 ? items.length : fallbackFiles.length,
+    };
+  }, []);
 
   const handleCancelUploadItem = useCallback((uploadId: string) => {
     const controller = uploadControllersRef.current.get(uploadId);
@@ -1381,6 +1417,7 @@ function CloudPageInner() {
     e.preventDefault();
     dragDepthRef.current = 0;
     setDragFileCount(0);
+    setDragHasDirectory(false);
     if (!isMyFilesSection) {
       setDragOver(false);
       return;
@@ -1392,7 +1429,18 @@ function CloudPageInner() {
     }
 
     setDragOver(false);
-    handleUpload(e.dataTransfer.files);
+    const payload = inspectDragPayload(e.dataTransfer);
+    if (payload.directoryCount > 0) {
+      if (payload.files.length > 0) {
+        toast.warning("폴더는 건너뛰고 파일만 업로드했습니다", `${payload.directoryCount}개 폴더는 아직 업로드할 수 없습니다.`);
+      } else {
+        toast.warning("폴더 업로드는 아직 지원되지 않습니다", "파일만 드래그하거나 폴더 안의 파일을 선택해 업로드해 주세요.");
+      }
+    }
+    if (payload.files.length === 0) {
+      return;
+    }
+    handleUpload(payload.files);
   };
 
   const toClipboardItem = useCallback((item: FolderItem): CloudClipboardItem => {
@@ -1896,15 +1944,19 @@ function CloudPageInner() {
       className="relative flex h-full flex-col"
       onDragEnter={(e) => {
         if (!isMyFilesSection || !isUploadDragEvent(e)) return;
+        const payload = inspectDragPayload(e.dataTransfer);
         dragDepthRef.current += 1;
-        setDragFileCount(e.dataTransfer.items?.length || e.dataTransfer.files.length || 0);
+        setDragFileCount(payload.visibleItemCount);
+        setDragHasDirectory(payload.directoryCount > 0);
         setDragOver(true);
       }}
       onDragOver={(e) => {
         if (!isMyFilesSection) return;
         if (!isUploadDragEvent(e)) return;
         e.preventDefault();
-        setDragFileCount(e.dataTransfer.items?.length || e.dataTransfer.files.length || dragFileCount);
+        const payload = inspectDragPayload(e.dataTransfer);
+        setDragFileCount(payload.visibleItemCount || dragFileCount);
+        setDragHasDirectory(payload.directoryCount > 0);
         setDragOver(true);
       }}
       onDragLeave={() => {
@@ -1914,6 +1966,7 @@ function CloudPageInner() {
         if (dragDepthRef.current === 0) {
           setDragOver(false);
           setDragFileCount(0);
+          setDragHasDirectory(false);
         }
       }}
       onDrop={handleDrop}
@@ -1957,161 +2010,194 @@ function CloudPageInner() {
 
       {/* Toolbar Row 2: Actions */}
       <PageToolbar>
-        <PageToolbarGroup className="gap-2">
-          {/* Search */}
-          <div className="relative">
-            <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-text-muted" />
-            <Input
-              placeholder={isMyFilesSection ? "검색..." : `${sectionLabel}에서는 검색 미지원`}
-              value={searchQuery}
-              onChange={(e) => {
-                setSearchQuery(e.target.value);
-                if (!e.target.value) setSearchResults(null);
-              }}
-              onKeyDown={(e) => e.key === "Enter" && handleSearch()}
-              disabled={!isMyFilesSection || !folderActionsEnabled}
-              className="h-8 w-full md:w-48 pl-8"
-            />
-          </div>
-
-          {/* View toggle */}
-          {isMyFilesSection && (
-            <div className="flex rounded-lg border border-border">
-              <button
-                onClick={() => setViewMode("list")}
-                disabled={!folderActionsEnabled}
-                className={`flex h-8 w-8 items-center justify-center rounded-l-lg ${
-                  currentViewMode === "list" ? "bg-surface-accent text-text-strong" : "text-text-muted hover:bg-surface-accent"
-                }`}
+        {showBulkBar && isMyFilesSection ? (
+          <BulkActionBar
+            count={selectedIds.size}
+            onCopy={handleBulkCopy}
+            onMove={handleBulkMove}
+            onDownload={handleBulkDownload}
+            onDelete={handleBulkDelete}
+            onClear={() => setSelectedIds(new Set())}
+          />
+        ) : showBulkBar && isTrashSection ? (
+          <div className="flex w-full flex-wrap items-center justify-between gap-3">
+            <span className="text-sm font-medium text-text-primary">{selectedIds.size}개 선택됨</span>
+            <div className="ml-auto flex flex-wrap items-center justify-end gap-2">
+              <Button variant="ghost" size="sm" onClick={handleBulkRestore} className="gap-1.5">
+                <Undo2 size={14} />
+                복원
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={handleEmptyTrash}
+                className="gap-1.5 text-error hover:text-error"
               >
-                <List size={14} />
-              </button>
-              <button
-                onClick={() => setViewMode("grid")}
-                disabled={!folderActionsEnabled}
-                className={`flex h-8 w-8 items-center justify-center rounded-r-lg ${
-                  currentViewMode === "grid" ? "bg-surface-accent text-text-strong" : "text-text-muted hover:bg-surface-accent"
-                }`}
-              >
-                <LayoutGrid size={14} />
-              </button>
+                <Trash2 size={14} />
+                비우기
+              </Button>
+              <Button variant="ghost" size="sm" onClick={() => setSelectedIds(new Set())}>
+                선택 해제
+              </Button>
             </div>
-          )}
-        </PageToolbarGroup>
+          </div>
+        ) : (
+          <>
+            <PageToolbarGroup className="gap-2">
+              <div className="relative">
+                <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-text-muted" />
+                <Input
+                  placeholder={isMyFilesSection ? "검색..." : `${sectionLabel}에서는 검색 미지원`}
+                  value={searchQuery}
+                  onChange={(e) => {
+                    setSearchQuery(e.target.value);
+                    if (!e.target.value) setSearchResults(null);
+                  }}
+                  onKeyDown={(e) => e.key === "Enter" && handleSearch()}
+                  disabled={!isMyFilesSection || !folderActionsEnabled}
+                  className="h-8 w-full md:w-48 pl-8"
+                />
+              </div>
 
-        <PageToolbarGroup className="gap-2">
-          {isMyFilesSection && (
-            <>
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button variant="ghost" size="sm" className="gap-1.5">
-                    <ArrowUpDown size={14} />
-                    <span className="hidden md:inline">정렬</span>
+              {isMyFilesSection && (
+                <div className="flex rounded-lg border border-border">
+                  <button
+                    onClick={() => setViewMode("list")}
+                    disabled={!folderActionsEnabled}
+                    className={`flex h-8 w-8 items-center justify-center rounded-l-lg ${
+                      currentViewMode === "list" ? "bg-surface-accent text-text-strong" : "text-text-muted hover:bg-surface-accent"
+                    }`}
+                  >
+                    <List size={14} />
+                  </button>
+                  <button
+                    onClick={() => setViewMode("grid")}
+                    disabled={!folderActionsEnabled}
+                    className={`flex h-8 w-8 items-center justify-center rounded-r-lg ${
+                      currentViewMode === "grid" ? "bg-surface-accent text-text-strong" : "text-text-muted hover:bg-surface-accent"
+                    }`}
+                  >
+                    <LayoutGrid size={14} />
+                  </button>
+                </div>
+              )}
+            </PageToolbarGroup>
+
+            <PageToolbarGroup className="gap-2">
+              {isMyFilesSection && (
+                <>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button variant="ghost" size="sm" className="gap-1.5">
+                        <ArrowUpDown size={14} />
+                        <span className="hidden md:inline">정렬</span>
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end">
+                      {sortOptions.map((opt) => (
+                        <DropdownMenuItem
+                          key={opt.value}
+                          disabled={!folderActionsEnabled}
+                          onClick={() => {
+                            if (sortBy === opt.value) {
+                              setSortDir(sortDir === "asc" ? "desc" : "asc");
+                            } else {
+                              setSortBy(opt.value);
+                              setSortDir(opt.value === "name" ? "asc" : "desc");
+                            }
+                          }}
+                          className="justify-between"
+                        >
+                          {opt.label}
+                          {sortBy === opt.value && (
+                            <span className="text-xs text-text-muted">
+                              {sortDir === "asc" ? "↑" : "↓"}
+                            </span>
+                          )}
+                        </DropdownMenuItem>
+                      ))}
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    disabled={!folderActionsEnabled}
+                    onClick={() => {
+                      setShowNewFile(false);
+                      setNewFileName("");
+                      setShowNewFolder(true);
+                    }}
+                    className="gap-1.5"
+                  >
+                    <FolderPlus size={14} />
+                    <span className="hidden md:inline">새 폴더</span>
                   </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end">
-                  {sortOptions.map((opt) => (
-                    <DropdownMenuItem
-                      key={opt.value}
-                      disabled={!folderActionsEnabled}
-                      onClick={() => {
-                        if (sortBy === opt.value) {
-                          setSortDir(sortDir === "asc" ? "desc" : "asc");
-                        } else {
-                          setSortBy(opt.value);
-                          setSortDir(opt.value === "name" ? "asc" : "desc");
-                        }
-                      }}
-                      className="justify-between"
-                    >
-                      {opt.label}
-                      {sortBy === opt.value && (
-                        <span className="text-xs text-text-muted">
-                          {sortDir === "asc" ? "↑" : "↓"}
-                        </span>
-                      )}
-                    </DropdownMenuItem>
-                  ))}
-                </DropdownMenuContent>
-              </DropdownMenu>
 
-              <Button
-                variant="ghost"
-                size="sm"
-                disabled={!folderActionsEnabled}
-                onClick={() => {
-                  setShowNewFile(false);
-                  setNewFileName("");
-                  setShowNewFolder(true);
-                }}
-                className="gap-1.5"
-              >
-                <FolderPlus size={14} />
-                <span className="hidden md:inline">새 폴더</span>
-              </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    disabled={!folderActionsEnabled}
+                    onClick={() => {
+                      setShowNewFolder(false);
+                      setNewFolderName("");
+                      setNewFileExtension("txt");
+                      setShowNewFile(true);
+                    }}
+                    className="gap-1.5"
+                  >
+                    <FilePlus size={14} />
+                    <span className="hidden md:inline">새 파일</span>
+                  </Button>
 
-              <Button
-                variant="ghost"
-                size="sm"
-                disabled={!folderActionsEnabled}
-                onClick={() => {
-                  setShowNewFolder(false);
-                  setNewFolderName("");
-                  setNewFileExtension("txt");
-                  setShowNewFile(true);
-                }}
-                className="gap-1.5"
-              >
-                <FilePlus size={14} />
-                <span className="hidden md:inline">새 파일</span>
-              </Button>
+                  <Button
+                    variant="primary"
+                    size="sm"
+                    disabled={!folderActionsEnabled}
+                    onClick={() => fileInputRef.current?.click()}
+                    className="gap-1.5"
+                  >
+                    <Upload size={14} />
+                    <span className="hidden md:inline">업로드</span>
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    disabled={!clipboard || clipboardBusy || !folderActionsEnabled}
+                    onClick={() => void applyClipboardToFolder(currentFolderID ?? null)}
+                    className="gap-1.5"
+                  >
+                    <ClipboardPaste size={14} />
+                    <span className="hidden md:inline">붙여넣기</span>
+                  </Button>
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    multiple
+                    className="hidden"
+                    onChange={(e) => {
+                      handleUpload(e.target.files);
+                      e.currentTarget.value = "";
+                    }}
+                  />
+                </>
+              )}
 
-              <Button
-                variant="primary"
-                size="sm"
-                disabled={!folderActionsEnabled}
-                onClick={() => fileInputRef.current?.click()}
-                className="gap-1.5"
-              >
-                <Upload size={14} />
-                <span className="hidden md:inline">업로드</span>
-              </Button>
-              <Button
-                variant="ghost"
-                size="sm"
-                disabled={!clipboard || clipboardBusy || !folderActionsEnabled}
-                onClick={() => void applyClipboardToFolder(currentFolderID ?? null)}
-                className="gap-1.5"
-              >
-                <ClipboardPaste size={14} />
-                <span className="hidden md:inline">붙여넣기</span>
-              </Button>
-              <input
-                ref={fileInputRef}
-                type="file"
-                multiple
-                className="hidden"
-                onChange={(e) => {
-                  handleUpload(e.target.files);
-                  e.currentTarget.value = "";
-                }}
-              />
-            </>
-          )}
-
-          {isTrashSection && (
-            <Button
-              variant="ghost"
-              size="sm"
-              disabled={!folderActionsEnabled}
-              onClick={handleEmptyTrash}
-              className="gap-1.5 text-error hover:text-error"
-            >
-              <Trash2 size={14} />
-              <span className="hidden md:inline">휴지통 비우기</span>
-            </Button>
-          )}
-        </PageToolbarGroup>
+              {isTrashSection && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  disabled={!folderActionsEnabled}
+                  onClick={handleEmptyTrash}
+                  className="gap-1.5 text-error hover:text-error"
+                >
+                  <Trash2 size={14} />
+                  <span className="hidden md:inline">휴지통 비우기</span>
+                </Button>
+              )}
+            </PageToolbarGroup>
+          </>
+        )}
       </PageToolbar>
 
       {/* New Folder Input */}
@@ -2215,53 +2301,19 @@ function CloudPageInner() {
         </div>
       )}
 
-      {/* Bulk action bar */}
-      {showBulkBar && (
-        <>
-          {isMyFilesSection && (
-            <BulkActionBar
-              count={selectedIds.size}
-              onCopy={handleBulkCopy}
-              onMove={handleBulkMove}
-              onDownload={handleBulkDownload}
-              onDelete={handleBulkDelete}
-              onClear={() => setSelectedIds(new Set())}
-            />
-          )}
-          {isTrashSection && (
-            <div className="flex items-center justify-between gap-2 border-b border-border bg-surface-accent/50 px-4 md:px-6 py-2">
-              <span className="text-sm text-text-secondary">{selectedIds.size}개 선택됨</span>
-              <div className="flex items-center gap-2">
-                <Button variant="ghost" size="sm" onClick={handleBulkRestore} className="gap-1.5">
-                  <Undo2 size={14} />
-                  복원
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={handleEmptyTrash}
-                  className="gap-1.5 text-error hover:text-error"
-                >
-                  <Trash2 size={14} />
-                  비우기
-                </Button>
-                <Button variant="ghost" size="sm" onClick={() => setSelectedIds(new Set())}>
-                  선택 해제
-                </Button>
-              </div>
-            </div>
-          )}
-        </>
-      )}
-
       {/* Drop overlay */}
       {dragOver && isMyFilesSection && (
         <div className="absolute inset-0 z-20 flex items-center justify-center bg-background/80">
           <div className="rounded-xl border-2 border-dashed border-primary/40 bg-surface/95 p-12 text-center shadow-lg">
             <Upload size={48} className="mx-auto text-primary" />
             <p className="mt-2 text-text-secondary">
-              {currentFolderDisplayName}에 {dragFileCount || 1}개 파일 업로드
+              {dragHasDirectory
+                ? "폴더 업로드는 아직 지원되지 않습니다"
+                : `${currentFolderDisplayName}에 ${dragFileCount || 1}개 파일 업로드`}
             </p>
+            {dragHasDirectory ? (
+              <p className="mt-1 text-xs text-text-muted">파일만 드래그하거나 폴더 안의 파일을 선택해 주세요.</p>
+            ) : null}
           </div>
         </div>
       )}

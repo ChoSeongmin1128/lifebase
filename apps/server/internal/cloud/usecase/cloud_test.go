@@ -287,6 +287,17 @@ func (m *fileRepoStub) HardDelete(_ context.Context, id string) error {
 	if m.hardErr != nil {
 		return m.hardErr
 	}
+	if file, ok := m.byID[id]; ok {
+		key := parentKey(file.FolderID)
+		files := m.byFolder[key]
+		next := files[:0]
+		for _, candidate := range files {
+			if candidate.ID != id {
+				next = append(next, candidate)
+			}
+		}
+		m.byFolder[key] = next
+	}
 	delete(m.byID, id)
 	m.hardDeleted = append(m.hardDeleted, id)
 	return nil
@@ -373,6 +384,7 @@ type storageStub struct {
 	saveErr   error
 	readErr   error
 	deleteErr error
+	deleted   []string
 }
 
 func newStorageStub() *storageStub { return &storageStub{data: map[string][]byte{}} }
@@ -402,6 +414,7 @@ func (m *storageStub) Delete(storagePath string) error {
 		return m.deleteErr
 	}
 	delete(m.data, storagePath)
+	m.deleted = append(m.deleted, storagePath)
 	return nil
 }
 
@@ -565,6 +578,16 @@ func TestCloudUseCaseFileFlows(t *testing.T) {
 	files.updateStorageErr = errors.New("update storage used fail")
 	if _, err := uc.UploadFile(ctx, "u1", &folder.ID, "y.txt", "text/plain", 1, []byte("y")); err == nil {
 		t.Fatal("expected update storage used error")
+	}
+	if len(files.hardDeleted) == 0 {
+		t.Fatal("expected file record rollback after storage used update failure")
+	}
+	lastDeletedID := files.hardDeleted[len(files.hardDeleted)-1]
+	if _, ok := files.byID[lastDeletedID]; ok {
+		t.Fatal("expected rolled back file record to be removed")
+	}
+	if len(storage.deleted) == 0 {
+		t.Fatal("expected storage cleanup after storage used update failure")
 	}
 	files.updateStorageErr = nil
 	storage.saveErr = errors.New("save fail")

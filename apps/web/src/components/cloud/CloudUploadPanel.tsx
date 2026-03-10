@@ -91,7 +91,10 @@ export function CloudUploadPanel({
   const hasCompleted = items.some((item) => item.status === "completed");
 
   return (
-    <div className="pointer-events-none fixed bottom-24 right-4 z-[110] flex w-[min(92vw,360px)] flex-col gap-2 max-sm:left-1/2 max-sm:right-auto max-sm:-translate-x-1/2">
+    <div
+      className="pointer-events-none fixed right-4 z-[110] flex w-[min(92vw,360px)] flex-col gap-2 max-sm:left-1/2 max-sm:right-auto max-sm:-translate-x-1/2"
+      style={{ bottom: "calc(1rem + var(--lb-toast-stack-height, 0px) + 0.75rem)" }}
+    >
       <div className="pointer-events-auto rounded-lg border border-info/30 bg-surface shadow-lg">
         <button
           type="button"

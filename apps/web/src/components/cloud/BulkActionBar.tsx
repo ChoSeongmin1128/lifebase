@@ -1,4 +1,5 @@
 import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 import { Copy, Download, Scissors, Trash2, X } from "lucide-react";
 
 interface BulkActionBarProps {
@@ -8,13 +9,14 @@ interface BulkActionBarProps {
   onDownload: () => void;
   onDelete: () => void;
   onClear: () => void;
+  className?: string;
 }
 
-export function BulkActionBar({ count, onCopy, onMove, onDownload, onDelete, onClear }: BulkActionBarProps) {
+export function BulkActionBar({ count, onCopy, onMove, onDownload, onDelete, onClear, className }: BulkActionBarProps) {
   return (
-    <div className="flex items-center gap-2 border-b border-border bg-surface-accent px-4 md:px-6 py-2">
+    <div className={cn("flex w-full flex-wrap items-center justify-between gap-3", className)}>
       <span className="text-sm text-text-primary font-medium">{count}개 선택됨</span>
-      <div className="flex items-center gap-1 ml-auto">
+      <div className="ml-auto flex flex-wrap items-center justify-end gap-1">
         {onCopy && (
           <Button variant="ghost" size="sm" onClick={onCopy} className="gap-1.5">
             <Copy size={14} />

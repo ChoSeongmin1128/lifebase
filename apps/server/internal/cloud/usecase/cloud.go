@@ -269,6 +269,9 @@ func (uc *cloudUseCase) UploadFile(ctx context.Context, userID string, folderID 
 	}
 
 	if err := uc.files.UpdateStorageUsed(ctx, userID, size); err != nil {
+		if cleanupErr := uc.cleanupUploadedFile(ctx, file.ID, storagePath); cleanupErr != "" {
+			return nil, fmt.Errorf("update storage used: %w (cleanup: %s)", err, cleanupErr)
+		}
 		return nil, fmt.Errorf("update storage used: %w", err)
 	}
 
@@ -283,6 +286,17 @@ func (uc *cloudUseCase) UploadFile(ctx context.Context, userID string, folderID 
 	}
 
 	return file, nil
+}
+
+func (uc *cloudUseCase) cleanupUploadedFile(ctx context.Context, fileID, storagePath string) string {
+	cleanupErrors := make([]string, 0, 2)
+	if err := uc.files.HardDelete(ctx, fileID); err != nil {
+		cleanupErrors = append(cleanupErrors, fmt.Sprintf("delete file record: %v", err))
+	}
+	if err := uc.storage.Delete(storagePath); err != nil {
+		cleanupErrors = append(cleanupErrors, fmt.Sprintf("delete storage file: %v", err))
+	}
+	return strings.Join(cleanupErrors, "; ")
 }
 
 func (uc *cloudUseCase) GetFile(ctx context.Context, userID, fileID string) (*domain.File, error) {

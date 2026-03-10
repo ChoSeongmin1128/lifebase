@@ -157,6 +157,11 @@ func (h *CloudHandler) UploadFile(w http.ResponseWriter, r *http.Request) {
 		response.Error(w, http.StatusBadRequest, "INVALID_REQUEST", "invalid multipart form")
 		return
 	}
+	if r.MultipartForm != nil {
+		defer func() {
+			_ = r.MultipartForm.RemoveAll()
+		}()
+	}
 
 	f, header, err := r.FormFile("file")
 	if err != nil {
