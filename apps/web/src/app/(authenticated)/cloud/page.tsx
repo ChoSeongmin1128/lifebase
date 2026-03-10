@@ -1643,6 +1643,24 @@ function CloudPageInner() {
     };
   }, []);
 
+  const getClampedContentPointFromClient = useCallback((clientX: number, clientY: number) => {
+    const container = scrollContainerRef.current;
+    if (!container) {
+      return { x: 0, y: 0 };
+    }
+
+    const point = getContentPointFromClient(clientX, clientY);
+    const minX = container.scrollLeft;
+    const maxX = container.scrollLeft + container.clientWidth;
+    const minY = container.scrollTop;
+    const maxY = container.scrollTop + container.clientHeight;
+
+    return {
+      x: Math.min(Math.max(point.x, minX), maxX),
+      y: Math.min(Math.max(point.y, minY), maxY),
+    };
+  }, [getContentPointFromClient]);
+
   const buildSelectionRect = useCallback((startX: number, startY: number, endX: number, endY: number): CloudSelectionRect => ({
     left: Math.min(startX, endX),
     top: Math.min(startY, endY),
@@ -1685,11 +1703,11 @@ function CloudPageInner() {
   const updateSelectionFromClientPoint = useCallback((clientX: number, clientY: number) => {
     const session = selectionSessionRef.current;
     if (!session) return;
-    const point = getContentPointFromClient(clientX, clientY);
+    const point = getClampedContentPointFromClient(clientX, clientY);
     const nextRect = buildSelectionRect(session.startX, session.startY, point.x, point.y);
     setSelectionRect(nextRect);
     applySelectionRect(nextRect, session.additive, session.baseSelectedIds);
-  }, [applySelectionRect, buildSelectionRect, getContentPointFromClient]);
+  }, [applySelectionRect, buildSelectionRect, getClampedContentPointFromClient]);
 
   const stopSelectionAutoScroll = useCallback(() => {
     if (selectionScrollFrameRef.current !== null) {
