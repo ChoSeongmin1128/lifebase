@@ -186,6 +186,7 @@ npx expo start
 - Web Cloud는 폴더 드래그를 조용히 실패시키지 않고 미지원 상태를 즉시 안내하며, 서버 업로드 실패 시 multipart 임시 파일과 저장 파일 롤백 경로를 정리한다
 - Web/Desktop Cloud 파일 목록 본문은 기본 텍스트 선택을 막고, 이름 변경 입력처럼 실제 편집이 필요한 요소만 텍스트 선택을 허용한다
 - Web/Desktop Cloud 영역 선택 박스는 현재 보이는 scroll 범위까지만 그려지고, 더 바깥 선택은 auto-scroll로만 이어지게 유지한다
+- Web/Desktop Cloud 스크롤 본문은 좌우 내부 여백과 하단 selection gutter를 유지해 항목이 많아도 빈 캔버스에서 영역 선택을 시작할 수 있게 한다
 - Web/Desktop Cloud 복사/이동 클립보드는 폴더 이동 후에도 유지되고, 선택 일괄 바에서 복사/이동/다운로드/삭제를 직접 실행할 수 있다
 - Web/Desktop Cloud 다중 선택 드래그는 첫 항목 이름과 개수 배지를 같이 보여 주는 커스텀 drag ghost를 사용한다
 - Web/Desktop Cloud 붙여넣기(복사/이동)도 실행 직후 5초 실행 취소를 제공한다

@@ -2339,7 +2339,7 @@ function CloudPageInner() {
       {/* File list */}
       <div
         ref={scrollContainerRef}
-        className="relative flex-1 overflow-auto select-none"
+        className="relative flex-1 overflow-auto px-4 pb-24 select-none md:px-6 lg:px-8"
         onMouseDown={handleSelectionPointerDown}
       >
         <CloudSelectionOverlay rect={selectionRect} />
@@ -2640,7 +2640,7 @@ function CloudPageInner() {
           </table>
         ) : (
           /* Grid view */
-          <div className="grid grid-cols-[repeat(auto-fill,minmax(120px,1fr))] md:grid-cols-[repeat(auto-fill,minmax(140px,1fr))] gap-3 p-4">
+          <div className="grid grid-cols-[repeat(auto-fill,minmax(120px,1fr))] gap-3 pt-4 md:grid-cols-[repeat(auto-fill,minmax(140px,1fr))]">
             {displayItems.map((item) => {
               const id = item.type === "folder" ? item.folder!.id : item.file!.id;
               const name = item.type === "folder" ? item.folder!.name : item.file!.name;
