@@ -463,7 +463,7 @@ func (uc *cloudUseCase) CopyFile(ctx context.Context, userID, fileID string, tar
 		return nil, err
 	}
 
-	undoToken, err := undotoken.GenerateCopyFile(userID, copied.ID, uc.undoKey)
+	undoToken, err := undotoken.GenerateCopyFile(userID, copied.ID, copied.UpdatedAt.UnixNano(), uc.undoKey)
 	if err != nil {
 		return nil, fmt.Errorf("generate undo token: %w", err)
 	}
@@ -493,6 +493,9 @@ func (uc *cloudUseCase) UndoOperation(ctx context.Context, userID, undoToken str
 		file, err := uc.files.FindByID(ctx, userID, claims.ItemID)
 		if err != nil || file == nil {
 			return fmt.Errorf("file not found")
+		}
+		if file.UpdatedAt.UnixNano() != claims.StateVersion {
+			return fmt.Errorf("invalid undo token")
 		}
 		return uc.purgeFile(ctx, userID, file)
 	default:
@@ -688,12 +691,9 @@ func (uc *cloudUseCase) EmptyTrash(ctx context.Context, userID string) error {
 	}
 
 	for _, file := range fileMap {
-		_ = uc.storage.Delete(file.StoragePath)
-		if uc.thumbs != nil {
-			_ = uc.thumbs.Delete(userID, file.ID)
+		if err := uc.purgeFile(ctx, userID, file); err != nil {
+			return err
 		}
-		_ = uc.files.HardDelete(ctx, file.ID)
-		_ = uc.files.UpdateStorageUsed(ctx, userID, -file.SizeBytes)
 	}
 
 	folderList := make([]*domain.Folder, 0, len(folderMap))
@@ -704,7 +704,9 @@ func (uc *cloudUseCase) EmptyTrash(ctx context.Context, userID string) error {
 		return folderDepth(folderList[i], folderMap) > folderDepth(folderList[j], folderMap)
 	})
 	for _, folder := range folderList {
-		_ = uc.folders.HardDelete(ctx, folder.ID)
+		if err := uc.folders.HardDelete(ctx, folder.ID); err != nil {
+			return err
+		}
 	}
 
 	return nil

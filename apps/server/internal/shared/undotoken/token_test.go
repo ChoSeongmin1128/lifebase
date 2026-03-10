@@ -26,7 +26,7 @@ func TestGenerateAndVerify(t *testing.T) {
 }
 
 func TestVerifyRejectsTamperedAndExpired(t *testing.T) {
-	token, err := GenerateCopyFile("u1", "f1", "secret")
+	token, err := GenerateCopyFile("u1", "f1", time.Now().UnixNano(), "secret")
 	if err != nil {
 		t.Fatalf("generate token: %v", err)
 	}
@@ -35,11 +35,12 @@ func TestVerifyRejectsTamperedAndExpired(t *testing.T) {
 	}
 
 	payload := Claims{
-		Action:    ActionCopyFile,
-		UserID:    "u1",
-		ItemID:    "f1",
-		IssuedAt:  time.Now().Add(-time.Minute).Unix(),
-		ExpiresAt: time.Now().Add(-time.Second).Unix(),
+		Action:       ActionCopyFile,
+		UserID:       "u1",
+		ItemID:       "f1",
+		StateVersion: time.Now().UnixNano(),
+		IssuedAt:     time.Now().Add(-time.Minute).Unix(),
+		ExpiresAt:    time.Now().Add(-time.Second).Unix(),
 	}
 	raw, err := json.Marshal(payload)
 	if err != nil {
@@ -49,6 +50,25 @@ func TestVerifyRejectsTamperedAndExpired(t *testing.T) {
 	expired := encoded + "." + sign(encoded, "secret")
 	if _, err := Verify(expired, "secret"); err == nil {
 		t.Fatal("expected expired token error")
+	}
+}
+
+func TestVerifyRejectsCopyTokenWithoutStateVersion(t *testing.T) {
+	payload := Claims{
+		Action:    ActionCopyFile,
+		UserID:    "u1",
+		ItemID:    "f1",
+		IssuedAt:  time.Now().Add(-time.Second).Unix(),
+		ExpiresAt: time.Now().Add(time.Second).Unix(),
+	}
+	raw, err := json.Marshal(payload)
+	if err != nil {
+		t.Fatalf("marshal payload: %v", err)
+	}
+	encoded := base64.RawURLEncoding.EncodeToString(raw)
+	token := encoded + "." + sign(encoded, "secret")
+	if _, err := Verify(token, "secret"); err == nil {
+		t.Fatal("expected missing state version error")
 	}
 }
 

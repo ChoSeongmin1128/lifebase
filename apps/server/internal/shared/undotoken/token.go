@@ -21,12 +21,13 @@ const (
 var errInvalidToken = errors.New("invalid undo token")
 
 type Claims struct {
-	Action    string  `json:"action"`
-	UserID    string  `json:"user_id"`
-	ItemID    string  `json:"item_id"`
-	ParentID  *string `json:"parent_id,omitempty"`
-	IssuedAt  int64   `json:"iat"`
-	ExpiresAt int64   `json:"exp"`
+	Action       string  `json:"action"`
+	UserID       string  `json:"user_id"`
+	ItemID       string  `json:"item_id"`
+	ParentID     *string `json:"parent_id,omitempty"`
+	StateVersion int64   `json:"state_version,omitempty"`
+	IssuedAt     int64   `json:"iat"`
+	ExpiresAt    int64   `json:"exp"`
 }
 
 func GenerateMoveFile(userID, fileID string, parentID *string, hmacKey string) (string, error) {
@@ -47,11 +48,12 @@ func GenerateMoveFolder(userID, folderID string, parentID *string, hmacKey strin
 	}, hmacKey, defaultTTL)
 }
 
-func GenerateCopyFile(userID, fileID string, hmacKey string) (string, error) {
+func GenerateCopyFile(userID, fileID string, stateVersion int64, hmacKey string) (string, error) {
 	return generate(Claims{
-		Action: ActionCopyFile,
-		UserID: userID,
-		ItemID: fileID,
+		Action:       ActionCopyFile,
+		UserID:       userID,
+		ItemID:       fileID,
+		StateVersion: stateVersion,
 	}, hmacKey, defaultTTL)
 }
 
@@ -89,7 +91,12 @@ func Verify(token, hmacKey string) (*Claims, error) {
 	}
 
 	switch claims.Action {
-	case ActionMoveFile, ActionMoveFolder, ActionCopyFile:
+	case ActionMoveFile, ActionMoveFolder:
+		return &claims, nil
+	case ActionCopyFile:
+		if claims.StateVersion == 0 {
+			return nil, errInvalidToken
+		}
 		return &claims, nil
 	default:
 		return nil, errInvalidToken

@@ -751,6 +751,18 @@ func TestCloudUseCaseFileFlows(t *testing.T) {
 	if err := uc.UndoOperation(ctx, "u2", copyResult.UndoToken); err == nil {
 		t.Fatal("expected undo user mismatch error")
 	}
+	if err := uc.RenameFile(ctx, "u1", copied.ID, "copied-renamed.txt"); err != nil {
+		t.Fatalf("rename copied file before undo: %v", err)
+	}
+	if err := uc.UndoOperation(ctx, "u1", copyResult.UndoToken); err == nil {
+		t.Fatal("expected undo token invalidation after copy mutation")
+	}
+
+	copyResult, err = uc.CopyFile(ctx, "u1", "source", &folder.ID)
+	if err != nil {
+		t.Fatalf("copy file for undo error branches: %v", err)
+	}
+	copied = copyResult.File
 	thumbs.deleteErr = errors.New("thumb delete fail")
 	if err := uc.UndoOperation(ctx, "u1", copyResult.UndoToken); err == nil {
 		t.Fatal("expected undo thumbnail delete error")
@@ -1124,6 +1136,63 @@ func TestCloudUseCaseTrashLegacySubtreeVisibilityAndCleanup(t *testing.T) {
 			t.Fatalf("expected file %s to be hard deleted", id)
 		}
 	}
+}
+
+func TestCloudUseCaseEmptyTrashDeleteFailures(t *testing.T) {
+	ctx := context.Background()
+
+	t.Run("thumbnail delete error is propagated", func(t *testing.T) {
+		uc, folders, files, _, _, storage, thumbs, _ := newCloudUCForTest()
+		folder := seedFolder(folders, "trash-thumb-folder", "u1", "TrashThumb", nil)
+		file := seedFile(files, "trash-thumb-file", "u1", "a.txt", "text/plain", "u1/trash-thumb", &folder.ID, 1)
+		markFolderTrashed(folder)
+		markFileTrashed(file)
+		storage.data[file.StoragePath] = []byte("a")
+		thumbs.deleteErr = errors.New("thumb delete fail")
+
+		if err := uc.EmptyTrash(ctx, "u1"); err == nil || err.Error() != "delete thumbnails: thumb delete fail" {
+			t.Fatalf("expected thumbnail delete error, got %v", err)
+		}
+	})
+
+	t.Run("storage delete error is propagated", func(t *testing.T) {
+		uc, folders, files, _, _, storage, _, _ := newCloudUCForTest()
+		folder := seedFolder(folders, "trash-storage-folder", "u1", "TrashStorage", nil)
+		file := seedFile(files, "trash-storage-file", "u1", "a.txt", "text/plain", "u1/trash-storage", &folder.ID, 1)
+		markFolderTrashed(folder)
+		markFileTrashed(file)
+		storage.data[file.StoragePath] = []byte("a")
+		storage.deleteErr = errors.New("delete storage fail")
+
+		if err := uc.EmptyTrash(ctx, "u1"); err == nil || err.Error() != "delete file data: delete storage fail" {
+			t.Fatalf("expected storage delete error, got %v", err)
+		}
+	})
+
+	t.Run("file hard delete error is propagated", func(t *testing.T) {
+		uc, folders, files, _, _, storage, _, _ := newCloudUCForTest()
+		folder := seedFolder(folders, "trash-hard-folder", "u1", "TrashHard", nil)
+		file := seedFile(files, "trash-hard-file", "u1", "a.txt", "text/plain", "u1/trash-hard", &folder.ID, 1)
+		markFolderTrashed(folder)
+		markFileTrashed(file)
+		storage.data[file.StoragePath] = []byte("a")
+		files.hardErr = errors.New("hard delete fail")
+
+		if err := uc.EmptyTrash(ctx, "u1"); err == nil || err.Error() != "delete file record: hard delete fail" {
+			t.Fatalf("expected hard delete error, got %v", err)
+		}
+	})
+
+	t.Run("folder hard delete error is propagated", func(t *testing.T) {
+		uc, folders, _, _, _, _, _, _ := newCloudUCForTest()
+		folder := seedFolder(folders, "trash-folder-hard-only", "u1", "TrashFolderHard", nil)
+		markFolderTrashed(folder)
+		folders.hardErr = errors.New("folder hard delete fail")
+
+		if err := uc.EmptyTrash(ctx, "u1"); err == nil || err.Error() != "folder hard delete fail" {
+			t.Fatalf("expected folder hard delete error, got %v", err)
+		}
+	})
 }
 
 func strPtr(s string) *string { return &s }
