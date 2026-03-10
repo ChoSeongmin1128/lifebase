@@ -262,6 +262,7 @@ function CloudPageInner() {
   const selectionPointerRef = useRef<{ clientX: number; clientY: number } | null>(null);
   const selectionScrollFrameRef = useRef<number | null>(null);
   const locationKeyRef = useRef(locationKey);
+  const previousSectionRef = useRef(section);
 
   const currentFolderID = activeFolderID;
   const hasLegacyFolderQuery = isMyFilesSection && !routeFolderId && !!folderQuery;
@@ -278,6 +279,22 @@ function CloudPageInner() {
   useEffect(() => {
     setActiveFolderID(resolvedFolderID);
   }, [resolvedFolderID]);
+
+  useEffect(() => {
+    if (previousSectionRef.current === section) {
+      return;
+    }
+
+    previousSectionRef.current = section;
+    itemsRequestRef.current += 1;
+    pathRequestRef.current += 1;
+    folderRouteRequestRef.current += 1;
+    setItems([]);
+    setLoading(true);
+    setHasLoadedItems(false);
+    setPathLoading(false);
+    updatePathState([rootPathEntry], null);
+  }, [rootPathEntry, section, updatePathState]);
 
   useEffect(() => {
     if ((!isMyFilesSection && !isTrashSection) || !authed) {
@@ -976,8 +993,44 @@ function CloudPageInner() {
     await loadItems();
   };
 
+  const handleBulkDeleteFromTrash = async () => {
+    if (!authed || !isTrashSection) return;
+    const selectedItems = displayItems.filter((item) => {
+      const id = item.type === "folder" ? item.folder?.id : item.file?.id;
+      return !!id && selectedIds.has(id);
+    });
+    if (selectedItems.length === 0) return;
+
+    const results = await Promise.allSettled(
+      selectedItems.map((item) => (
+        item.type === "folder"
+          ? cloud.deleteFolder(item.folder!.id)
+          : cloud.deleteFile(item.file!.id)
+      )),
+    );
+
+    const failedCount = results.filter((result) => result.status === "rejected").length;
+    const succeededCount = selectedItems.length - failedCount;
+    setSelectedIds(new Set());
+    await loadItems();
+
+    if (succeededCount > 0) {
+      toast.success(
+        succeededCount === 1 ? "항목이 삭제되었습니다" : `항목 ${succeededCount}개가 삭제되었습니다`,
+      );
+    }
+    if (failedCount === selectedItems.length) {
+      toast.error("선택한 항목을 삭제하지 못했습니다");
+      return;
+    }
+    if (failedCount > 0) {
+      toast.warning("일부 항목 삭제 실패", `${failedCount}개 항목을 삭제하지 못했습니다.`);
+    }
+  };
+
   const handleEmptyTrash = async () => {
     if (!authed || !isTrashSection) return;
+    if (currentFolderID !== null || displayItems.length === 0 || loading) return;
     if (pendingTrashEmptyRef.current) {
       await pendingTrashEmptyRef.current.flush();
     }
@@ -1103,6 +1156,12 @@ function CloudPageInner() {
   };
 
   const refreshVisibleItems = useCallback(async () => {
+    if (pendingDeletionRef.current) {
+      await pendingDeletionRef.current.flush();
+    }
+    if (pendingTrashEmptyRef.current) {
+      await pendingTrashEmptyRef.current.flush();
+    }
     await loadItems();
     if (!authed || !isMyFilesSection || searchResults === null || !searchQuery.trim()) {
       return;
@@ -1928,6 +1987,7 @@ function CloudPageInner() {
   const showSearchResultBanner = isMyFilesSection && searchResults !== null;
   const showBulkBar = selectedIds.size > 0 && (isMyFilesSection || isTrashSection);
   const currentViewMode: ViewMode = isMyFilesSection ? viewMode : "list";
+  const canEmptyTrash = isTrashSection && currentFolderID === null && displayItems.length > 0 && !loading;
   const routeActionLabel = isTrashSection ? "휴지통으로 이동" : "보관함으로 이동";
   const routeStateCopy = (() => {
     if (!hasFolderRouteError) return null;
@@ -2045,14 +2105,9 @@ function CloudPageInner() {
                 <Undo2 size={14} />
                 복원
               </Button>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={handleEmptyTrash}
-                className="gap-1.5 text-error hover:text-error"
-              >
+              <Button variant="danger" size="sm" onClick={() => void handleBulkDeleteFromTrash()} className="gap-1.5">
                 <Trash2 size={14} />
-                비우기
+                삭제
               </Button>
               <Button variant="ghost" size="sm" onClick={() => setSelectedIds(new Set())}>
                 선택 해제
@@ -2205,7 +2260,7 @@ function CloudPageInner() {
                 <Button
                   variant="ghost"
                   size="sm"
-                  disabled={!folderActionsEnabled}
+                  disabled={!folderActionsEnabled || !canEmptyTrash}
                   onClick={handleEmptyTrash}
                   className="gap-1.5 text-error hover:text-error"
                 >

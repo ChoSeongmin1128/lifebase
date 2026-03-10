@@ -878,6 +878,42 @@ func TestCloudUseCaseTrashViewsStarsSearchAndHelpers(t *testing.T) {
 		t.Fatal("expected trashed subtree to be hard deleted")
 	}
 
+	trashDeleteFolder := seedFolder(folders, "trash-delete-folder", "u1", "TrashDeleteFolder", nil)
+	trashDeleteFile := seedFile(files, "trash-delete-file", "u1", "trash-delete.txt", "text/plain", "u1/trash-delete", &trashDeleteFolder.ID, 9)
+	markFolderTrashed(trashDeleteFolder)
+	markFileTrashed(trashDeleteFile)
+	storage.data["u1/trash-delete"] = []byte("trash-delete")
+	if err := uc.DeleteFile(ctx, "u1", trashDeleteFile.ID); err != nil {
+		t.Fatalf("delete file from trash: %v", err)
+	}
+	if _, ok := files.byID[trashDeleteFile.ID]; ok {
+		t.Fatal("expected trashed file to be hard deleted")
+	}
+
+	child = seedFolder(folders, "trash-delete-child", "u1", "TrashDeleteChild", nil)
+	grand = seedFolder(folders, "trash-delete-grand", "u1", "TrashDeleteGrand", &child.ID)
+	file3 = seedFile(files, "trash-delete-grand-file", "u1", "grand.txt", "text/plain", "u1/trash-delete-grand", &grand.ID, 13)
+	activeNestedDelete := seedFolder(folders, "active-nested-delete", "u1", "ActiveNestedDelete", &child.ID)
+	activeNestedFile := seedFile(files, "active-nested-file", "u1", "nested.txt", "text/plain", "u1/nested-delete", &activeNestedDelete.ID, 11)
+	markFolderTrashed(child)
+	markFolderTrashed(grand)
+	markFileTrashed(file3)
+	storage.data["u1/trash-delete-grand"] = []byte("grand")
+	storage.data["u1/nested-delete"] = []byte("nested")
+	if err := uc.DeleteFolder(ctx, "u1", child.ID); err != nil {
+		t.Fatalf("delete folder from trash: %v", err)
+	}
+	for _, id := range []string{child.ID, grand.ID, activeNestedDelete.ID} {
+		if _, ok := folders.byID[id]; ok {
+			t.Fatalf("expected folder %s to be hard deleted via trash delete", id)
+		}
+	}
+	for _, id := range []string{file3.ID, activeNestedFile.ID} {
+		if _, ok := files.byID[id]; ok {
+			t.Fatalf("expected file %s to be hard deleted via trash delete", id)
+		}
+	}
+
 	files.recent = []*domain.File{file1, file2}
 	if items, err := uc.ListRecent(ctx, "u1"); err != nil || len(items) != 2 {
 		t.Fatalf("list recent failed: %v len=%d", err, len(items))
