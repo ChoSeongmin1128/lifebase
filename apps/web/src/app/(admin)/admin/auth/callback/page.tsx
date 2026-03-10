@@ -11,13 +11,14 @@ function CallbackContent() {
   const searchParams = useSearchParams();
   const [error, setError] = useState<string | null>(null);
   const code = searchParams.get("code");
+  const callbackState = searchParams.get("state");
   const { exchangeCode } = useAdminActions();
 
   useEffect(() => {
     if (!code) return;
     const runExchange = async () => {
       try {
-        const state = sessionStorage.getItem("oauth_state_admin") || undefined;
+        const state = callbackState || sessionStorage.getItem("oauth_state_admin") || undefined;
         const data = await exchangeCode(code, state);
 
         setAdminTokens(data.access_token, data.refresh_token);
@@ -38,7 +39,7 @@ function CallbackContent() {
       }
     };
     runExchange();
-  }, [code, exchangeCode, router]);
+  }, [callbackState, code, exchangeCode, router]);
 
   if (!code) {
     return (

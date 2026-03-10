@@ -11,13 +11,14 @@ function CallbackContent() {
   const searchParams = useSearchParams();
   const [error, setError] = useState<string | null>(null);
   const code = searchParams.get("code");
+  const callbackState = searchParams.get("state");
   const { exchangeCode, linkGoogleAccount } = useAuthFlow();
 
   useEffect(() => {
     if (!code) return;
 
     const runExchange = async () => {
-      const state = sessionStorage.getItem("oauth_state") || undefined;
+      const state = callbackState || sessionStorage.getItem("oauth_state") || undefined;
       const intent = sessionStorage.getItem("oauth_intent");
       const returnPath = sessionStorage.getItem("oauth_return_path") || "/settings";
 
@@ -45,7 +46,7 @@ function CallbackContent() {
     };
 
     runExchange();
-  }, [code, exchangeCode, linkGoogleAccount, router]);
+  }, [callbackState, code, exchangeCode, linkGoogleAccount, router]);
 
   if (!code) {
     return (
