@@ -15,10 +15,7 @@ func ensureSharingTestDSN(t *testing.T) {
 	t.Helper()
 	dsn := strings.TrimSpace(os.Getenv("LIFEBASE_TEST_DATABASE_URL"))
 	if dsn == "" {
-		dsn = strings.TrimSpace(os.Getenv("DATABASE_URL"))
-	}
-	if dsn == "" {
-		dsn = "postgres://seongmin@localhost:5432/lifebase?sslmode=disable"
+		dsn = "postgres://seongmin@localhost:5432/lifebase_test?sslmode=disable"
 	}
 	t.Setenv("LIFEBASE_TEST_DATABASE_URL", dsn)
 }
