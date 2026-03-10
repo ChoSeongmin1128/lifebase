@@ -7,7 +7,12 @@ import type {
   ListCloudItemsInput,
   StarItem,
 } from "@/features/cloud/domain/CloudItem";
-import type { CloudRepository, CloudUploadOptions } from "@/features/cloud/repository/CloudRepository";
+import type {
+  CloudCopyFileResult,
+  CloudRepository,
+  CloudUndoTokenResult,
+  CloudUploadOptions,
+} from "@/features/cloud/repository/CloudRepository";
 
 interface ItemsResponse {
   items?: FolderItem[];
@@ -186,9 +191,9 @@ export class HttpCloudRepository implements CloudRepository {
     });
   }
 
-  async moveFolder(folderId: string, parentId?: string | null): Promise<void> {
+  async moveFolder(folderId: string, parentId?: string | null): Promise<CloudUndoTokenResult> {
     const token = this.getToken();
-    await api(`/cloud/folders/${folderId}/move`, {
+    return api<CloudUndoTokenResult>(`/cloud/folders/${folderId}/move`, {
       method: "PATCH",
       body: { parent_id: parentId ?? null },
       token,
@@ -213,28 +218,29 @@ export class HttpCloudRepository implements CloudRepository {
     });
   }
 
-  async moveFile(fileId: string, folderId?: string | null): Promise<void> {
+  async moveFile(fileId: string, folderId?: string | null): Promise<CloudUndoTokenResult> {
     const token = this.getToken();
-    await api(`/cloud/files/${fileId}/move`, {
+    return api<CloudUndoTokenResult>(`/cloud/files/${fileId}/move`, {
       method: "PATCH",
       body: { folder_id: folderId ?? null },
       token,
     });
   }
 
-  async copyFile(fileId: string, folderId?: string | null): Promise<CloudFile> {
+  async copyFile(fileId: string, folderId?: string | null): Promise<CloudCopyFileResult> {
     const token = this.getToken();
-    return api<CloudFile>(`/cloud/files/${fileId}/copy`, {
+    return api<CloudCopyFileResult>(`/cloud/files/${fileId}/copy`, {
       method: "PATCH",
       body: { folder_id: folderId ?? null },
       token,
     });
   }
 
-  async discardFile(fileId: string): Promise<void> {
+  async undoOperation(tokenValue: string): Promise<void> {
     const token = this.getToken();
-    await api(`/cloud/files/${fileId}/discard`, {
-      method: "DELETE",
+    await api("/cloud/operations/undo", {
+      method: "POST",
+      body: { token: tokenValue },
       token,
     });
   }

@@ -34,3 +34,7 @@ func (uc *galleryUseCase) ListMedia(ctx context.Context, userID string, mediaTyp
 
 	return files, nextCursor, nil
 }
+
+func (uc *galleryUseCase) GetMedia(ctx context.Context, userID, fileID string) (*domain.Media, error) {
+	return uc.media.GetMedia(ctx, userID, fileID)
+}

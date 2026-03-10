@@ -46,3 +46,26 @@ func (s *localStorage) Delete(storagePath string) error {
 	}
 	return fsutil.PruneEmptyParents(s.basePath, filepath.Dir(fullPath))
 }
+
+type localThumbnailStorage struct {
+	basePath string
+}
+
+func NewLocalThumbnailStorage(basePath string) *localThumbnailStorage {
+	return &localThumbnailStorage{basePath: basePath}
+}
+
+func (s *localThumbnailStorage) Delete(userID, fileID string) error {
+	userDir := filepath.Join(s.basePath, userID)
+	names := []string{
+		fileID + "_small.webp",
+		fileID + "_medium.webp",
+	}
+	for _, name := range names {
+		fullPath := filepath.Join(userDir, name)
+		if err := os.Remove(fullPath); err != nil && !os.IsNotExist(err) {
+			return err
+		}
+	}
+	return fsutil.PruneEmptyParents(s.basePath, userDir)
+}

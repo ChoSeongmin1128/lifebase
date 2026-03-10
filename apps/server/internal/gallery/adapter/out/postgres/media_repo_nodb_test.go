@@ -30,5 +30,7 @@ func TestMediaRepoNoDBErrorBranch(t *testing.T) {
 	if _, err := repo.ListMedia(ctx, "u1", "image", "taken_at", "asc", "", 10); err == nil {
 		t.Fatal("expected list media error")
 	}
+	if _, err := repo.GetMedia(ctx, "u1", "f1"); err == nil {
+		t.Fatal("expected get media error")
+	}
 }
-

@@ -14,6 +14,7 @@ import (
 	"lifebase/internal/cloud/domain"
 	portin "lifebase/internal/cloud/port/in"
 	portout "lifebase/internal/cloud/port/out"
+	"lifebase/internal/shared/undotoken"
 )
 
 const maxEditableFileBytes = 2 * 1024 * 1024
@@ -24,7 +25,9 @@ type cloudUseCase struct {
 	shared  portout.SharedRepository
 	stars   portout.StarRepository
 	storage portout.FileStorage
+	thumbs  portout.ThumbnailStorage
 	queue   portout.ThumbnailQueue
+	undoKey string
 }
 
 func NewCloudUseCase(
@@ -33,7 +36,9 @@ func NewCloudUseCase(
 	shared portout.SharedRepository,
 	stars portout.StarRepository,
 	storage portout.FileStorage,
+	thumbs portout.ThumbnailStorage,
 	queue portout.ThumbnailQueue,
+	undoKey string,
 ) portin.CloudUseCase {
 	return &cloudUseCase{
 		folders: folders,
@@ -41,7 +46,9 @@ func NewCloudUseCase(
 		shared:  shared,
 		stars:   stars,
 		storage: storage,
+		thumbs:  thumbs,
 		queue:   queue,
+		undoKey: undoKey,
 	}
 }
 
@@ -106,36 +113,45 @@ func (uc *cloudUseCase) RenameFolder(ctx context.Context, userID, folderID, newN
 	return uc.folders.Update(ctx, folder)
 }
 
-func (uc *cloudUseCase) MoveFolder(ctx context.Context, userID, folderID string, newParentID *string) error {
+func (uc *cloudUseCase) MoveFolder(ctx context.Context, userID, folderID string, newParentID *string) (*portin.UndoTokenResult, error) {
 	folder, err := uc.folders.FindByID(ctx, userID, folderID)
 	if err != nil {
-		return fmt.Errorf("folder not found")
+		return nil, fmt.Errorf("folder not found")
 	}
+	previousParentID := folder.ParentID
 
 	if newParentID != nil {
 		if *newParentID == folderID {
-			return fmt.Errorf("cannot move folder into itself")
+			return nil, fmt.Errorf("cannot move folder into itself")
 		}
 		parent, err := uc.folders.FindByID(ctx, userID, *newParentID)
 		if err != nil || parent == nil {
-			return fmt.Errorf("target folder not found")
+			return nil, fmt.Errorf("target folder not found")
 		}
 		descendant, err := uc.isDescendantFolder(ctx, userID, folderID, newParentID)
 		if err != nil {
-			return fmt.Errorf("validate target folder: %w", err)
+			return nil, fmt.Errorf("validate target folder: %w", err)
 		}
 		if descendant {
-			return fmt.Errorf("cannot move folder into its descendant")
+			return nil, fmt.Errorf("cannot move folder into its descendant")
 		}
 	}
 
 	if (folder.ParentID == nil && newParentID == nil) || (folder.ParentID != nil && newParentID != nil && *folder.ParentID == *newParentID) {
-		return nil
+		return &portin.UndoTokenResult{}, nil
 	}
 
 	folder.ParentID = newParentID
 	folder.UpdatedAt = time.Now()
-	return uc.folders.Update(ctx, folder)
+	if err := uc.folders.Update(ctx, folder); err != nil {
+		return nil, err
+	}
+
+	undoToken, err := undotoken.GenerateMoveFolder(userID, folderID, previousParentID, uc.undoKey)
+	if err != nil {
+		return nil, fmt.Errorf("generate undo token: %w", err)
+	}
+	return &portin.UndoTokenResult{UndoToken: undoToken}, nil
 }
 
 func (uc *cloudUseCase) CopyFolder(ctx context.Context, userID, folderID string, targetParentID *string) error {
@@ -406,48 +422,82 @@ func (uc *cloudUseCase) UpdateFileContent(ctx context.Context, userID, fileID, c
 	return nil
 }
 
-func (uc *cloudUseCase) MoveFile(ctx context.Context, userID, fileID string, newFolderID *string) error {
+func (uc *cloudUseCase) MoveFile(ctx context.Context, userID, fileID string, newFolderID *string) (*portin.UndoTokenResult, error) {
 	file, err := uc.files.FindByID(ctx, userID, fileID)
 	if err != nil {
-		return fmt.Errorf("file not found")
+		return nil, fmt.Errorf("file not found")
 	}
+	previousFolderID := file.FolderID
 
 	if newFolderID != nil {
 		folder, err := uc.folders.FindByID(ctx, userID, *newFolderID)
 		if err != nil || folder == nil {
-			return fmt.Errorf("target folder not found")
+			return nil, fmt.Errorf("target folder not found")
 		}
+	}
+
+	if (file.FolderID == nil && newFolderID == nil) || (file.FolderID != nil && newFolderID != nil && *file.FolderID == *newFolderID) {
+		return &portin.UndoTokenResult{}, nil
 	}
 
 	file.FolderID = newFolderID
 	file.UpdatedAt = time.Now()
-	return uc.files.Update(ctx, file)
+	if err := uc.files.Update(ctx, file); err != nil {
+		return nil, err
+	}
+
+	undoToken, err := undotoken.GenerateMoveFile(userID, fileID, previousFolderID, uc.undoKey)
+	if err != nil {
+		return nil, fmt.Errorf("generate undo token: %w", err)
+	}
+	return &portin.UndoTokenResult{UndoToken: undoToken}, nil
 }
 
-func (uc *cloudUseCase) CopyFile(ctx context.Context, userID, fileID string, targetFolderID *string) (*domain.File, error) {
+func (uc *cloudUseCase) CopyFile(ctx context.Context, userID, fileID string, targetFolderID *string) (*portin.CopyFileResult, error) {
 	source, err := uc.files.FindByID(ctx, userID, fileID)
 	if err != nil || source == nil {
 		return nil, fmt.Errorf("file not found")
 	}
-	return uc.copyFileToFolder(ctx, userID, source, targetFolderID)
+	copied, err := uc.copyFileToFolder(ctx, userID, source, targetFolderID)
+	if err != nil {
+		return nil, err
+	}
+
+	undoToken, err := undotoken.GenerateCopyFile(userID, copied.ID, uc.undoKey)
+	if err != nil {
+		return nil, fmt.Errorf("generate undo token: %w", err)
+	}
+	return &portin.CopyFileResult{
+		File:      copied,
+		UndoToken: undoToken,
+	}, nil
 }
 
-func (uc *cloudUseCase) DiscardFile(ctx context.Context, userID, fileID string) error {
-	file, err := uc.files.FindByID(ctx, userID, fileID)
-	if err != nil || file == nil {
-		return fmt.Errorf("file not found")
+func (uc *cloudUseCase) UndoOperation(ctx context.Context, userID, undoToken string) error {
+	claims, err := undotoken.Verify(undoToken, uc.undoKey)
+	if err != nil {
+		return fmt.Errorf("invalid undo token")
+	}
+	if claims.UserID != userID {
+		return fmt.Errorf("invalid undo token")
 	}
 
-	if err := uc.storage.Delete(file.StoragePath); err != nil {
-		return fmt.Errorf("delete file data: %w", err)
+	switch claims.Action {
+	case undotoken.ActionMoveFile:
+		_, err = uc.MoveFile(ctx, userID, claims.ItemID, claims.ParentID)
+		return err
+	case undotoken.ActionMoveFolder:
+		_, err = uc.MoveFolder(ctx, userID, claims.ItemID, claims.ParentID)
+		return err
+	case undotoken.ActionCopyFile:
+		file, err := uc.files.FindByID(ctx, userID, claims.ItemID)
+		if err != nil || file == nil {
+			return fmt.Errorf("file not found")
+		}
+		return uc.purgeFile(ctx, userID, file)
+	default:
+		return fmt.Errorf("invalid undo token")
 	}
-	if err := uc.files.HardDelete(ctx, fileID); err != nil {
-		return fmt.Errorf("delete file record: %w", err)
-	}
-	if err := uc.files.UpdateStorageUsed(ctx, userID, -file.SizeBytes); err != nil {
-		return fmt.Errorf("update storage used: %w", err)
-	}
-	return nil
 }
 
 func (uc *cloudUseCase) DeleteFile(ctx context.Context, userID, fileID string) error {
@@ -639,6 +689,9 @@ func (uc *cloudUseCase) EmptyTrash(ctx context.Context, userID string) error {
 
 	for _, file := range fileMap {
 		_ = uc.storage.Delete(file.StoragePath)
+		if uc.thumbs != nil {
+			_ = uc.thumbs.Delete(userID, file.ID)
+		}
 		_ = uc.files.HardDelete(ctx, file.ID)
 		_ = uc.files.UpdateStorageUsed(ctx, userID, -file.SizeBytes)
 	}
@@ -658,6 +711,11 @@ func (uc *cloudUseCase) EmptyTrash(ctx context.Context, userID string) error {
 }
 
 func (uc *cloudUseCase) purgeFile(ctx context.Context, userID string, file *domain.File) error {
+	if uc.thumbs != nil {
+		if err := uc.thumbs.Delete(userID, file.ID); err != nil {
+			return fmt.Errorf("delete thumbnails: %w", err)
+		}
+	}
 	if err := uc.storage.Delete(file.StoragePath); err != nil {
 		return fmt.Errorf("delete file data: %w", err)
 	}

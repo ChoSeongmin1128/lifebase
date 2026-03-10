@@ -11,6 +11,7 @@ import (
 
 type mockMediaRepo struct {
 	items []*domain.Media
+	item  *domain.Media
 	err   error
 	limit int
 }
@@ -21,6 +22,13 @@ func (m *mockMediaRepo) ListMedia(_ context.Context, _ string, _ string, _ strin
 		return nil, m.err
 	}
 	return m.items, nil
+}
+
+func (m *mockMediaRepo) GetMedia(_ context.Context, _ string, _ string) (*domain.Media, error) {
+	if m.err != nil {
+		return nil, m.err
+	}
+	return m.item, nil
 }
 
 func TestListMediaDefaultLimitAndCursor(t *testing.T) {
@@ -85,5 +93,19 @@ func TestListMediaNoNextCursorWhenWithinLimit(t *testing.T) {
 	}
 	if next != "" {
 		t.Fatalf("expected empty next cursor, got %q", next)
+	}
+}
+
+func TestGetMedia(t *testing.T) {
+	now := time.Now()
+	repo := &mockMediaRepo{item: &domain.Media{ID: "m1", CreatedAt: now, UpdatedAt: now}}
+	uc := NewGalleryUseCase(repo)
+
+	item, err := uc.GetMedia(context.Background(), "u1", "m1")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if item == nil || item.ID != "m1" {
+		t.Fatalf("unexpected media: %#v", item)
 	}
 }

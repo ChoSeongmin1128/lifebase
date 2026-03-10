@@ -110,6 +110,7 @@ func main() {
 
 	// Storage
 	storage := filesystem.NewLocalStorage(cfg.Storage.DataPath)
+	thumbnailStorage := filesystem.NewLocalThumbnailStorage(cfg.Storage.ThumbPath)
 
 	// Asynq
 	asynqClient := worker.NewAsynqClient(cfg.Redis.URL)
@@ -175,7 +176,16 @@ func main() {
 	eventOutboxRepo := calendarpg.NewEventPushOutboxRepo(dbpool)
 	todoOutboxRepo := todopg.NewTodoPushOutboxRepo(dbpool)
 	thumbnailQueue := cloudasynq.NewThumbnailQueue(asynqClient)
-	cloudUC := cloudusecase.NewCloudUseCase(folderRepo, fileRepo, cloudSharedRepo, starRepo, storage, thumbnailQueue)
+	cloudUC := cloudusecase.NewCloudUseCase(
+		folderRepo,
+		fileRepo,
+		cloudSharedRepo,
+		starRepo,
+		storage,
+		thumbnailStorage,
+		thumbnailQueue,
+		cfg.StateHMACKey,
+	)
 	galleryUC := galleryusecase.NewGalleryUseCase(mediaRepo)
 	calendarUC := calendarusecase.NewCalendarUseCase(
 		calendarRepo,
@@ -298,7 +308,7 @@ func main() {
 				r.Patch("/files/{fileID}/rename", cloudHandler.RenameFile)
 				r.Patch("/files/{fileID}/move", cloudHandler.MoveFile)
 				r.Patch("/files/{fileID}/copy", cloudHandler.CopyFile)
-				r.Delete("/files/{fileID}/discard", cloudHandler.DiscardFile)
+				r.Post("/operations/undo", cloudHandler.UndoOperation)
 				r.Delete("/files/{fileID}", cloudHandler.DeleteFile)
 
 				// Trash

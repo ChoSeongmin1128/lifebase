@@ -68,6 +68,11 @@ func (h *GalleryHandler) GetThumbnail(w http.ResponseWriter, r *http.Request) {
 		response.Error(w, http.StatusBadRequest, "INVALID_SIZE", "size must be small or medium")
 		return
 	}
+	media, err := h.gallery.GetMedia(r.Context(), userID, fileID)
+	if err != nil || media == nil {
+		response.Error(w, http.StatusNotFound, "NOT_FOUND", "thumbnail not found")
+		return
+	}
 
 	thumbFile := filepath.Join(h.thumbPath, userID, fileID+"_"+size+".webp")
 	data, err := os.ReadFile(thumbFile)

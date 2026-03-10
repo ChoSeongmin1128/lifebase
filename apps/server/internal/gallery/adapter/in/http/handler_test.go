@@ -19,6 +19,7 @@ import (
 
 type mockGalleryUC struct {
 	items      []*domain.Media
+	item       *domain.Media
 	nextCursor string
 	err        error
 }
@@ -28,6 +29,13 @@ func (m *mockGalleryUC) ListMedia(context.Context, string, string, string, strin
 		return nil, "", m.err
 	}
 	return m.items, m.nextCursor, nil
+}
+
+func (m *mockGalleryUC) GetMedia(context.Context, string, string) (*domain.Media, error) {
+	if m.err != nil {
+		return nil, m.err
+	}
+	return m.item, nil
 }
 
 func galleryReq(method, target string) *http.Request {
@@ -81,7 +89,8 @@ func TestGalleryHandlerListMedia(t *testing.T) {
 
 func TestGalleryHandlerGetThumbnail(t *testing.T) {
 	root := t.TempDir()
-	h := NewGalleryHandler(&mockGalleryUC{}, root)
+	uc := &mockGalleryUC{}
+	h := NewGalleryHandler(uc, root)
 
 	rec := httptest.NewRecorder()
 	req := galleryReqWithParams(http.MethodGet, "/gallery/thumbnails/f1/large", "f1", "large")
@@ -105,6 +114,14 @@ func TestGalleryHandlerGetThumbnail(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(userDir, "f1_small.webp"), content, 0o600); err != nil {
 		t.Fatalf("write thumbnail: %v", err)
 	}
+
+	rec = httptest.NewRecorder()
+	req = galleryReqWithParams(http.MethodGet, "/gallery/thumbnails/f1/small", "f1", "small")
+	h.GetThumbnail(rec, req)
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("expected 404 when media metadata is missing, got %d", rec.Code)
+	}
+	uc.item = &domain.Media{ID: "f1"}
 
 	rec = httptest.NewRecorder()
 	req = galleryReqWithParams(http.MethodGet, "/gallery/thumbnails/f1/small", "f1", "small")

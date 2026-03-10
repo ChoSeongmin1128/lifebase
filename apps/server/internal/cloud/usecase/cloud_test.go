@@ -418,6 +418,19 @@ func (m *storageStub) Delete(storagePath string) error {
 	return nil
 }
 
+type thumbnailStorageStub struct {
+	deleteErr error
+	deleted   []string
+}
+
+func (m *thumbnailStorageStub) Delete(userID, fileID string) error {
+	if m.deleteErr != nil {
+		return m.deleteErr
+	}
+	m.deleted = append(m.deleted, fmt.Sprintf("%s/%s", userID, fileID))
+	return nil
+}
+
 type queueStub struct {
 	tasks []portout.ThumbnailTask
 	err   error
@@ -445,15 +458,16 @@ func seedFile(repo *fileRepoStub, id, userID, name, mime, storagePath string, fo
 	return f
 }
 
-func newCloudUCForTest() (*cloudUseCase, *folderRepoStub, *fileRepoStub, *sharedRepoStub, *starRepoStub, *storageStub, *queueStub) {
+func newCloudUCForTest() (*cloudUseCase, *folderRepoStub, *fileRepoStub, *sharedRepoStub, *starRepoStub, *storageStub, *thumbnailStorageStub, *queueStub) {
 	folders := newFolderRepoStub()
 	files := newFileRepoStub()
 	shared := &sharedRepoStub{}
 	stars := &starRepoStub{}
 	storage := newStorageStub()
+	thumbs := &thumbnailStorageStub{}
 	queue := &queueStub{}
-	uc := NewCloudUseCase(folders, files, shared, stars, storage, queue).(*cloudUseCase)
-	return uc, folders, files, shared, stars, storage, queue
+	uc := NewCloudUseCase(folders, files, shared, stars, storage, thumbs, queue, "test-hmac").(*cloudUseCase)
+	return uc, folders, files, shared, stars, storage, thumbs, queue
 }
 
 func markFolderTrashed(folder *domain.Folder) {
@@ -468,7 +482,7 @@ func markFileTrashed(file *domain.File) {
 
 func TestCloudUseCaseFolderFlows(t *testing.T) {
 	ctx := context.Background()
-	uc, folders, files, _, _, _, _ := newCloudUCForTest()
+	uc, folders, files, _, _, _, _, _ := newCloudUCForTest()
 
 	parent := seedFolder(folders, "parent", "u1", "Parent", nil)
 	if _, err := uc.CreateFolder(ctx, "u1", strPtr("missing"), "child"); err == nil {
@@ -500,28 +514,28 @@ func TestCloudUseCaseFolderFlows(t *testing.T) {
 		t.Fatalf("rename folder: %v", err)
 	}
 
-	if err := uc.MoveFolder(ctx, "u1", "missing", nil); err == nil {
+	if _, err := uc.MoveFolder(ctx, "u1", "missing", nil); err == nil {
 		t.Fatal("expected move folder not found")
 	}
-	if err := uc.MoveFolder(ctx, "u1", parent.ID, &parent.ID); err == nil {
+	if _, err := uc.MoveFolder(ctx, "u1", parent.ID, &parent.ID); err == nil {
 		t.Fatal("expected cannot move into itself")
 	}
-	if err := uc.MoveFolder(ctx, "u1", parent.ID, strPtr("none")); err == nil {
+	if _, err := uc.MoveFolder(ctx, "u1", parent.ID, strPtr("none")); err == nil {
 		t.Fatal("expected target folder not found")
 	}
 
 	// descendant validation
 	grand := seedFolder(folders, "grand", "u1", "Grand", &child.ID)
-	if err := uc.MoveFolder(ctx, "u1", parent.ID, &grand.ID); err == nil {
+	if _, err := uc.MoveFolder(ctx, "u1", parent.ID, &grand.ID); err == nil {
 		t.Fatal("expected cannot move folder into descendant")
 	}
 
-	if err := uc.MoveFolder(ctx, "u1", child.ID, &parent.ID); err != nil {
+	if _, err := uc.MoveFolder(ctx, "u1", child.ID, &parent.ID); err != nil {
 		t.Fatalf("same parent move should be no-op: %v", err)
 	}
 
 	folders.updateErr = errors.New("update fail")
-	if err := uc.MoveFolder(ctx, "u1", child.ID, nil); err == nil {
+	if _, err := uc.MoveFolder(ctx, "u1", child.ID, nil); err == nil {
 		t.Fatal("expected move folder update error")
 	}
 	folders.updateErr = nil
@@ -543,8 +557,9 @@ func TestCloudUseCaseFolderFlows(t *testing.T) {
 
 func TestCloudUseCaseFileFlows(t *testing.T) {
 	ctx := context.Background()
-	uc, folders, files, _, _, storage, queue := newCloudUCForTest()
+	uc, folders, files, _, _, storage, thumbs, queue := newCloudUCForTest()
 	folder := seedFolder(folders, "fold", "u1", "Fold", nil)
+	targetFolder := seedFolder(folders, "fold-2", "u1", "Fold2", nil)
 	seedFile(files, "source", "u1", "doc.txt", "text/plain", "u1/source.bin", &folder.ID, 4)
 	storage.data["u1/source.bin"] = []byte("abcd")
 
@@ -677,14 +692,18 @@ func TestCloudUseCaseFileFlows(t *testing.T) {
 		t.Fatalf("update file content: %v", err)
 	}
 
-	if err := uc.MoveFile(ctx, "u1", "missing", nil); err == nil {
+	if _, err := uc.MoveFile(ctx, "u1", "missing", nil); err == nil {
 		t.Fatal("expected move file not found")
 	}
-	if err := uc.MoveFile(ctx, "u1", utf.ID, strPtr("none")); err == nil {
+	if _, err := uc.MoveFile(ctx, "u1", utf.ID, strPtr("none")); err == nil {
 		t.Fatal("expected target folder not found")
 	}
-	if err := uc.MoveFile(ctx, "u1", utf.ID, &folder.ID); err != nil {
+	moveResult, err := uc.MoveFile(ctx, "u1", utf.ID, &targetFolder.ID)
+	if err != nil {
 		t.Fatalf("move file: %v", err)
+	}
+	if moveResult == nil || moveResult.UndoToken == "" {
+		t.Fatal("expected move undo token")
 	}
 
 	if _, err := uc.CopyFile(ctx, "u1", "missing", nil); err == nil {
@@ -718,40 +737,54 @@ func TestCloudUseCaseFileFlows(t *testing.T) {
 		t.Fatal("expected update storage used error")
 	}
 	files.updateStorageErr = nil
-	copied, err := uc.CopyFile(ctx, "u1", "source", &folder.ID)
+	copyResult, err := uc.CopyFile(ctx, "u1", "source", &folder.ID)
 	if err != nil {
 		t.Fatalf("copy file: %v", err)
 	}
+	copied := copyResult.File
 	if copied == nil || copied.ID == "" || copied.FolderID == nil || *copied.FolderID != folder.ID {
 		t.Fatalf("unexpected copied file: %#v", copied)
 	}
-
-	if err := uc.DiscardFile(ctx, "u1", "missing"); err == nil {
-		t.Fatal("expected discard file not found")
+	if copyResult.UndoToken == "" {
+		t.Fatal("expected copy undo token")
 	}
+	if err := uc.UndoOperation(ctx, "u2", copyResult.UndoToken); err == nil {
+		t.Fatal("expected undo user mismatch error")
+	}
+	thumbs.deleteErr = errors.New("thumb delete fail")
+	if err := uc.UndoOperation(ctx, "u1", copyResult.UndoToken); err == nil {
+		t.Fatal("expected undo thumbnail delete error")
+	}
+	thumbs.deleteErr = nil
+
 	storage.deleteErr = errors.New("delete storage fail")
-	if err := uc.DiscardFile(ctx, "u1", copied.ID); err == nil {
-		t.Fatal("expected discard storage delete error")
+	if err := uc.UndoOperation(ctx, "u1", copyResult.UndoToken); err == nil {
+		t.Fatal("expected undo storage delete error")
 	}
 	storage.deleteErr = nil
 	storage.data[copied.StoragePath] = []byte("source")
 	files.hardErr = errors.New("hard delete fail")
-	if err := uc.DiscardFile(ctx, "u1", copied.ID); err == nil {
-		t.Fatal("expected discard hard delete error")
+	if err := uc.UndoOperation(ctx, "u1", copyResult.UndoToken); err == nil {
+		t.Fatal("expected undo hard delete error")
 	}
 	files.hardErr = nil
 	storage.data[copied.StoragePath] = []byte("source")
 	files.updateStorageErr = errors.New("update storage fail")
-	if err := uc.DiscardFile(ctx, "u1", copied.ID); err == nil {
-		t.Fatal("expected discard storage used error")
+	if err := uc.UndoOperation(ctx, "u1", copyResult.UndoToken); err == nil {
+		t.Fatal("expected undo storage used error")
 	}
 	files.updateStorageErr = nil
-	copied, err = uc.CopyFile(ctx, "u1", "source", &folder.ID)
+	thumbs.deleted = nil
+	copyResult, err = uc.CopyFile(ctx, "u1", "source", &folder.ID)
 	if err != nil {
-		t.Fatalf("copy file for discard retry: %v", err)
+		t.Fatalf("copy file for undo retry: %v", err)
 	}
-	if err := uc.DiscardFile(ctx, "u1", copied.ID); err != nil {
-		t.Fatalf("discard file: %v", err)
+	copied = copyResult.File
+	if err := uc.UndoOperation(ctx, "u1", copyResult.UndoToken); err != nil {
+		t.Fatalf("undo copy file: %v", err)
+	}
+	if len(thumbs.deleted) == 0 || thumbs.deleted[len(thumbs.deleted)-1] != fmt.Sprintf("u1/%s", copied.ID) {
+		t.Fatalf("expected thumbnail cleanup, got %#v", thumbs.deleted)
 	}
 
 	if err := uc.DeleteFile(ctx, "u1", utf.ID); err != nil {
@@ -761,7 +794,7 @@ func TestCloudUseCaseFileFlows(t *testing.T) {
 
 func TestCloudUseCaseTrashViewsStarsSearchAndHelpers(t *testing.T) {
 	ctx := context.Background()
-	uc, folders, files, shared, stars, storage, _ := newCloudUCForTest()
+	uc, folders, files, shared, stars, storage, _, _ := newCloudUCForTest()
 
 	root := seedFolder(folders, "root", "u1", "Root", nil)
 	child := seedFolder(folders, "child", "u1", "Child", &root.ID)
@@ -1019,14 +1052,14 @@ func TestCloudUseCaseTrashViewsStarsSearchAndHelpers(t *testing.T) {
 		t.Fatal("expected unique filename resolution exhaustion")
 	}
 	files.existsAlways = false
-	if err := uc.MoveFolder(ctx, "u1", root.ID, strPtr("cycle-a")); err == nil {
+	if _, err := uc.MoveFolder(ctx, "u1", root.ID, strPtr("cycle-a")); err == nil {
 		t.Fatal("expected move folder validation error")
 	}
 }
 
 func TestCloudUseCaseTrashLegacySubtreeVisibilityAndCleanup(t *testing.T) {
 	ctx := context.Background()
-	uc, folders, files, _, _, storage, _ := newCloudUCForTest()
+	uc, folders, files, _, _, storage, _, _ := newCloudUCForTest()
 
 	root := seedFolder(folders, "root", "u1", "Root", nil)
 	trashed := seedFolder(folders, "trashed", "u1", "Trashed", &root.ID)
@@ -1097,7 +1130,7 @@ func strPtr(s string) *string { return &s }
 
 func TestCloudUseCaseAdditionalBranchCoverage(t *testing.T) {
 	ctx := context.Background()
-	uc, folders, files, _, _, _, _ := newCloudUCForTest()
+	uc, folders, files, _, _, _, _, _ := newCloudUCForTest()
 	root := seedFolder(folders, "root", "u1", "Root", nil)
 
 	folders.createErr = errors.New("create fail")
@@ -1160,7 +1193,7 @@ func TestCloudUseCaseAdditionalBranchCoverage(t *testing.T) {
 		t.Fatalf("expected missing parent error, ok=%v err=%v", ok, err)
 	}
 
-	ucNoQueue, folders2, _, _, _, storage2, _ := newCloudUCForTest()
+	ucNoQueue, folders2, _, _, _, storage2, _, _ := newCloudUCForTest()
 	ucNoQueue.queue = nil
 	root2 := seedFolder(folders2, "root2", "u1", "Root2", nil)
 	if _, err := ucNoQueue.UploadFile(ctx, "u1", &root2.ID, "root.txt", "text/plain", 1, []byte("x")); err != nil {
@@ -1173,7 +1206,7 @@ func TestCloudUseCaseAdditionalBranchCoverage(t *testing.T) {
 		t.Fatalf("expected root upload without folder to succeed: %v", err)
 	}
 
-	ucQueueErr, folders3, _, _, _, _, queue3 := newCloudUCForTest()
+	ucQueueErr, folders3, _, _, _, _, _, queue3 := newCloudUCForTest()
 	root3 := seedFolder(folders3, "root3", "u1", "Root3", nil)
 	queue3.err = errors.New("queue fail")
 	if _, err := ucQueueErr.UploadFile(ctx, "u1", &root3.ID, "queued.txt", "text/plain", 1, []byte("z")); err != nil {
@@ -1183,7 +1216,7 @@ func TestCloudUseCaseAdditionalBranchCoverage(t *testing.T) {
 
 func TestCloudUseCaseTrashAndDeleteAdditionalErrorBranches(t *testing.T) {
 	ctx := context.Background()
-	uc, folders, files, _, stars, _, _ := newCloudUCForTest()
+	uc, folders, files, _, stars, _, _, _ := newCloudUCForTest()
 
 	root := seedFolder(folders, "root", "u1", "Root", nil)
 	child := seedFolder(folders, "child", "u1", "Child", &root.ID)
@@ -1269,7 +1302,7 @@ func TestCloudUseCaseTrashAndDeleteAdditionalErrorBranches(t *testing.T) {
 
 func TestCloudUseCaseFolderNameExhaustionAndDepthCycle(t *testing.T) {
 	ctx := context.Background()
-	uc, folders, _, _, _, _, _ := newCloudUCForTest()
+	uc, folders, _, _, _, _, _, _ := newCloudUCForTest()
 
 	folders.existsByName[fileNameKey("u1", nil, "dup")] = true
 	for i := 1; i <= 10000; i++ {
@@ -1293,7 +1326,7 @@ func TestCloudUseCaseFolderNameExhaustionAndDepthCycle(t *testing.T) {
 
 func TestCloudUseCaseRestoreAndTraversalAdditionalBranches(t *testing.T) {
 	ctx := context.Background()
-	uc, folders, files, _, stars, _, _ := newCloudUCForTest()
+	uc, folders, files, _, stars, _, _, _ := newCloudUCForTest()
 
 	parentID := "parent"
 	if ok, err := uc.hasTrashedAncestor(ctx, "u1", &parentID, map[string]struct{}{"parent": {}}); err != nil || !ok {
@@ -1362,7 +1395,7 @@ func TestCloudUseCaseRestoreAndTraversalAdditionalBranches(t *testing.T) {
 
 func TestCloudUseCaseTargetedGapBranches(t *testing.T) {
 	ctx := context.Background()
-	uc, folders, files, _, stars, _, _ := newCloudUCForTest()
+	uc, folders, files, _, stars, _, _, _ := newCloudUCForTest()
 
 	root := seedFolder(folders, "gap-root", "u1", "GapRoot", nil)
 	child := seedFolder(folders, "gap-child", "u1", "GapChild", &root.ID)
@@ -1532,7 +1565,7 @@ func TestCloudUseCaseLastGapBranches(t *testing.T) {
 	ctx := context.Background()
 
 	t.Run("ListTrash duplicate active entries are skipped", func(t *testing.T) {
-		uc, folders, files, _, _, _, _ := newCloudUCForTest()
+		uc, folders, files, _, _, _, _, _ := newCloudUCForTest()
 		root := seedFolder(folders, "root", "u1", "Root", nil)
 		trashed := seedFolder(folders, "trashed", "u1", "Trashed", &root.ID)
 		trashedFile := seedFile(files, "trashed-file", "u1", "a.txt", "text/plain", "u1/a", &trashed.ID, 1)
@@ -1562,7 +1595,7 @@ func TestCloudUseCaseLastGapBranches(t *testing.T) {
 	})
 
 	t.Run("RestoreItem file restoreDeletedFolderPath error", func(t *testing.T) {
-		uc, folders, files, _, _, _, _ := newCloudUCForTest()
+		uc, folders, files, _, _, _, _, _ := newCloudUCForTest()
 		root := seedFolder(folders, "root", "u1", "Root", nil)
 		child := seedFolder(folders, "child", "u1", "Child", &root.ID)
 		file := seedFile(files, "file", "u1", "a.txt", "text/plain", "u1/a", &child.ID, 1)
@@ -1576,7 +1609,7 @@ func TestCloudUseCaseLastGapBranches(t *testing.T) {
 	})
 
 	t.Run("restoreDeletedFolderPath nil and empty noop", func(t *testing.T) {
-		uc, _, _, _, _, _, _ := newCloudUCForTest()
+		uc, _, _, _, _, _, _, _ := newCloudUCForTest()
 		if err := uc.restoreDeletedFolderPath(ctx, "u1", nil); err != nil {
 			t.Fatalf("expected nil path noop: %v", err)
 		}
@@ -1591,7 +1624,7 @@ func TestCloudUseCaseExhaustiveGapBranches(t *testing.T) {
 	ctx := context.Background()
 
 	t.Run("ListTrash active folder and file errors plus duplicate skips", func(t *testing.T) {
-		uc, folders, files, _, _, _, _ := newCloudUCForTest()
+		uc, folders, files, _, _, _, _, _ := newCloudUCForTest()
 		root := seedFolder(folders, "root", "u1", "Root", nil)
 		trashed := seedFolder(folders, "trashed", "u1", "Trashed", &root.ID)
 		seenFolder := seedFolder(folders, "seen-folder", "u1", "Seen Folder", &trashed.ID)
@@ -1639,7 +1672,7 @@ func TestCloudUseCaseExhaustiveGapBranches(t *testing.T) {
 	})
 
 	t.Run("RestoreItem folder path and listing errors", func(t *testing.T) {
-		uc, folders, files, _, _, _, _ := newCloudUCForTest()
+		uc, folders, files, _, _, _, _, _ := newCloudUCForTest()
 		root := seedFolder(folders, "root", "u1", "Root", nil)
 		parent := seedFolder(folders, "parent", "u1", "Parent", &root.ID)
 		child := seedFolder(folders, "child", "u1", "Child", &parent.ID)
@@ -1671,7 +1704,7 @@ func TestCloudUseCaseExhaustiveGapBranches(t *testing.T) {
 	})
 
 	t.Run("EmptyTrash collectActiveFolderTree error", func(t *testing.T) {
-		uc, folders, files, _, _, _, _ := newCloudUCForTest()
+		uc, folders, files, _, _, _, _, _ := newCloudUCForTest()
 		root := seedFolder(folders, "root", "u1", "Root", nil)
 		child := seedFolder(folders, "child", "u1", "Child", &root.ID)
 		seedFile(files, "active-file", "u1", "a.txt", "text/plain", "u1/a", &child.ID, 1)
@@ -1688,7 +1721,7 @@ func TestCloudUseCaseExhaustiveGapBranches(t *testing.T) {
 	})
 
 	t.Run("restoreFolderSubtree child recursion and file restore error", func(t *testing.T) {
-		uc, folders, files, _, _, _, _ := newCloudUCForTest()
+		uc, folders, files, _, _, _, _, _ := newCloudUCForTest()
 		root := seedFolder(folders, "root", "u1", "Root", nil)
 		child := seedFolder(folders, "child", "u1", "Child", &root.ID)
 		grand := seedFolder(folders, "grand", "u1", "Grand", &child.ID)

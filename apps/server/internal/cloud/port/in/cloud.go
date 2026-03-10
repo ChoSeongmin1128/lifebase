@@ -18,13 +18,22 @@ type StarItem struct {
 	Type string `json:"type"`
 }
 
+type UndoTokenResult struct {
+	UndoToken string `json:"undo_token"`
+}
+
+type CopyFileResult struct {
+	File      *domain.File `json:"file"`
+	UndoToken string       `json:"undo_token"`
+}
+
 type CloudUseCase interface {
 	// Folders
 	CreateFolder(ctx context.Context, userID string, parentID *string, name string) (*domain.Folder, error)
 	GetFolder(ctx context.Context, userID, folderID string) (*domain.Folder, error)
 	ListFolder(ctx context.Context, userID string, folderID *string, sortBy, sortDir string) ([]FolderItem, error)
 	RenameFolder(ctx context.Context, userID, folderID, newName string) error
-	MoveFolder(ctx context.Context, userID, folderID string, newParentID *string) error
+	MoveFolder(ctx context.Context, userID, folderID string, newParentID *string) (*UndoTokenResult, error)
 	CopyFolder(ctx context.Context, userID, folderID string, targetParentID *string) error
 	DeleteFolder(ctx context.Context, userID, folderID string) error
 	GetTrashFolder(ctx context.Context, userID, folderID string) (*domain.Folder, error)
@@ -36,9 +45,9 @@ type CloudUseCase interface {
 	GetFileContent(ctx context.Context, userID, fileID string) (string, *domain.File, error)
 	RenameFile(ctx context.Context, userID, fileID, newName string) error
 	UpdateFileContent(ctx context.Context, userID, fileID, content string) error
-	MoveFile(ctx context.Context, userID, fileID string, newFolderID *string) error
-	CopyFile(ctx context.Context, userID, fileID string, targetFolderID *string) (*domain.File, error)
-	DiscardFile(ctx context.Context, userID, fileID string) error
+	MoveFile(ctx context.Context, userID, fileID string, newFolderID *string) (*UndoTokenResult, error)
+	CopyFile(ctx context.Context, userID, fileID string, targetFolderID *string) (*CopyFileResult, error)
+	UndoOperation(ctx context.Context, userID, undoToken string) error
 	DeleteFile(ctx context.Context, userID, fileID string) error
 
 	// Trash

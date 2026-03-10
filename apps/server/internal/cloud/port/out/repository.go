@@ -56,6 +56,10 @@ type FileStorage interface {
 	Delete(storagePath string) error
 }
 
+type ThumbnailStorage interface {
+	Delete(userID, fileID string) error
+}
+
 type ThumbnailTask struct {
 	FileID      string
 	UserID      string

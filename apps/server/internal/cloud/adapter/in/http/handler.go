@@ -112,11 +112,12 @@ func (h *CloudHandler) MoveFolder(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := h.cloud.MoveFolder(r.Context(), userID, folderID, req.ParentID); err != nil {
+	result, err := h.cloud.MoveFolder(r.Context(), userID, folderID, req.ParentID)
+	if err != nil {
 		response.Error(w, http.StatusBadRequest, "MOVE_FAILED", err.Error())
 		return
 	}
-	response.NoContent(w)
+	response.JSON(w, http.StatusOK, result)
 }
 
 func (h *CloudHandler) CopyFolder(w http.ResponseWriter, r *http.Request) {
@@ -289,11 +290,12 @@ func (h *CloudHandler) MoveFile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := h.cloud.MoveFile(r.Context(), userID, fileID, req.FolderID); err != nil {
+	result, err := h.cloud.MoveFile(r.Context(), userID, fileID, req.FolderID)
+	if err != nil {
 		response.Error(w, http.StatusBadRequest, "MOVE_FAILED", err.Error())
 		return
 	}
-	response.NoContent(w)
+	response.JSON(w, http.StatusOK, result)
 }
 
 func (h *CloudHandler) CopyFile(w http.ResponseWriter, r *http.Request) {
@@ -307,20 +309,26 @@ func (h *CloudHandler) CopyFile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	file, err := h.cloud.CopyFile(r.Context(), userID, fileID, req.FolderID)
+	result, err := h.cloud.CopyFile(r.Context(), userID, fileID, req.FolderID)
 	if err != nil {
 		response.Error(w, http.StatusBadRequest, "COPY_FAILED", err.Error())
 		return
 	}
-	response.JSON(w, http.StatusOK, file)
+	response.JSON(w, http.StatusOK, result)
 }
 
-func (h *CloudHandler) DiscardFile(w http.ResponseWriter, r *http.Request) {
+func (h *CloudHandler) UndoOperation(w http.ResponseWriter, r *http.Request) {
 	userID := middleware.GetUserID(r.Context())
-	fileID := chi.URLParam(r, "fileID")
+	var req struct {
+		Token string `json:"token"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Token == "" {
+		response.Error(w, http.StatusBadRequest, "INVALID_REQUEST", "token is required")
+		return
+	}
 
-	if err := h.cloud.DiscardFile(r.Context(), userID, fileID); err != nil {
-		response.Error(w, http.StatusBadRequest, "DISCARD_FAILED", err.Error())
+	if err := h.cloud.UndoOperation(r.Context(), userID, req.Token); err != nil {
+		response.Error(w, http.StatusBadRequest, "UNDO_FAILED", err.Error())
 		return
 	}
 	response.NoContent(w)

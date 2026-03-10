@@ -24,6 +24,8 @@ type mockCloudUC struct {
 	folderRes *domain.Folder
 	fileRes   *domain.File
 	fileData  []byte
+	moveRes   *portin.UndoTokenResult
+	copyRes   *portin.CopyFileResult
 
 	listFolderItems   []portin.FolderItem
 	listTrashItems    []portin.FolderItem
@@ -50,7 +52,7 @@ type mockCloudUC struct {
 	updateContentErr  error
 	moveFileErr       error
 	copyFileErr       error
-	discardFileErr    error
+	undoErr           error
 	deleteFileErr     error
 
 	restoreErr     error
@@ -76,8 +78,8 @@ func (m *mockCloudUC) ListFolder(context.Context, string, *string, string, strin
 func (m *mockCloudUC) RenameFolder(context.Context, string, string, string) error {
 	return m.renameFolderErr
 }
-func (m *mockCloudUC) MoveFolder(context.Context, string, string, *string) error {
-	return m.moveFolderErr
+func (m *mockCloudUC) MoveFolder(context.Context, string, string, *string) (*portin.UndoTokenResult, error) {
+	return m.moveRes, m.moveFolderErr
 }
 func (m *mockCloudUC) CopyFolder(context.Context, string, string, *string) error {
 	return m.copyFolderErr
@@ -106,12 +108,14 @@ func (m *mockCloudUC) RenameFile(context.Context, string, string, string) error 
 func (m *mockCloudUC) UpdateFileContent(context.Context, string, string, string) error {
 	return m.updateContentErr
 }
-func (m *mockCloudUC) MoveFile(context.Context, string, string, *string) error { return m.moveFileErr }
-func (m *mockCloudUC) CopyFile(context.Context, string, string, *string) (*domain.File, error) {
-	return m.fileRes, m.copyFileErr
+func (m *mockCloudUC) MoveFile(context.Context, string, string, *string) (*portin.UndoTokenResult, error) {
+	return m.moveRes, m.moveFileErr
 }
-func (m *mockCloudUC) DiscardFile(context.Context, string, string) error { return m.discardFileErr }
-func (m *mockCloudUC) DeleteFile(context.Context, string, string) error  { return m.deleteFileErr }
+func (m *mockCloudUC) CopyFile(context.Context, string, string, *string) (*portin.CopyFileResult, error) {
+	return m.copyRes, m.copyFileErr
+}
+func (m *mockCloudUC) UndoOperation(context.Context, string, string) error { return m.undoErr }
+func (m *mockCloudUC) DeleteFile(context.Context, string, string) error    { return m.deleteFileErr }
 
 func (m *mockCloudUC) ListTrash(_ context.Context, _ string, folderID *string) ([]portin.FolderItem, error) {
 	m.lastTrashFolderID = folderID
@@ -205,6 +209,7 @@ func TestCloudHandlerFolders(t *testing.T) {
 	now := time.Now()
 	uc := &mockCloudUC{
 		folderRes: &domain.Folder{ID: "f1", UserID: "user-1", Name: "Root", CreatedAt: now, UpdatedAt: now},
+		moveRes:   &portin.UndoTokenResult{UndoToken: "move-token"},
 		listFolderItems: []portin.FolderItem{
 			{Type: "folder", Folder: &domain.Folder{ID: "f1", Name: "Root"}},
 		},
@@ -280,8 +285,11 @@ func TestCloudHandlerFolders(t *testing.T) {
 	rec = httptest.NewRecorder()
 	req = withParam(cloudReq(http.MethodPatch, "/folders/f1/move", `{"parent_id":"p1"}`), "folderID", "f1")
 	h.MoveFolder(rec, req)
-	if rec.Code != http.StatusNoContent {
-		t.Fatalf("expected 204, got %d", rec.Code)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rec.Code)
+	}
+	if !strings.Contains(rec.Body.String(), `"undo_token":"move-token"`) {
+		t.Fatalf("expected undo token payload, got %s", rec.Body.String())
 	}
 	rec = httptest.NewRecorder()
 	req = withParam(cloudReq(http.MethodPatch, "/folders/f1/move", `{`), "folderID", "f1")
@@ -338,6 +346,11 @@ func TestCloudHandlerFiles(t *testing.T) {
 	uc := &mockCloudUC{
 		fileRes:  &domain.File{ID: "file1", Name: "a.txt", MimeType: "text/plain", CreatedAt: now, UpdatedAt: now},
 		fileData: []byte("hello"),
+		moveRes:  &portin.UndoTokenResult{UndoToken: "move-token"},
+		copyRes: &portin.CopyFileResult{
+			File:      &domain.File{ID: "file1", Name: "a.txt", MimeType: "text/plain", CreatedAt: now, UpdatedAt: now},
+			UndoToken: "copy-token",
+		},
 	}
 	h := NewCloudHandler(uc)
 
@@ -472,8 +485,11 @@ func TestCloudHandlerFiles(t *testing.T) {
 	rec = httptest.NewRecorder()
 	req = withParam(cloudReq(http.MethodPatch, "/files/file1/move", `{"folder_id":"f1"}`), "fileID", "file1")
 	h.MoveFile(rec, req)
-	if rec.Code != http.StatusNoContent {
-		t.Fatalf("expected 204, got %d", rec.Code)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rec.Code)
+	}
+	if !strings.Contains(rec.Body.String(), `"undo_token":"move-token"`) {
+		t.Fatalf("expected undo token payload, got %s", rec.Body.String())
 	}
 	rec = httptest.NewRecorder()
 	req = withParam(cloudReq(http.MethodPatch, "/files/file1/move", `{`), "fileID", "file1")
@@ -496,7 +512,7 @@ func TestCloudHandlerFiles(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d", rec.Code)
 	}
-	if !strings.Contains(rec.Body.String(), `"id":"file1"`) {
+	if !strings.Contains(rec.Body.String(), `"id":"file1"`) || !strings.Contains(rec.Body.String(), `"undo_token":"copy-token"`) {
 		t.Fatalf("expected copied file payload, got %s", rec.Body.String())
 	}
 	rec = httptest.NewRecorder()
@@ -515,18 +531,25 @@ func TestCloudHandlerFiles(t *testing.T) {
 	uc.copyFileErr = nil
 
 	rec = httptest.NewRecorder()
-	req = withParam(cloudReq(http.MethodDelete, "/files/file1/discard", ""), "fileID", "file1")
-	h.DiscardFile(rec, req)
+	req = cloudReq(http.MethodPost, "/operations/undo", `{"token":"undo-token"}`)
+	h.UndoOperation(rec, req)
 	if rec.Code != http.StatusNoContent {
 		t.Fatalf("expected 204, got %d", rec.Code)
 	}
-	uc.discardFileErr = errors.New("discard fail")
 	rec = httptest.NewRecorder()
-	h.DiscardFile(rec, req)
+	req = cloudReq(http.MethodPost, "/operations/undo", `{`)
+	h.UndoOperation(rec, req)
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400, got %d", rec.Code)
 	}
-	uc.discardFileErr = nil
+	uc.undoErr = errors.New("undo fail")
+	rec = httptest.NewRecorder()
+	req = cloudReq(http.MethodPost, "/operations/undo", `{"token":"undo-token"}`)
+	h.UndoOperation(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", rec.Code)
+	}
+	uc.undoErr = nil
 
 	rec = httptest.NewRecorder()
 	req = withParam(cloudReq(http.MethodDelete, "/files/file1", ""), "fileID", "file1")

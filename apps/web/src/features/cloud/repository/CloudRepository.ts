@@ -11,6 +11,15 @@ export interface CloudUploadOptions {
   signal?: AbortSignal;
 }
 
+export interface CloudUndoTokenResult {
+  undo_token: string;
+}
+
+export interface CloudCopyFileResult {
+  file: CloudFile;
+  undo_token: string;
+}
+
 export interface CloudRepository {
   listItems(input: ListCloudItemsInput): Promise<FolderItem[]>;
   getFolder(folderId: string): Promise<FolderData>;
@@ -33,12 +42,12 @@ export interface CloudRepository {
   restoreTrashItem(id: string, type: "folder" | "file"): Promise<void>;
   emptyTrash(): Promise<void>;
   renameFolder(folderId: string, name: string): Promise<void>;
-  moveFolder(folderId: string, parentId?: string | null): Promise<void>;
+  moveFolder(folderId: string, parentId?: string | null): Promise<CloudUndoTokenResult>;
   copyFolder(folderId: string, parentId?: string | null): Promise<void>;
   renameFile(fileId: string, name: string): Promise<void>;
-  moveFile(fileId: string, folderId?: string | null): Promise<void>;
-  copyFile(fileId: string, folderId?: string | null): Promise<CloudFile>;
-  discardFile(fileId: string): Promise<void>;
+  moveFile(fileId: string, folderId?: string | null): Promise<CloudUndoTokenResult>;
+  copyFile(fileId: string, folderId?: string | null): Promise<CloudCopyFileResult>;
+  undoOperation(token: string): Promise<void>;
   createFolder(name: string, parentId?: string | null): Promise<void>;
   searchFiles(query: string): Promise<CloudFile[]>;
 }

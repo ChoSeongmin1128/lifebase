@@ -78,6 +78,19 @@ func (r *mediaRepo) ListMedia(ctx context.Context, userID string, mimePrefix str
 	return scanMediaFilesFn(rows)
 }
 
+func (r *mediaRepo) GetMedia(ctx context.Context, userID, fileID string) (*domain.Media, error) {
+	row := r.db.QueryRow(ctx, `SELECT id, user_id, folder_id, name, mime_type, size_bytes, storage_path, thumb_status, taken_at, created_at, updated_at, deleted_at
+		FROM files
+		WHERE id = $1 AND user_id = $2 AND deleted_at IS NULL`, fileID, userID)
+
+	var media domain.Media
+	if err := row.Scan(&media.ID, &media.UserID, &media.FolderID, &media.Name, &media.MimeType, &media.SizeBytes,
+		&media.StoragePath, &media.ThumbStatus, &media.TakenAt, &media.CreatedAt, &media.UpdatedAt, &media.DeletedAt); err != nil {
+		return nil, err
+	}
+	return &media, nil
+}
+
 func scanFiles(rows pgx.Rows) ([]*domain.Media, error) {
 	var files []*domain.Media
 	for rows.Next() {

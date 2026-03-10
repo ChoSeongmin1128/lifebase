@@ -36,7 +36,7 @@ export function useCloudActions() {
       renameFile: (fileId: string, name: string) => useCase.renameFile(fileId, name),
       moveFile: (fileId: string, folderId?: string | null) => useCase.moveFile(fileId, folderId),
       copyFile: (fileId: string, folderId?: string | null) => useCase.copyFile(fileId, folderId),
-      discardFile: (fileId: string) => useCase.discardFile(fileId),
+      undoOperation: (token: string) => useCase.undoOperation(token),
       createFolder: (name: string, parentId?: string | null) => useCase.createFolder(name, parentId),
       searchFiles: (query: string) => useCase.searchFiles(query),
     }),

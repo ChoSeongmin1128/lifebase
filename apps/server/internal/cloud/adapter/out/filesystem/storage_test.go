@@ -91,3 +91,34 @@ func TestLocalStorageSaveWriteErrorAndDeleteMissing(t *testing.T) {
 		t.Fatal("expected delete missing file error")
 	}
 }
+
+func TestLocalThumbnailStorageDelete(t *testing.T) {
+	base := t.TempDir()
+	userDir := filepath.Join(base, "u1")
+	if err := os.MkdirAll(userDir, 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(userDir, "f1_small.webp"), []byte("small"), 0o644); err != nil {
+		t.Fatalf("write small: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(userDir, "f1_medium.webp"), []byte("medium"), 0o644); err != nil {
+		t.Fatalf("write medium: %v", err)
+	}
+
+	s := NewLocalThumbnailStorage(base)
+	if err := s.Delete("u1", "f1"); err != nil {
+		t.Fatalf("delete thumbnails: %v", err)
+	}
+
+	if _, err := os.Stat(userDir); !os.IsNotExist(err) {
+		t.Fatalf("expected pruned user dir, stat err=%v", err)
+	}
+}
+
+func TestLocalThumbnailStorageDeleteIgnoresMissing(t *testing.T) {
+	base := t.TempDir()
+	s := NewLocalThumbnailStorage(base)
+	if err := s.Delete("u1", "missing"); err != nil {
+		t.Fatalf("delete missing thumbnails: %v", err)
+	}
+}

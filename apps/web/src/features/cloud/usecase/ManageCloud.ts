@@ -97,8 +97,8 @@ export class ManageCloudUseCase {
     return this.repo.copyFile(fileId, folderId);
   }
 
-  discardFile(fileId: string) {
-    return this.repo.discardFile(fileId);
+  undoOperation(token: string) {
+    return this.repo.undoOperation(token);
   }
 
   createFolder(name: string, parentId?: string | null) {
