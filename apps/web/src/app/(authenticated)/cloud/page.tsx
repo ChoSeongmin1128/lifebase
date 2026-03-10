@@ -35,7 +35,6 @@ import { PageHeader, PageToolbar, PageToolbarGroup } from "@/components/layout/P
 import { useToast } from "@/components/providers/ToastProvider";
 import {
   CLOUD_SECTION_ITEMS,
-  CLOUD_SECTION_LABELS,
   parseCloudSection,
 } from "@/lib/cloud-sections";
 import {
@@ -70,7 +69,6 @@ interface CloudClipboardItem {
   itemType: ClipboardItemType;
   itemID: string;
   itemName: string;
-  parentFolderID: string | null;
 }
 interface CloudClipboard {
   mode: ClipboardMode;
@@ -79,7 +77,7 @@ interface CloudClipboard {
 }
 interface ClipboardApplySuccess {
   item: CloudClipboardItem;
-  copiedFile?: CloudFile;
+  undoToken: string;
 }
 interface CloudDragItem {
   itemType: ClipboardItemType;
@@ -119,7 +117,7 @@ type DragDataTransferItem = DataTransferItem & {
 };
 
 const INTERNAL_ITEM_DRAG_TYPE = "application/x-lifebase-cloud-item";
-const ROOT_PATH_ENTRY: CloudPathEntry = { id: null, name: "보관함" };
+const ROOT_PATH_ENTRY: CloudPathEntry = { id: null, name: "내 드라이브" };
 const TRASH_ROOT_PATH_ENTRY: CloudPathEntry = { id: null, name: "휴지통" };
 const DELETE_UNDO_WINDOW_MS = 5_000;
 const MAX_PARALLEL_UPLOADS = 3;
@@ -217,6 +215,8 @@ function CloudPageInner() {
   const [sortBy, setSortBy] = useState<SortBy>("name");
   const [sortDir, setSortDir] = useState<SortDir>("asc");
   const [renaming, setRenaming] = useState<{ id: string; type: "folder" | "file"; name: string } | null>(null);
+  const [currentFolderRenameOpen, setCurrentFolderRenameOpen] = useState(false);
+  const [currentFolderRenameName, setCurrentFolderRenameName] = useState("");
   const [showNewFolder, setShowNewFolder] = useState(false);
   const [newFolderName, setNewFolderName] = useState("");
   const [creatingFolder, setCreatingFolder] = useState(false);
@@ -275,6 +275,41 @@ function CloudPageInner() {
     setPath((prev) => (arePathEntriesEqual(prev, nextPath) ? prev : nextPath));
     cloudPathCache.set(getCloudLocationKey(section, folderId), nextPath);
   }, [currentFolderID, section]);
+
+  const applyFolderNameToLocalState = useCallback((folderId: string, nextName: string) => {
+    const cachedFolder = folderCacheRef.current.get(folderId);
+    const nextFolder: FolderData = cachedFolder
+      ? { ...cachedFolder, name: nextName }
+      : {
+        id: folderId,
+        user_id: "",
+        parent_id: null,
+        name: nextName,
+        created_at: "",
+        updated_at: "",
+      };
+
+    folderCacheRef.current.set(folderId, nextFolder);
+    cloudFolderCache.set(folderId, nextFolder);
+
+    cloudPathCache.forEach((entries, key) => {
+      const nextEntries = entries.map((entry) => (
+        entry.id === folderId ? { ...entry, name: nextName } : entry
+      ));
+      if (!arePathEntriesEqual(entries, nextEntries)) {
+        cloudPathCache.set(key, nextEntries);
+      }
+    });
+
+    setPath((prev) => prev.map((entry) => (
+      entry.id === folderId ? { ...entry, name: nextName } : entry
+    )));
+    setItems((prev) => prev.map((item) => (
+      item.type === "folder" && item.folder?.id === folderId
+        ? { ...item, folder: { ...item.folder, name: nextName } }
+        : item
+    )));
+  }, []);
 
   useEffect(() => {
     setActiveFolderID(resolvedFolderID);
@@ -1098,11 +1133,13 @@ function CloudPageInner() {
 
   const handleRename = async () => {
     if (!renaming || !authed || !renaming.name.trim() || !isMyFilesSection) return;
+    const nextName = renaming.name.trim();
     try {
       if (renaming.type === "folder") {
-        await cloud.renameFolder(renaming.id, renaming.name);
+        await cloud.renameFolder(renaming.id, nextName);
+        applyFolderNameToLocalState(renaming.id, nextName);
       } else {
-        await cloud.renameFile(renaming.id, renaming.name);
+        await cloud.renameFile(renaming.id, nextName);
       }
       setRenaming(null);
       loadItems();
@@ -1508,14 +1545,12 @@ function CloudPageInner() {
         itemType: "folder",
         itemID: item.folder!.id,
         itemName: item.folder!.name,
-        parentFolderID: item.folder!.parent_id,
       };
     }
     return {
       itemType: "file",
       itemID: item.file!.id,
       itemName: item.file!.name,
-      parentFolderID: item.file!.folder_id,
     };
   }, []);
 
@@ -1541,16 +1576,15 @@ function CloudPageInner() {
   const undoClipboardApply = useCallback(async (mode: ClipboardMode, applied: ClipboardApplySuccess[]) => {
     if (applied.length === 0) return;
 
-    const results = await Promise.allSettled(
-      applied.map((entry) => {
-        if (mode === "copy") {
-          return cloud.discardFile(entry.copiedFile!.id);
-        }
-        return entry.item.itemType === "file"
-          ? cloud.moveFile(entry.item.itemID, entry.item.parentFolderID)
-          : cloud.moveFolder(entry.item.itemID, entry.item.parentFolderID);
-      }),
-    );
+    const undoTokens = applied
+      .map((entry) => entry.undoToken)
+      .filter((token): token is string => token.length > 0);
+    if (undoTokens.length === 0) {
+      await refreshVisibleItems();
+      return;
+    }
+
+    const results = await Promise.allSettled(undoTokens.map((token) => cloud.undoOperation(token)));
 
     const failedCount = results.filter((result) => result.status === "rejected").length;
     await refreshVisibleItems();
@@ -1577,18 +1611,18 @@ function CloudPageInner() {
         clipboard.items.map(async (item) => {
           if (item.itemType === "file") {
             if (clipboard.mode === "copy") {
-              const copiedFile = await cloud.copyFile(item.itemID, targetFolderID);
-              return { item, copiedFile };
+              const result = await cloud.copyFile(item.itemID, targetFolderID);
+              return { item, undoToken: result.undo_token } satisfies ClipboardApplySuccess;
             }
-            await cloud.moveFile(item.itemID, targetFolderID);
-            return { item } satisfies ClipboardApplySuccess;
+            const result = await cloud.moveFile(item.itemID, targetFolderID);
+            return { item, undoToken: result.undo_token } satisfies ClipboardApplySuccess;
           }
           if (clipboard.mode === "copy") {
             await cloud.copyFolder(item.itemID, targetFolderID);
-            return { item } satisfies ClipboardApplySuccess;
+            return { item, undoToken: "" } satisfies ClipboardApplySuccess;
           }
-          await cloud.moveFolder(item.itemID, targetFolderID);
-          return { item } satisfies ClipboardApplySuccess;
+          const result = await cloud.moveFolder(item.itemID, targetFolderID);
+          return { item, undoToken: result.undo_token } satisfies ClipboardApplySuccess;
         }),
       );
 
@@ -1955,7 +1989,6 @@ function CloudPageInner() {
   const totalUploadedBytes = uploadQueue.reduce((sum, item) => sum + Math.min(item.loadedBytes, item.totalBytes || item.size), 0);
   const overallUploadPercent = totalUploadBytes > 0 ? (totalUploadedBytes / totalUploadBytes) * 100 : 0;
 
-  const sectionLabel = CLOUD_SECTION_LABELS[section];
   const hasFolderRouteError =
     currentFolderID !== null
     && (isMyFilesSection || isTrashSection)
@@ -1979,6 +2012,17 @@ function CloudPageInner() {
       : [rootPathEntry];
   })();
   const currentFolderDisplayName = displayPath[displayPath.length - 1]?.name || rootPathEntry.name;
+  const currentFolderData = useMemo(() => {
+    if (!currentFolderID) return null;
+    return folderCacheRef.current.get(currentFolderID) ?? {
+      id: currentFolderID,
+      user_id: "",
+      parent_id: displayPath[displayPath.length - 2]?.id ?? null,
+      name: currentFolderDisplayName,
+      created_at: "",
+      updated_at: "",
+    };
+  }, [currentFolderDisplayName, currentFolderID, displayPath]);
   const showFolderHeader = isMyFilesSection || isTrashSection;
   const headerLoading = folderRouteState === "checking" || (
     folderRouteState === "ready"
@@ -1988,7 +2032,8 @@ function CloudPageInner() {
   const showBulkBar = selectedIds.size > 0 && (isMyFilesSection || isTrashSection);
   const currentViewMode: ViewMode = isMyFilesSection ? viewMode : "list";
   const canEmptyTrash = isTrashSection && currentFolderID === null && displayItems.length > 0 && !loading;
-  const routeActionLabel = isTrashSection ? "휴지통으로 이동" : "보관함으로 이동";
+  const canManageCurrentFolder = isMyFilesSection && !!currentFolderID && !!currentFolderData && folderActionsEnabled;
+  const routeActionLabel = isTrashSection ? "휴지통으로 이동" : "내 드라이브로 이동";
   const routeStateCopy = (() => {
     if (!hasFolderRouteError) return null;
     if (folderRouteState === "invalid") {
@@ -2016,6 +2061,37 @@ function CloudPageInner() {
   const retryFolderRoute = useCallback(() => {
     setFolderRouteReloadKey((prev) => prev + 1);
   }, []);
+
+  const openCurrentFolderRenameDialog = useCallback(() => {
+    if (!currentFolderData) return;
+    setCurrentFolderRenameName(currentFolderData.name);
+    setCurrentFolderRenameOpen(true);
+  }, [currentFolderData]);
+
+  const handleRenameCurrentFolder = useCallback(async () => {
+    if (!authed || !isMyFilesSection || !currentFolderData || !currentFolderRenameName.trim()) return;
+    const nextName = currentFolderRenameName.trim();
+    try {
+      await cloud.renameFolder(currentFolderData.id, nextName);
+      applyFolderNameToLocalState(currentFolderData.id, nextName);
+      setCurrentFolderRenameOpen(false);
+      setCurrentFolderRenameName("");
+      await loadItems();
+    } catch (err) {
+      console.error("Current folder rename failed:", err);
+      const message = err instanceof Error ? err.message : "알 수 없는 오류";
+      toast.error("폴더 이름을 변경하지 못했습니다", message);
+    }
+  }, [
+    applyFolderNameToLocalState,
+    authed,
+    cloud,
+    currentFolderData,
+    currentFolderRenameName,
+    isMyFilesSection,
+    loadItems,
+    toast,
+  ]);
 
   return (
     <div
@@ -2063,6 +2139,17 @@ function CloudPageInner() {
           path={displayPath}
           loading={headerLoading}
           onNavigate={navigateToHeaderPath}
+          currentActions={canManageCurrentFolder ? (
+            <>
+              <DropdownMenuItem onClick={openCurrentFolderRenameDialog}>
+                <Pencil size={14} /> 이름 변경
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => void handleToggleStar({ type: "folder", folder: currentFolderData! })}>
+                <StarIcon size={14} />
+                {starredKeys.has(toStarKey(currentFolderData!.id, "folder")) ? "중요 해제" : "중요 표시"}
+              </DropdownMenuItem>
+            </>
+          ) : undefined}
         />
       )}
 
@@ -2117,20 +2204,22 @@ function CloudPageInner() {
         ) : (
           <>
             <PageToolbarGroup className="gap-2">
-              <div className="relative">
-                <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-text-muted" />
-                <Input
-                  placeholder={isMyFilesSection ? "검색..." : `${sectionLabel}에서는 검색 미지원`}
-                  value={searchQuery}
-                  onChange={(e) => {
-                    setSearchQuery(e.target.value);
-                    if (!e.target.value) setSearchResults(null);
-                  }}
-                  onKeyDown={(e) => e.key === "Enter" && handleSearch()}
-                  disabled={!isMyFilesSection || !folderActionsEnabled}
-                  className="h-8 w-full md:w-48 pl-8"
-                />
-              </div>
+              {isMyFilesSection && (
+                <div className="relative">
+                  <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-text-muted" />
+                  <Input
+                    placeholder="검색..."
+                    value={searchQuery}
+                    onChange={(e) => {
+                      setSearchQuery(e.target.value);
+                      if (!e.target.value) setSearchResults(null);
+                    }}
+                    onKeyDown={(e) => e.key === "Enter" && handleSearch()}
+                    disabled={!folderActionsEnabled}
+                    className="h-8 w-full md:w-48 pl-8"
+                  />
+                </div>
+              )}
 
               {isMyFilesSection && (
                 <div className="flex rounded-lg border border-border">
@@ -2819,6 +2908,42 @@ function CloudPageInner() {
         onCancelAll={handleCancelAllUploads}
         onClearCompleted={handleClearCompletedUploads}
       />
+
+      <Dialog open={currentFolderRenameOpen} onOpenChange={(open) => {
+        setCurrentFolderRenameOpen(open);
+        if (!open) {
+          setCurrentFolderRenameName("");
+        }
+      }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>폴더 이름 변경</DialogTitle>
+          </DialogHeader>
+          <Input
+            autoFocus
+            value={currentFolderRenameName}
+            onChange={(e) => setCurrentFolderRenameName(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                void handleRenameCurrentFolder();
+              }
+            }}
+            placeholder="폴더 이름"
+          />
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setCurrentFolderRenameOpen(false)}>
+              취소
+            </Button>
+            <Button
+              onClick={() => void handleRenameCurrentFolder()}
+              disabled={!currentFolderRenameName.trim()}
+            >
+              저장
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={editorOpen} onOpenChange={(open) => {
         setEditorOpen(open);
