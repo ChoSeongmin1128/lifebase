@@ -173,12 +173,16 @@ npx expo start
 - 폴더 CRUD + 계층 탐색
 - Web Cloud는 `/cloud/folders/{folderId}`를 canonical 폴더 URL로 사용하고, 기존 `?folder=` 진입은 canonical route로 정리한다
 - Web Cloud 폴더 화면은 상단 breadcrumb + 현재 폴더명 헤더를 기본으로 사용하고, 탐색 중 경로 전체가 새로고침되듯 흔들리지 않도록 로컬 경로 상태를 우선 사용한다
+- Web Cloud 경로 시작점은 섹션명과 분리된 `보관함`을 사용하고, breadcrumb 행에는 현재 폴더를 반복하지 않아 서비스명/섹션명/경로명이 상단에서 겹치지 않게 유지한다
 - Web Cloud 로딩 신호는 상단 헤더 한 곳으로만 모으고, 폴더 전환 중에는 지연된 작은 indicator만 보여 일관된 전환감을 유지한다
 - Web Cloud는 잘못된 UUID, 삭제된 폴더 링크, 일시적 폴더 조회 실패를 빈 폴더로 위장하지 않고 invalid/not-found/error 상태로 분리해 보여준다
 - Mobile/Desktop Cloud도 같은 정보 구조를 기준으로 후속 정렬한다
 - Web/Desktop Cloud에서 더블클릭은 폴더 열기에만 사용하고, 파일 편집/다운로드는 컨텍스트 메뉴 또는 일괄 작업에서만 명시적으로 실행한다
 - Web/Desktop Cloud에서 선택된 항목 중 하나를 폴더로 드래그하면 선택된 항목 전체를 함께 이동한다
+- Web Cloud는 외부 파일 드래그 업로드를 지원하고, 우하단 업로드 패널에서 파일별/전체 진행률, 취소, 실패 재시도를 보여준다
+- Web/Desktop Cloud는 리스트/그리드에서 영역 드래그로 여러 항목을 선택할 수 있다
 - Web/Desktop Cloud 복사/이동 클립보드는 폴더 이동 후에도 유지되고, 선택 일괄 바에서 복사/이동/다운로드/삭제를 직접 실행할 수 있다
+- Web/Desktop Cloud 다중 선택 드래그는 첫 항목 이름과 개수 배지를 같이 보여 주는 커스텀 drag ghost를 사용한다
 - Web/Desktop Cloud 붙여넣기(복사/이동)도 실행 직후 5초 실행 취소를 제공한다
 - 휴지통 (복원/비우기)
 - Web Cloud 파일/폴더 삭제는 우측 하단 Undo 토스트 5초를 제공하고, 시간 경과 후 휴지통 이동을 확정한다

@@ -1,4 +1,5 @@
 import type { CloudRepository } from "@/features/cloud/repository/CloudRepository";
+import type { CloudUploadOptions } from "@/features/cloud/repository/CloudRepository";
 import type { ListCloudItemsInput } from "@/features/cloud/domain/CloudItem";
 
 export class ManageCloudUseCase {
@@ -20,8 +21,8 @@ export class ManageCloudUseCase {
     return this.repo.listStars();
   }
 
-  uploadFile(file: File, folderId?: string | null) {
-    return this.repo.uploadFile(file, folderId);
+  uploadFile(file: File, folderId?: string | null, options?: CloudUploadOptions) {
+    return this.repo.uploadFile(file, folderId, options);
   }
 
   createTextFile(name: string, extension: "md" | "txt", folderId?: string | null) {

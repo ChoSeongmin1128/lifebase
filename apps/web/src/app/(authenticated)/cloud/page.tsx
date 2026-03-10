@@ -29,6 +29,8 @@ import { CloudFolderHeader, type CloudPathEntry } from "@/components/cloud/Cloud
 import { FileIcon } from "@/components/cloud/FileIcon";
 import { ThumbnailImage } from "@/components/cloud/ThumbnailImage";
 import { BulkActionBar } from "@/components/cloud/BulkActionBar";
+import { CloudSelectionOverlay, type CloudSelectionRect } from "@/components/cloud/CloudSelectionOverlay";
+import { CloudUploadPanel, type CloudUploadQueueItem } from "@/components/cloud/CloudUploadPanel";
 import { PageHeader, PageToolbar, PageToolbarGroup } from "@/components/layout/PageToolbar";
 import { useToast } from "@/components/providers/ToastProvider";
 import {
@@ -100,10 +102,22 @@ interface CloudDeleteTarget {
   type: "folder" | "file";
 }
 
+interface CloudSelectionSession {
+  startX: number;
+  startY: number;
+  additive: boolean;
+  baseSelectedIds: Set<string>;
+}
+
 const INTERNAL_ITEM_DRAG_TYPE = "application/x-lifebase-cloud-item";
-const ROOT_PATH_ENTRY: CloudPathEntry = { id: null, name: "내 클라우드" };
+const ROOT_PATH_ENTRY: CloudPathEntry = { id: null, name: "보관함" };
 const TRASH_ROOT_PATH_ENTRY: CloudPathEntry = { id: null, name: "휴지통" };
 const DELETE_UNDO_WINDOW_MS = 5_000;
+const MAX_PARALLEL_UPLOADS = 3;
+const UPLOAD_COMPLETION_SETTLE_MS = 450;
+const UPLOAD_REFRESH_DEBOUNCE_MS = 400;
+const SELECTION_SCROLL_EDGE_PX = 36;
+const SELECTION_SCROLL_STEP_PX = 18;
 const cloudPathCache = new Map<string, CloudPathEntry[]>();
 const cloudFolderCache = new Map<string, FolderData>();
 let cloudClipboardCache: CloudClipboard | null = null;
@@ -139,6 +153,14 @@ const isValidUUID = (value: string) => UUID_PATTERN.test(value);
 const isNotFoundError = (error: unknown) => (
   error instanceof Error
   && error.message.toLowerCase().includes("not found")
+);
+
+const toErrorMessage = (error: unknown, fallback: string) => (
+  error instanceof Error && error.message.trim() ? error.message : fallback
+);
+
+const isAbortError = (error: unknown) => (
+  error instanceof DOMException && error.name === "AbortError"
 );
 
 function CloudPageInner() {
@@ -200,23 +222,35 @@ function CloudPageInner() {
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState<CloudFile[] | null>(null);
   const [dragOver, setDragOver] = useState(false);
+  const [dragFileCount, setDragFileCount] = useState(0);
   const [draggingItem, setDraggingItem] = useState<CloudDragItem | null>(null);
   const [dropTargetFolderId, setDropTargetFolderId] = useState<string | null>(null);
   const [movingItemKey, setMovingItemKey] = useState<string | null>(null);
   const [clipboard, setClipboard] = useState<CloudClipboard | null>(() => cloudClipboardCache);
   const [clipboardBusy, setClipboardBusy] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [selectionRect, setSelectionRect] = useState<CloudSelectionRect | null>(null);
   const [viewMode, setViewMode] = useState<ViewMode>("list");
   const [starredKeys, setStarredKeys] = useState<Set<string>>(new Set());
+  const [uploadQueue, setUploadQueue] = useState<CloudUploadQueueItem[]>([]);
+  const [uploadPanelExpanded, setUploadPanelExpanded] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
   const folderCacheRef = useRef<Map<string, FolderData>>(new Map(cloudFolderCache));
   const itemsRequestRef = useRef(0);
   const pathRequestRef = useRef(0);
   const folderRouteRequestRef = useRef(0);
+  const dragDepthRef = useRef(0);
   const quickActionHandledRef = useRef(false);
   const pendingDeletionRef = useRef<PendingCloudDeletion | null>(null);
   const pendingTrashEmptyRef = useRef<PendingTrashEmpty | null>(null);
+  const uploadControllersRef = useRef<Map<string, AbortController>>(new Map());
+  const uploadRefreshTimerRef = useRef<number | null>(null);
+  const uploadCompletionTimersRef = useRef<Map<string, number>>(new Map());
+  const selectionSessionRef = useRef<CloudSelectionSession | null>(null);
+  const selectionPointerRef = useRef<{ clientX: number; clientY: number } | null>(null);
+  const selectionScrollFrameRef = useRef<number | null>(null);
   const locationKeyRef = useRef(locationKey);
 
   const currentFolderID = activeFolderID;
@@ -594,17 +628,182 @@ function CloudPageInner() {
     syncFolderUrl(folderId, "push");
   };
 
-  const handleUpload = async (files: FileList | null) => {
-    if (!files || !authed || !isMyFilesSection) return;
-    for (const file of Array.from(files)) {
-      try {
-        await cloud.uploadFile(file, currentFolderID);
-      } catch (err) {
-        console.error("Upload failed:", err);
-      }
+  const getUploadTargetFolderName = useCallback((folderId: string | null) => {
+    if (!folderId) return rootPathEntry.name;
+    const currentPathEntry = path[path.length - 1];
+    if (currentPathEntry?.id === folderId) {
+      return currentPathEntry.name;
     }
-    loadItems();
-  };
+    return folderCacheRef.current.get(folderId)?.name || "폴더";
+  }, [path, rootPathEntry.name]);
+
+  const scheduleUploadRefresh = useCallback(() => {
+    if (uploadRefreshTimerRef.current !== null) return;
+    uploadRefreshTimerRef.current = window.setTimeout(() => {
+      uploadRefreshTimerRef.current = null;
+      void loadItems();
+    }, UPLOAD_REFRESH_DEBOUNCE_MS);
+  }, [loadItems]);
+
+  const updateUploadQueueItem = useCallback((uploadId: string, updater: (item: CloudUploadQueueItem) => CloudUploadQueueItem) => {
+    setUploadQueue((prev) => prev.map((item) => (item.id === uploadId ? updater(item) : item)));
+  }, []);
+
+  const startUploadItem = useCallback((uploadItem: CloudUploadQueueItem) => {
+    if (!authed) return;
+    if (uploadControllersRef.current.has(uploadItem.id)) return;
+
+    const controller = new AbortController();
+    uploadControllersRef.current.set(uploadItem.id, controller);
+    updateUploadQueueItem(uploadItem.id, (item) => ({
+      ...item,
+      status: "uploading",
+      loadedBytes: 0,
+      totalBytes: item.size,
+      progressPercent: 0,
+      errorMessage: undefined,
+    }));
+
+    void cloud.uploadFile(uploadItem.file, uploadItem.folderId, {
+      signal: controller.signal,
+      onProgress: (loadedBytes, totalBytes) => {
+        updateUploadQueueItem(uploadItem.id, (item) => ({
+          ...item,
+          status: "uploading",
+          loadedBytes,
+          totalBytes,
+          progressPercent: totalBytes > 0 ? (loadedBytes / totalBytes) * 100 : item.progressPercent,
+        }));
+      },
+    }).then(() => {
+      uploadControllersRef.current.delete(uploadItem.id);
+      updateUploadQueueItem(uploadItem.id, (item) => ({
+        ...item,
+        status: "processing",
+        loadedBytes: item.totalBytes || item.size,
+        totalBytes: item.totalBytes || item.size,
+        progressPercent: 100,
+        errorMessage: undefined,
+      }));
+      scheduleUploadRefresh();
+      const completionTimer = window.setTimeout(() => {
+        uploadCompletionTimersRef.current.delete(uploadItem.id);
+        updateUploadQueueItem(uploadItem.id, (item) => ({
+          ...item,
+          status: "completed",
+          loadedBytes: item.totalBytes || item.size,
+          totalBytes: item.totalBytes || item.size,
+          progressPercent: 100,
+        }));
+      }, UPLOAD_COMPLETION_SETTLE_MS);
+      uploadCompletionTimersRef.current.set(uploadItem.id, completionTimer);
+    }).catch((error) => {
+      uploadControllersRef.current.delete(uploadItem.id);
+      updateUploadQueueItem(uploadItem.id, (item) => ({
+        ...item,
+        status: isAbortError(error) ? "canceled" : "failed",
+        errorMessage: isAbortError(error) ? undefined : toErrorMessage(error, "업로드 중 오류가 발생했습니다."),
+      }));
+    });
+  }, [authed, cloud, scheduleUploadRefresh, updateUploadQueueItem]);
+
+  useEffect(() => {
+    if (!authed) return;
+    const activeCount = uploadControllersRef.current.size;
+    if (activeCount >= MAX_PARALLEL_UPLOADS) return;
+
+    const queuedItems = uploadQueue.filter((item) => item.status === "queued");
+    if (queuedItems.length === 0) return;
+
+    const availableSlots = MAX_PARALLEL_UPLOADS - activeCount;
+    queuedItems.slice(0, availableSlots).forEach((item) => {
+      startUploadItem(item);
+    });
+  }, [authed, startUploadItem, uploadQueue]);
+
+  useEffect(() => (
+    () => {
+      uploadControllersRef.current.forEach((controller) => controller.abort());
+      uploadControllersRef.current.clear();
+      if (uploadRefreshTimerRef.current !== null) {
+        window.clearTimeout(uploadRefreshTimerRef.current);
+      }
+      uploadCompletionTimersRef.current.forEach((timerId) => window.clearTimeout(timerId));
+      uploadCompletionTimersRef.current.clear();
+    }
+  ), []);
+
+  const handleUpload = useCallback((files: FileList | File[] | null) => {
+    if (!files || !authed || !isMyFilesSection) return;
+    const nextFiles = Array.from(files).filter((file) => file.size >= 0);
+    if (nextFiles.length === 0) return;
+
+    const folderName = getUploadTargetFolderName(currentFolderID);
+    setUploadPanelExpanded(true);
+    setUploadQueue((prev) => [
+      ...prev,
+      ...nextFiles.map((file) => ({
+        id: crypto.randomUUID(),
+        file,
+        fileName: file.name,
+        size: file.size,
+        folderId: currentFolderID,
+        folderName,
+        status: "queued" as const,
+        loadedBytes: 0,
+        totalBytes: file.size,
+        progressPercent: 0,
+      })),
+    ]);
+  }, [authed, currentFolderID, getUploadTargetFolderName, isMyFilesSection]);
+
+  const handleCancelUploadItem = useCallback((uploadId: string) => {
+    const controller = uploadControllersRef.current.get(uploadId);
+    if (controller) {
+      controller.abort();
+      return;
+    }
+    updateUploadQueueItem(uploadId, (item) => (
+      item.status === "queued"
+        ? { ...item, status: "canceled", errorMessage: undefined }
+        : item
+    ));
+  }, [updateUploadQueueItem]);
+
+  const handleRetryUploadItem = useCallback((uploadId: string) => {
+    updateUploadQueueItem(uploadId, (item) => (
+      item.status === "failed"
+        ? {
+          ...item,
+          status: "queued",
+          loadedBytes: 0,
+          totalBytes: item.size,
+          progressPercent: 0,
+          errorMessage: undefined,
+        }
+        : item
+    ));
+  }, [updateUploadQueueItem]);
+
+  const handleCancelAllUploads = useCallback(() => {
+    uploadControllersRef.current.forEach((controller) => controller.abort());
+    setUploadQueue((prev) => prev.map((item) => (
+      item.status === "queued"
+        ? { ...item, status: "canceled", errorMessage: undefined }
+        : item
+    )));
+  }, []);
+
+  const handleClearCompletedUploads = useCallback(() => {
+    setUploadQueue((prev) => prev.filter((item) => item.status !== "completed"));
+  }, []);
+
+  const handleCloseUploadPanel = useCallback(() => {
+    setUploadPanelExpanded(false);
+    setUploadQueue((prev) => prev.filter((item) => (
+      item.status === "queued" || item.status === "uploading" || item.status === "processing"
+    )));
+  }, []);
 
   const handleDownload = async (file: CloudFile) => {
     if (!authed) return;
@@ -1001,6 +1200,48 @@ function CloudPageInner() {
     return selectedItems.map((item) => getDragItemFromRow(item));
   };
 
+  const buildDragPreviewLabel = (dragItem: CloudDragItem) => {
+    const selectedItems = getSelectedItems();
+    if (!selectedIds.has(dragItem.itemID) || selectedItems.length <= 1) {
+      const source = displayItems.find((item) => {
+        const itemId = item.type === "folder" ? item.folder?.id : item.file?.id;
+        return itemId === dragItem.itemID;
+      });
+      if (!source) return "항목 이동";
+      return source.type === "folder" ? source.folder!.name : source.file!.name;
+    }
+
+    const firstItem = selectedItems[0];
+    const firstName = firstItem
+      ? firstItem.type === "folder"
+        ? firstItem.folder!.name
+        : firstItem.file!.name
+      : "항목";
+    return `${firstName} 외 ${selectedItems.length - 1}개`;
+  };
+
+  const setDragPreviewImage = (e: React.DragEvent, label: string, count: number) => {
+    const preview = document.createElement("div");
+    preview.className = "pointer-events-none fixed left-[-9999px] top-[-9999px] flex items-center gap-2 rounded-lg border border-border bg-surface px-3 py-2 text-xs font-medium text-text-strong shadow-lg";
+
+    const labelNode = document.createElement("span");
+    labelNode.textContent = label;
+    preview.appendChild(labelNode);
+
+    if (count > 1) {
+      const badge = document.createElement("span");
+      badge.textContent = `${count}개`;
+      badge.className = "rounded-full bg-surface-accent px-2 py-0.5 text-[11px] text-text-secondary";
+      preview.appendChild(badge);
+    }
+
+    document.body.appendChild(preview);
+    e.dataTransfer.setDragImage(preview, 16, 16);
+    window.setTimeout(() => {
+      preview.remove();
+    }, 0);
+  };
+
   const parseDraggedItem = (raw: string): CloudDragItem | null => {
     if (!raw) return null;
     try {
@@ -1138,6 +1379,8 @@ function CloudPageInner() {
 
   const handleDrop = (e: React.DragEvent) => {
     e.preventDefault();
+    dragDepthRef.current = 0;
+    setDragFileCount(0);
     if (!isMyFilesSection) {
       setDragOver(false);
       return;
@@ -1282,16 +1525,20 @@ function CloudPageInner() {
     }
   }, [authed, clipboard, clipboardBusy, cloud, isMyFilesSection, loadItems, toast, undoClipboardApply]);
 
+  const getSelectableViewItems = useCallback(() => {
+    if (isMyFilesSection && searchResults) {
+      return searchResults.map((f) => ({ type: "file" as const, file: f, path: undefined }));
+    }
+    return items;
+  }, [isMyFilesSection, items, searchResults]);
+
   const getSelectedItems = useCallback(() => {
     if (!isMyFilesSection || selectedIds.size === 0) return [];
-    const currentItems: FolderItem[] = isMyFilesSection && searchResults
-      ? searchResults.map((f) => ({ type: "file" as const, file: f, path: undefined }))
-      : items;
-    return currentItems.filter((item) => {
+    return getSelectableViewItems().filter((item) => {
       const id = item.type === "folder" ? item.folder?.id : item.file?.id;
       return !!id && selectedIds.has(id);
     });
-  }, [isMyFilesSection, items, searchResults, selectedIds]);
+  }, [getSelectableViewItems, isMyFilesSection, selectedIds]);
 
   const handleBulkCopy = useCallback(() => {
     const selectedItems = getSelectedItems();
@@ -1329,6 +1576,157 @@ function CloudPageInner() {
     }
   };
 
+  const isInteractiveSelectionTarget = (target: EventTarget | null) => {
+    if (!(target instanceof HTMLElement)) return false;
+    return Boolean(
+      target.closest("button, a, input, textarea, select, [role='menu'], [role='checkbox'], [data-cloud-no-selection='true']")
+    );
+  };
+
+  const getContentPointFromClient = useCallback((clientX: number, clientY: number) => {
+    const container = scrollContainerRef.current;
+    if (!container) {
+      return { x: 0, y: 0 };
+    }
+    const rect = container.getBoundingClientRect();
+    return {
+      x: clientX - rect.left + container.scrollLeft,
+      y: clientY - rect.top + container.scrollTop,
+    };
+  }, []);
+
+  const buildSelectionRect = useCallback((startX: number, startY: number, endX: number, endY: number): CloudSelectionRect => ({
+    left: Math.min(startX, endX),
+    top: Math.min(startY, endY),
+    width: Math.abs(endX - startX),
+    height: Math.abs(endY - startY),
+  }), []);
+
+  const applySelectionRect = useCallback((rect: CloudSelectionRect, additive: boolean, baseSelectedIds: Set<string>) => {
+    const container = scrollContainerRef.current;
+    if (!container) return;
+
+    const nodeList = container.querySelectorAll<HTMLElement>("[data-cloud-selectable-id]");
+    const nextIds = additive ? new Set(baseSelectedIds) : new Set<string>();
+
+    nodeList.forEach((node) => {
+      const id = node.dataset.cloudSelectableId;
+      if (!id) return;
+      const bounds = node.getBoundingClientRect();
+      const containerBounds = container.getBoundingClientRect();
+      const nodeRect = {
+        left: bounds.left - containerBounds.left + container.scrollLeft,
+        top: bounds.top - containerBounds.top + container.scrollTop,
+        right: bounds.right - containerBounds.left + container.scrollLeft,
+        bottom: bounds.bottom - containerBounds.top + container.scrollTop,
+      };
+      const intersects = !(
+        nodeRect.right < rect.left
+        || nodeRect.left > rect.left + rect.width
+        || nodeRect.bottom < rect.top
+        || nodeRect.top > rect.top + rect.height
+      );
+      if (intersects) {
+        nextIds.add(id);
+      }
+    });
+
+    setSelectedIds(nextIds);
+  }, []);
+
+  const updateSelectionFromClientPoint = useCallback((clientX: number, clientY: number) => {
+    const session = selectionSessionRef.current;
+    if (!session) return;
+    const point = getContentPointFromClient(clientX, clientY);
+    const nextRect = buildSelectionRect(session.startX, session.startY, point.x, point.y);
+    setSelectionRect(nextRect);
+    applySelectionRect(nextRect, session.additive, session.baseSelectedIds);
+  }, [applySelectionRect, buildSelectionRect, getContentPointFromClient]);
+
+  const stopSelectionAutoScroll = useCallback(() => {
+    if (selectionScrollFrameRef.current !== null) {
+      window.cancelAnimationFrame(selectionScrollFrameRef.current);
+      selectionScrollFrameRef.current = null;
+    }
+  }, []);
+
+  const runSelectionAutoScroll = useCallback(() => {
+    const container = scrollContainerRef.current;
+    const pointer = selectionPointerRef.current;
+    if (!container || !pointer || !selectionSessionRef.current) {
+      selectionScrollFrameRef.current = null;
+      return;
+    }
+
+    const rect = container.getBoundingClientRect();
+    let deltaY = 0;
+    if (pointer.clientY < rect.top + SELECTION_SCROLL_EDGE_PX) {
+      deltaY = -SELECTION_SCROLL_STEP_PX;
+    } else if (pointer.clientY > rect.bottom - SELECTION_SCROLL_EDGE_PX) {
+      deltaY = SELECTION_SCROLL_STEP_PX;
+    }
+
+    if (deltaY !== 0) {
+      container.scrollTop += deltaY;
+      updateSelectionFromClientPoint(pointer.clientX, pointer.clientY);
+    }
+
+    selectionScrollFrameRef.current = window.requestAnimationFrame(runSelectionAutoScroll);
+  }, [updateSelectionFromClientPoint]);
+
+  const startSelectionAutoScroll = useCallback(() => {
+    if (selectionScrollFrameRef.current !== null) return;
+    selectionScrollFrameRef.current = window.requestAnimationFrame(runSelectionAutoScroll);
+  }, [runSelectionAutoScroll]);
+
+  const handleSelectionPointerDown = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
+    if (!isSelectableSection || e.button !== 0) return;
+    if (isInteractiveSelectionTarget(e.target)) return;
+
+    const target = e.target as HTMLElement;
+    if (target.closest("[data-cloud-selectable-item='true']")) return;
+
+    const point = getContentPointFromClient(e.clientX, e.clientY);
+    selectionSessionRef.current = {
+      startX: point.x,
+      startY: point.y,
+      additive: e.metaKey || e.ctrlKey,
+      baseSelectedIds: new Set(selectedIds),
+    };
+    selectionPointerRef.current = { clientX: e.clientX, clientY: e.clientY };
+    setSelectionRect({ left: point.x, top: point.y, width: 0, height: 0 });
+    if (!(e.metaKey || e.ctrlKey)) {
+      setSelectedIds(new Set());
+    }
+    startSelectionAutoScroll();
+  }, [getContentPointFromClient, isSelectableSection, selectedIds, startSelectionAutoScroll]);
+
+  useEffect(() => {
+    if (!selectionRect && !selectionSessionRef.current) return;
+
+    const handleMouseMove = (event: MouseEvent) => {
+      if (!selectionSessionRef.current) return;
+      selectionPointerRef.current = { clientX: event.clientX, clientY: event.clientY };
+      updateSelectionFromClientPoint(event.clientX, event.clientY);
+    };
+
+    const endSelection = () => {
+      selectionSessionRef.current = null;
+      selectionPointerRef.current = null;
+      setSelectionRect(null);
+      stopSelectionAutoScroll();
+    };
+
+    window.addEventListener("mousemove", handleMouseMove);
+    window.addEventListener("mouseup", endSelection);
+    window.addEventListener("blur", endSelection);
+    return () => {
+      window.removeEventListener("mousemove", handleMouseMove);
+      window.removeEventListener("mouseup", endSelection);
+      window.removeEventListener("blur", endSelection);
+    };
+  }, [selectionRect, stopSelectionAutoScroll, updateSelectionFromClientPoint]);
+
   useEffect(() => {
     if (!isSelectableSection) return;
 
@@ -1345,9 +1743,7 @@ function CloudPageInner() {
       if (isTextInputTarget(e.target)) return;
 
       const key = e.key.toLowerCase();
-      const visibleItems: FolderItem[] = isMyFilesSection && searchResults
-        ? searchResults.map((f) => ({ type: "file" as const, file: f, path: undefined }))
-        : items;
+      const visibleItems = getSelectableViewItems();
       if (key === "a") {
         if (visibleItems.length === 0) return;
         e.preventDefault();
@@ -1382,11 +1778,10 @@ function CloudPageInner() {
     clipboard,
     clipboardBusy,
     currentFolderID,
+    getSelectableViewItems,
     getSelectedItems,
     isMyFilesSection,
     isSelectableSection,
-    items,
-    searchResults,
     selectedIds,
     setClipboardFromItems,
   ]);
@@ -1416,7 +1811,7 @@ function CloudPageInner() {
     const folderSegments = (item.path || "")
       .split("/")
       .map((segment) => segment.trim())
-      .filter((segment) => segment.length > 0 && segment !== "내 클라우드");
+      .filter((segment) => segment.length > 0 && segment !== ROOT_PATH_ENTRY.name);
     return `/${[...folderSegments, item.file!.name].join("/")}`;
   };
 
@@ -1427,9 +1822,13 @@ function CloudPageInner() {
     { value: "size", label: "크기" },
   ];
 
-  const displayItems: FolderItem[] = isMyFilesSection && searchResults
-    ? searchResults.map((f) => ({ type: "file" as const, file: f, path: undefined }))
-    : items;
+  const displayItems: FolderItem[] = getSelectableViewItems();
+  const totalUploadCount = uploadQueue.length;
+  const completedUploadCount = uploadQueue.filter((item) => item.status === "completed").length;
+  const uploadingCount = uploadQueue.filter((item) => item.status === "uploading").length;
+  const totalUploadBytes = uploadQueue.reduce((sum, item) => sum + (item.totalBytes || item.size), 0);
+  const totalUploadedBytes = uploadQueue.reduce((sum, item) => sum + Math.min(item.loadedBytes, item.totalBytes || item.size), 0);
+  const overallUploadPercent = totalUploadBytes > 0 ? (totalUploadedBytes / totalUploadBytes) * 100 : 0;
 
   const sectionLabel = CLOUD_SECTION_LABELS[section];
   const hasFolderRouteError =
@@ -1454,6 +1853,7 @@ function CloudPageInner() {
       ? [rootPathEntry, { id: currentFolderID, name: cached.name }]
       : [rootPathEntry];
   })();
+  const currentFolderDisplayName = displayPath[displayPath.length - 1]?.name || rootPathEntry.name;
   const showFolderHeader = isMyFilesSection || isTrashSection;
   const headerLoading = folderRouteState === "checking" || (
     folderRouteState === "ready"
@@ -1462,7 +1862,7 @@ function CloudPageInner() {
   const showSearchResultBanner = isMyFilesSection && searchResults !== null;
   const showBulkBar = selectedIds.size > 0 && (isMyFilesSection || isTrashSection);
   const currentViewMode: ViewMode = isMyFilesSection ? viewMode : "list";
-  const routeActionLabel = isTrashSection ? "휴지통으로 이동" : "내 클라우드로 이동";
+  const routeActionLabel = isTrashSection ? "휴지통으로 이동" : "보관함으로 이동";
   const routeStateCopy = (() => {
     if (!hasFolderRouteError) return null;
     if (folderRouteState === "invalid") {
@@ -1493,15 +1893,28 @@ function CloudPageInner() {
 
   return (
     <div
-      className="flex h-full flex-col"
+      className="relative flex h-full flex-col"
+      onDragEnter={(e) => {
+        if (!isMyFilesSection || !isUploadDragEvent(e)) return;
+        dragDepthRef.current += 1;
+        setDragFileCount(e.dataTransfer.items?.length || e.dataTransfer.files.length || 0);
+        setDragOver(true);
+      }}
       onDragOver={(e) => {
         if (!isMyFilesSection) return;
         if (!isUploadDragEvent(e)) return;
         e.preventDefault();
+        setDragFileCount(e.dataTransfer.items?.length || e.dataTransfer.files.length || dragFileCount);
         setDragOver(true);
       }}
       onDragLeave={() => {
-        setDragOver(false);
+        if (dragDepthRef.current > 0) {
+          dragDepthRef.current -= 1;
+        }
+        if (dragDepthRef.current === 0) {
+          setDragOver(false);
+          setDragFileCount(0);
+        }
       }}
       onDrop={handleDrop}
     >
@@ -1678,7 +2091,10 @@ function CloudPageInner() {
                 type="file"
                 multiple
                 className="hidden"
-                onChange={(e) => handleUpload(e.target.files)}
+                onChange={(e) => {
+                  handleUpload(e.target.files);
+                  e.currentTarget.value = "";
+                }}
               />
             </>
           )}
@@ -1841,15 +2257,22 @@ function CloudPageInner() {
       {/* Drop overlay */}
       {dragOver && isMyFilesSection && (
         <div className="absolute inset-0 z-20 flex items-center justify-center bg-background/80">
-          <div className="rounded-xl border-2 border-dashed border-primary/40 p-12 text-center">
+          <div className="rounded-xl border-2 border-dashed border-primary/40 bg-surface/95 p-12 text-center shadow-lg">
             <Upload size={48} className="mx-auto text-primary" />
-            <p className="mt-2 text-text-secondary">여기에 파일을 놓으세요</p>
+            <p className="mt-2 text-text-secondary">
+              {currentFolderDisplayName}에 {dragFileCount || 1}개 파일 업로드
+            </p>
           </div>
         </div>
       )}
 
       {/* File list */}
-      <div className="relative flex-1 overflow-auto">
+      <div
+        ref={scrollContainerRef}
+        className="relative flex-1 overflow-auto"
+        onMouseDown={handleSelectionPointerDown}
+      >
+        <CloudSelectionOverlay rect={selectionRect} />
         {routeStateCopy ? (
           <div className="flex flex-col items-center justify-center py-20 text-center text-text-muted">
             <Cloud size={48} className="text-border" />
@@ -1935,6 +2358,8 @@ function CloudPageInner() {
                 return (
                   <tr
                     key={id}
+                    data-cloud-selectable-item="true"
+                    data-cloud-selectable-id={id}
                     className={`border-b border-border/50 hover:bg-surface-accent/50 cursor-default ${
                       isSelected ? "bg-primary/5" : ""
                     } ${isDropTarget ? "bg-surface-accent/80 ring-1 ring-inset ring-primary" : ""} ${
@@ -1945,10 +2370,12 @@ function CloudPageInner() {
                     onDragStart={(e) => {
                       if (!isMyFilesSection || movingItemKey) return;
                       const dragItem = getDragItemFromRow(item);
+                      const dragItems = getDragItemsFromSelection(dragItem);
                       setDraggingItem(dragItem);
                       e.dataTransfer.effectAllowed = "move";
                       e.dataTransfer.setData(INTERNAL_ITEM_DRAG_TYPE, JSON.stringify(dragItem));
                       e.dataTransfer.setData("text/plain", dragItem.itemID);
+                      setDragPreviewImage(e, buildDragPreviewLabel(dragItem), dragItems.length);
                     }}
                     onDragEnd={() => {
                       setDraggingItem(null);
@@ -1977,6 +2404,8 @@ function CloudPageInner() {
                         <Checkbox
                           checked={isSelected}
                           onCheckedChange={() => toggleSelect(id)}
+                          onClick={(e) => e.stopPropagation()}
+                          data-cloud-no-selection="true"
                         />
                       ) : null}
                     </td>
@@ -2032,7 +2461,11 @@ function CloudPageInner() {
                     <td className="px-2 py-2">
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
-                          <button className="flex h-7 w-7 items-center justify-center rounded-lg text-text-muted hover:bg-surface-accent">
+                          <button
+                            className="flex h-7 w-7 items-center justify-center rounded-lg text-text-muted hover:bg-surface-accent"
+                            onClick={(e) => e.stopPropagation()}
+                            data-cloud-no-selection="true"
+                          >
                             <MoreVertical size={14} />
                           </button>
                         </DropdownMenuTrigger>
@@ -2156,6 +2589,8 @@ function CloudPageInner() {
               return (
                 <div
                   key={id}
+                  data-cloud-selectable-item="true"
+                  data-cloud-selectable-id={id}
                   className={`group relative flex flex-col rounded-lg border overflow-hidden cursor-default transition-colors ${
                     isSelected ? "border-primary bg-primary/5" : "border-border hover:bg-surface-accent/50"
                   } ${isDropTarget ? "bg-surface-accent/80 ring-2 ring-primary border-primary" : ""} ${
@@ -2166,10 +2601,12 @@ function CloudPageInner() {
                   onDragStart={(e) => {
                     if (!isMyFilesSection || movingItemKey) return;
                     const dragItem = getDragItemFromRow(item);
+                    const dragItems = getDragItemsFromSelection(dragItem);
                     setDraggingItem(dragItem);
                     e.dataTransfer.effectAllowed = "move";
                     e.dataTransfer.setData(INTERNAL_ITEM_DRAG_TYPE, JSON.stringify(dragItem));
                     e.dataTransfer.setData("text/plain", dragItem.itemID);
+                    setDragPreviewImage(e, buildDragPreviewLabel(dragItem), dragItems.length);
                   }}
                   onDragEnd={() => {
                     setDraggingItem(null);
@@ -2194,6 +2631,15 @@ function CloudPageInner() {
                     handleItemOpen(item);
                   }}
                 >
+                  {isSelectableSection ? (
+                    <div className="absolute left-2 top-2 z-10" data-cloud-no-selection="true">
+                      <Checkbox
+                        checked={isSelected}
+                        onCheckedChange={() => toggleSelect(id)}
+                        onClick={(e) => e.stopPropagation()}
+                      />
+                    </div>
+                  ) : null}
                   {/* 4:3 미리보기 영역 */}
                   <div
                     className="relative flex aspect-[4/3] w-full items-center justify-center"
@@ -2233,6 +2679,21 @@ function CloudPageInner() {
           </div>
         )}
       </div>
+
+      <CloudUploadPanel
+        items={uploadQueue}
+        expanded={uploadPanelExpanded}
+        completedCount={completedUploadCount}
+        totalCount={totalUploadCount}
+        uploadingCount={uploadingCount}
+        overallPercent={overallUploadPercent}
+        onToggleExpanded={() => setUploadPanelExpanded((prev) => !prev)}
+        onClose={handleCloseUploadPanel}
+        onCancelItem={handleCancelUploadItem}
+        onRetryItem={handleRetryUploadItem}
+        onCancelAll={handleCancelAllUploads}
+        onClearCompleted={handleClearCompletedUploads}
+      />
 
       <Dialog open={editorOpen} onOpenChange={(open) => {
         setEditorOpen(open);

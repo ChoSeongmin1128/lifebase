@@ -6,12 +6,17 @@ import type {
   StarItem,
 } from "@/features/cloud/domain/CloudItem";
 
+export interface CloudUploadOptions {
+  onProgress?: (loadedBytes: number, totalBytes: number) => void;
+  signal?: AbortSignal;
+}
+
 export interface CloudRepository {
   listItems(input: ListCloudItemsInput): Promise<FolderItem[]>;
   getFolder(folderId: string): Promise<FolderData>;
   getTrashFolder(folderId: string): Promise<FolderData>;
   listStars(): Promise<StarItem[]>;
-  uploadFile(file: File, folderId?: string | null): Promise<void>;
+  uploadFile(file: File, folderId?: string | null, options?: CloudUploadOptions): Promise<CloudFile>;
   createTextFile(
     name: string,
     content: string,

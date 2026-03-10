@@ -1,10 +1,21 @@
-import { getValidToken, refreshAccessToken, clearTokens } from "@/features/auth/infrastructure/token-auth";
+import {
+  getValidToken,
+  refreshAccessToken,
+  clearTokens,
+  isSessionMarkerToken,
+} from "@/features/auth/infrastructure/token-auth";
 import { getApiUrl } from "@/features/shared/infrastructure/api-url";
 
 interface ApiOptions {
   method?: string;
   body?: unknown;
   token?: string;
+}
+
+interface UploadProgressOptions {
+  token?: string;
+  signal?: AbortSignal;
+  onProgress?: (loadedBytes: number, totalBytes: number) => void;
 }
 
 /**
@@ -39,22 +50,23 @@ export async function api<T>(path: string, options: ApiOptions = {}): Promise<T>
   return parseResponse<T>(res);
 }
 
-export async function apiUpload<T>(path: string, formData: FormData, token?: string): Promise<T> {
+export async function apiUpload<T>(path: string, formData: FormData, options: UploadProgressOptions = {}): Promise<T> {
+  let { token } = options;
+
   if (token) {
     const valid = await getValidToken();
     if (valid) token = valid;
   }
 
-  const res = await doUploadFetch(path, formData, token);
+  let res = await doUploadRequest(path, formData, token, options);
 
-  if (res.status === 401 && token) {
+  if (res.status === 401 && token && !options.signal?.aborted) {
     const newToken = await refreshAccessToken();
     if (!newToken) {
       handleAuthFailure();
       throw new Error("인증이 만료되었습니다. 다시 로그인해 주세요.");
     }
-    const retryRes = await doUploadFetch(path, formData, newToken);
-    return parseResponse<T>(retryRes);
+    res = await doUploadRequest(path, formData, newToken, options);
   }
 
   return parseResponse<T>(res);
@@ -89,33 +101,96 @@ async function doFetch(path: string, method: string, body: unknown, token?: stri
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
   };
-  if (token) headers["Authorization"] = `Bearer ${token}`;
+  if (token && !isSessionMarkerToken(token)) {
+    headers["Authorization"] = `Bearer ${token}`;
+  }
 
   return fetch(getApiUrl(path), {
     method,
     headers,
+    credentials: "include",
     body: body ? JSON.stringify(body) : undefined,
   });
 }
 
-async function doUploadFetch(path: string, formData: FormData, token?: string): Promise<Response> {
-  const headers: Record<string, string> = {};
-  if (token) headers["Authorization"] = `Bearer ${token}`;
+async function doUploadRequest(
+  path: string,
+  formData: FormData,
+  token?: string,
+  options: UploadProgressOptions = {},
+): Promise<Response> {
+  return new Promise<Response>((resolve, reject) => {
+    if (options.signal?.aborted) {
+      reject(new DOMException("Upload aborted", "AbortError"));
+      return;
+    }
 
-  return fetch(getApiUrl(path), {
-    method: "POST",
-    headers,
-    body: formData,
+    const xhr = new XMLHttpRequest();
+    xhr.open("POST", getApiUrl(path));
+    xhr.withCredentials = true;
+    if (token && !isSessionMarkerToken(token)) {
+      xhr.setRequestHeader("Authorization", `Bearer ${token}`);
+    }
+
+    const abortUpload = () => {
+      xhr.abort();
+    };
+
+    options.signal?.addEventListener("abort", abortUpload, { once: true });
+
+    xhr.upload.onprogress = (event) => {
+      if (!event.lengthComputable) return;
+      options.onProgress?.(event.loaded, event.total);
+    };
+
+    xhr.onerror = () => {
+      cleanup();
+      reject(new Error("Upload failed"));
+    };
+
+    xhr.onabort = () => {
+      cleanup();
+      reject(new DOMException("Upload aborted", "AbortError"));
+    };
+
+    xhr.onload = () => {
+      cleanup();
+      const responseHeaders = new Headers();
+      xhr.getAllResponseHeaders()
+        .trim()
+        .split(/[\r\n]+/)
+        .forEach((line) => {
+          if (!line) return;
+          const parts = line.split(": ");
+          const header = parts.shift();
+          if (!header) return;
+          responseHeaders.append(header, parts.join(": "));
+        });
+      resolve(new Response(xhr.responseText, {
+        status: xhr.status,
+        statusText: xhr.statusText,
+        headers: responseHeaders,
+      }));
+    };
+
+    const cleanup = () => {
+      options.signal?.removeEventListener("abort", abortUpload);
+    };
+
+    xhr.send(formData);
   });
 }
 
 async function doDownloadFetch(path: string, token?: string): Promise<Response> {
   const headers: Record<string, string> = {};
-  if (token) headers["Authorization"] = `Bearer ${token}`;
+  if (token && !isSessionMarkerToken(token)) {
+    headers["Authorization"] = `Bearer ${token}`;
+  }
 
   return fetch(getApiUrl(path), {
     method: "GET",
     headers,
+    credentials: "include",
   });
 }
 

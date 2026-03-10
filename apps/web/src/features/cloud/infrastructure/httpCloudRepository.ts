@@ -7,7 +7,7 @@ import type {
   ListCloudItemsInput,
   StarItem,
 } from "@/features/cloud/domain/CloudItem";
-import type { CloudRepository } from "@/features/cloud/repository/CloudRepository";
+import type { CloudRepository, CloudUploadOptions } from "@/features/cloud/repository/CloudRepository";
 
 interface ItemsResponse {
   items?: FolderItem[];
@@ -88,14 +88,18 @@ export class HttpCloudRepository implements CloudRepository {
     return data.stars || [];
   }
 
-  async uploadFile(file: File, folderId?: string | null): Promise<void> {
+  async uploadFile(file: File, folderId?: string | null, options?: CloudUploadOptions): Promise<CloudFile> {
     const token = this.getToken();
     const formData = new FormData();
     formData.append("file", file);
     if (folderId) {
       formData.append("folder_id", folderId);
     }
-    await apiUpload("/cloud/files/upload", formData, token);
+    return apiUpload<CloudFile>("/cloud/files/upload", formData, {
+      token,
+      signal: options?.signal,
+      onProgress: options?.onProgress,
+    });
   }
 
   async createTextFile(

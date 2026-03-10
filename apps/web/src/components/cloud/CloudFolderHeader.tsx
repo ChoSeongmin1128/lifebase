@@ -15,38 +15,32 @@ interface CloudFolderHeaderProps {
 
 export function CloudFolderHeader({ path, loading, onNavigate }: CloudFolderHeaderProps) {
   const current = path[path.length - 1];
+  const ancestors = path.slice(0, -1);
 
   return (
     <div className="border-b border-border px-4 py-3">
       <div className="flex min-h-[76px] flex-col justify-between gap-2">
         <div className="min-h-7 overflow-x-auto">
-          <div
-            className={`flex w-max min-w-full items-center gap-1 whitespace-nowrap text-sm transition-opacity duration-150 ${
-              loading ? "opacity-90" : "opacity-100"
-            }`}
-          >
-            {path.map((entry, index) => {
-              const isCurrent = index === path.length - 1;
-              return (
+          {ancestors.length > 0 ? (
+            <div
+              className={`flex w-max min-w-full items-center gap-1 whitespace-nowrap text-sm transition-opacity duration-150 ${
+                loading ? "opacity-90" : "opacity-100"
+              }`}
+            >
+              {ancestors.map((entry, index) => (
                 <div key={`${entry.id ?? "root"}-${index}`} className="flex items-center gap-1">
                   {index > 0 ? <ChevronRight size={13} className="shrink-0 text-text-muted" /> : null}
-                  {isCurrent ? (
-                    <span className="max-w-44 truncate rounded-full bg-surface-accent px-2.5 py-1 text-xs font-medium text-text-strong md:max-w-56">
-                      {entry.name}
-                    </span>
-                  ) : (
-                    <button
-                      type="button"
-                      onClick={() => onNavigate(entry.id)}
-                      className="max-w-32 truncate rounded-full px-2 py-1 text-xs text-text-secondary transition-colors hover:bg-surface-accent hover:text-text-strong md:max-w-40"
-                    >
-                      {entry.name}
-                    </button>
-                  )}
+                  <button
+                    type="button"
+                    onClick={() => onNavigate(entry.id)}
+                    className="max-w-32 truncate rounded-full px-2 py-1 text-xs text-text-secondary transition-colors hover:bg-surface-accent hover:text-text-strong md:max-w-40"
+                  >
+                    {entry.name}
+                  </button>
                 </div>
-              );
-            })}
-          </div>
+              ))}
+            </div>
+          ) : null}
         </div>
         <div className="flex min-h-9 items-center gap-2">
           <h1
@@ -54,7 +48,7 @@ export function CloudFolderHeader({ path, loading, onNavigate }: CloudFolderHead
               loading ? "opacity-90" : "opacity-100"
             }`}
           >
-            {current?.name ?? "내 클라우드"}
+            {current?.name ?? "보관함"}
           </h1>
           <span className="flex h-4 w-4 shrink-0 items-center justify-center">
             <Loader2

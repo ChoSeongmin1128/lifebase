@@ -4,6 +4,7 @@ import { useMemo } from "react";
 import { ManageCloudUseCase } from "@/features/cloud/usecase/ManageCloud";
 import { HttpCloudRepository } from "@/features/cloud/infrastructure/httpCloudRepository";
 import type { ListCloudItemsInput } from "@/features/cloud/domain/CloudItem";
+import type { CloudUploadOptions } from "@/features/cloud/repository/CloudRepository";
 
 export function useCloudActions() {
   const useCase = useMemo(() => {
@@ -16,7 +17,8 @@ export function useCloudActions() {
       getFolder: (folderId: string) => useCase.getFolder(folderId),
       getTrashFolder: (folderId: string) => useCase.getTrashFolder(folderId),
       listStars: () => useCase.listStars(),
-      uploadFile: (file: File, folderId?: string | null) => useCase.uploadFile(file, folderId),
+      uploadFile: (file: File, folderId?: string | null, options?: CloudUploadOptions) =>
+        useCase.uploadFile(file, folderId, options),
       createTextFile: (name: string, extension: "md" | "txt", folderId?: string | null) =>
         useCase.createTextFile(name, extension, folderId),
       getTextFileContent: (fileId: string) => useCase.getTextFileContent(fileId),
