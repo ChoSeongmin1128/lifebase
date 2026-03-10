@@ -7,6 +7,7 @@ import {
   clearAdminTokens,
   getAdminAccessToken,
   isAdminAuthenticated,
+  logoutAdmin,
 } from "@/features/admin/infrastructure/admin-auth";
 import { adminApi } from "@/features/admin/infrastructure/http-admin-api";
 import {
@@ -114,8 +115,9 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   };
 
   const handleLogout = () => {
-    clearAdminTokens();
-    router.replace("/admin/login");
+    void logoutAdmin().finally(() => {
+      router.replace("/admin/login");
+    });
   };
 
   if (isPublicPath) {

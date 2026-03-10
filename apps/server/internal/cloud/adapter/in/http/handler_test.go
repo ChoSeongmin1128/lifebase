@@ -570,8 +570,8 @@ func TestCloudHandlerUploadFileDefaultMime(t *testing.T) {
 	if rec.Code != http.StatusCreated {
 		t.Fatalf("expected 201, got %d", rec.Code)
 	}
-	if uc.lastUploadMime != "application/octet-stream" {
-		t.Fatalf("expected default mime type, got %q", uc.lastUploadMime)
+	if uc.lastUploadMime != "text/plain; charset=utf-8" {
+		t.Fatalf("expected detected mime type, got %q", uc.lastUploadMime)
 	}
 }
 

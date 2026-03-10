@@ -138,6 +138,7 @@ func main() {
 	// Sharing repos
 	shareRepo := sharingpg.NewShareRepo(dbpool)
 	inviteRepo := sharingpg.NewInviteRepo(dbpool)
+	sharingFolderAccessRepo := sharingpg.NewFolderAccessRepo(dbpool)
 	homeRepo := homepg.NewHomeRepo(dbpool)
 	holidayRepo := holidaypg.NewHolidayRepo(dbpool)
 
@@ -189,7 +190,7 @@ func main() {
 		GoogleAccounts: googleAccountRepo,
 		GoogleClient:   authOAuthClient,
 	})
-	sharingUC := sharingusecase.NewSharingUseCase(shareRepo, inviteRepo)
+	sharingUC := sharingusecase.NewSharingUseCase(shareRepo, inviteRepo, sharingFolderAccessRepo)
 	settingsUC := settingsusecase.NewSettingsUseCase(settingspg.NewSettingsRepo(dbpool))
 	homeUC := homeusecase.NewHomeUseCase(homeRepo)
 	holidayUC := holidayusecase.NewHolidayUseCase(holidayRepo, holidayProvider)
@@ -203,7 +204,11 @@ func main() {
 	)
 
 	// Handlers
-	authHandler := authhttp.NewAuthHandler(authUC, cfg.StateHMACKey)
+	authHandler := authhttp.NewAuthHandler(authUC, cfg.StateHMACKey, authhttp.SessionCookieConfig{
+		AccessExpiry:  cfg.JWT.AccessExpiry,
+		RefreshExpiry: cfg.JWT.RefreshExpiry,
+		Secure:        cfg.Server.Env != "development",
+	})
 	cloudHandler := cloudhttp.NewCloudHandler(cloudUC)
 	galleryHandler := galleryhttp.NewGalleryHandler(galleryUC, cfg.Storage.ThumbPath)
 	calendarHandler := calendarhttp.NewCalendarHandler(calendarUC)
@@ -362,8 +367,8 @@ func main() {
 
 			// Sharing
 			r.Route("/shares", func(r chi.Router) {
-				r.Post("/invite", sharingHandler.CreateInvite)
-				r.Post("/accept", sharingHandler.AcceptInvite)
+				r.With(middleware.NewRateLimiter(10).Handler).Post("/invite", sharingHandler.CreateInvite)
+				r.With(middleware.NewRateLimiter(10).Handler).Post("/accept", sharingHandler.AcceptInvite)
 				r.Get("/", sharingHandler.ListShares)
 				r.Get("/shared-with-me", sharingHandler.ListSharedWithMe)
 				r.Delete("/{shareID}", sharingHandler.RemoveShare)

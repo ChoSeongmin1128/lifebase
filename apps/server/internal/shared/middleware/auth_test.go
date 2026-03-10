@@ -271,8 +271,62 @@ func TestAuthSuccessInjectsUserID(t *testing.T) {
 	}
 }
 
+func TestAuthSuccessViaWebCookie(t *testing.T) {
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/files", nil)
+	token := makeToken(t, "secret", jwt.MapClaims{
+		"sub": "cookie-user",
+		"exp": time.Now().Add(time.Hour).Unix(),
+	})
+	req.AddCookie(&http.Cookie{Name: "lifebase_access_token", Value: token})
+
+	Auth("secret")(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if got := GetUserID(r.Context()); got != "cookie-user" {
+			t.Fatalf("expected cookie-user, got %q", got)
+		}
+		if got := GetAuthApp(r.Context()); got != "web" {
+			t.Fatalf("expected web auth app, got %q", got)
+		}
+		w.WriteHeader(http.StatusNoContent)
+	})).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusNoContent {
+		t.Fatalf("expected 204, got %d", rec.Code)
+	}
+}
+
+func TestAuthSuccessViaAdminCookie(t *testing.T) {
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/admin/users", nil)
+	token := makeToken(t, "secret", jwt.MapClaims{
+		"sub": "admin-user",
+		"exp": time.Now().Add(time.Hour).Unix(),
+	})
+	req.AddCookie(&http.Cookie{Name: "lifebase_admin_access_token", Value: token})
+
+	Auth("secret")(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if got := GetUserID(r.Context()); got != "admin-user" {
+			t.Fatalf("expected admin-user, got %q", got)
+		}
+		if got := GetAuthApp(r.Context()); got != "admin" {
+			t.Fatalf("expected admin auth app, got %q", got)
+		}
+		w.WriteHeader(http.StatusNoContent)
+	})).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusNoContent {
+		t.Fatalf("expected 204, got %d", rec.Code)
+	}
+}
+
 func TestGetUserIDMissing(t *testing.T) {
 	if got := GetUserID(context.Background()); got != "" {
 		t.Fatalf("expected empty user id, got %q", got)
+	}
+}
+
+func TestGetAuthAppMissing(t *testing.T) {
+	if got := GetAuthApp(context.Background()); got != "" {
+		t.Fatalf("expected empty auth app, got %q", got)
 	}
 }

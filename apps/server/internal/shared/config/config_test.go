@@ -7,6 +7,14 @@ import (
 	"testing"
 )
 
+func setRequiredLoadEnv(t *testing.T) {
+	t.Helper()
+	t.Setenv("JWT_SECRET", "jwt-secret")
+	t.Setenv("STATE_HMAC_KEY", "state-hmac")
+	t.Setenv("JWT_ACCESS_EXPIRY", "1h")
+	t.Setenv("JWT_REFRESH_EXPIRY", "48h")
+}
+
 func TestGetEnv(t *testing.T) {
 	t.Setenv("CONFIG_TEST_ENV", "value")
 	if got := getEnv("CONFIG_TEST_ENV", "fallback"); got != "value" {
@@ -206,6 +214,7 @@ func TestServerConfigWebURL(t *testing.T) {
 }
 
 func TestLoadUsesEnvironmentValues(t *testing.T) {
+	setRequiredLoadEnv(t)
 	t.Setenv("SERVER_PORT", "4000")
 	t.Setenv("SERVER_ENV", "staging")
 	t.Setenv("DOMAIN", "example.com")
@@ -247,28 +256,19 @@ func TestLoadUsesEnvironmentValues(t *testing.T) {
 	}
 }
 
-func TestLoadInvalidNumericAndDurationFallbackToZero(t *testing.T) {
+func TestLoadInvalidNumericAndDurationReturnsError(t *testing.T) {
+	setRequiredLoadEnv(t)
 	t.Setenv("SERVER_PORT", "not-a-number")
 	t.Setenv("JWT_ACCESS_EXPIRY", "invalid")
 	t.Setenv("JWT_REFRESH_EXPIRY", "invalid")
 
-	cfg, err := Load()
-	if err != nil {
-		t.Fatalf("load config: %v", err)
-	}
-
-	if cfg.Server.Port != 0 {
-		t.Fatalf("expected port 0 for invalid parse, got %d", cfg.Server.Port)
-	}
-	if cfg.JWT.AccessExpiry != 0 {
-		t.Fatalf("expected zero access expiry, got %s", cfg.JWT.AccessExpiry)
-	}
-	if cfg.JWT.RefreshExpiry != 0 {
-		t.Fatalf("expected zero refresh expiry, got %s", cfg.JWT.RefreshExpiry)
+	if _, err := Load(); err == nil {
+		t.Fatal("expected invalid duration error")
 	}
 }
 
 func TestLoadDatabaseDefaultUsesDevelopmentDatabase(t *testing.T) {
+	setRequiredLoadEnv(t)
 	t.Setenv("DATABASE_URL", "")
 
 	cfg, err := Load()
@@ -278,5 +278,16 @@ func TestLoadDatabaseDefaultUsesDevelopmentDatabase(t *testing.T) {
 
 	if cfg.Database.URL != "postgres://seongmin@localhost:5432/lifebase_dev?sslmode=disable" {
 		t.Fatalf("expected development database fallback, got %q", cfg.Database.URL)
+	}
+}
+
+func TestLoadFailsWithoutRequiredSecrets(t *testing.T) {
+	t.Setenv("JWT_SECRET", "")
+	t.Setenv("STATE_HMAC_KEY", "")
+	t.Setenv("JWT_ACCESS_EXPIRY", "1h")
+	t.Setenv("JWT_REFRESH_EXPIRY", "48h")
+
+	if _, err := Load(); err == nil {
+		t.Fatal("expected missing secrets error")
 	}
 }

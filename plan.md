@@ -32,6 +32,7 @@
 
 ## 5. 보안
 - `docs/600-인증-OAuth.md`
+- 2026-03-11 기준 Web/Admin은 httpOnly 쿠키 세션을 사용하고, OAuth `state` 검증은 callback/link 모두 필수다.
 
 ## 6. 실행 계획
 - `docs/700-마일스톤.md`
@@ -56,10 +57,12 @@
 2. 현재 상태
 - Web: `apps/web/src/features` 아래 `auth`, `admin`, `cloud`, `gallery`, `calendar`, `home`, `settings`, `todo`가 기능 단위 구조로 정리돼 있다.
 - Admin Web: 로그인 성공 후에도 `admin_users.is_active=true` 검증을 통과한 계정만 admin 세션 유지 대상으로 본다.
+- Web/Admin 프론트는 민감 JWT를 `localStorage`에 저장하지 않고, 브라우저에는 세션 마커만 남긴다.
 - Mobile: `apps/mobile/features` 아래 `auth`, `cloud`, `gallery`, `calendar`, `todo`가 기능 단위 구조로 정리돼 있다.
 - 공통 패키지: `packages/features/todo`가 존재하며, 나머지 기능은 앱 내부 feature 구조를 우선 사용 중이다.
 - UI 토큰: `packages/design-tokens`에서 Cloud 파일 타입 색상/라벨 토큰을 Web/Mobile 공통으로 관리하기 시작했다.
 - 서버 운영 안전장치: `lifebase_dev`/`lifebase_test` DB 분리와 `pg_dump`/`pg_restore` 기반 백업 커맨드를 도입했고, 운영 DB `lifebase`는 실제 `DATABASE_URL` 주입을 전제로 6시간/일간/주간 자동 백업과 최근 백업 차단 규칙을 사용한다.
+- 서버 보안 기본값: `JWT_SECRET`, `STATE_HMAC_KEY`가 비어 있거나 개발용 기본값이면 서버가 시작되지 않는다.
 
 3. 목표 구조
 `packages/features/<feature>`에 `domain`, `usecase`, `repository`를 배치한다.

@@ -75,7 +75,7 @@ func Load() (*Config, error) {
 	accessExpiry, _ := time.ParseDuration(getEnv("JWT_ACCESS_EXPIRY", "1h"))
 	refreshExpiry, _ := time.ParseDuration(getEnv("JWT_REFRESH_EXPIRY", "720h"))
 
-	return &Config{
+	cfg := &Config{
 		Server: ServerConfig{
 			Port:        port,
 			Env:         getEnv("SERVER_ENV", "development"),
@@ -107,8 +107,20 @@ func Load() (*Config, error) {
 			DataPath:  getEnv("STORAGE_DATA_PATH", "/Volumes/WDRedPlus/LifeBase/data"),
 			ThumbPath: getEnv("STORAGE_THUMB_PATH", "/Users/seongmin/lifebase-cache/thumbs"),
 		},
-		StateHMACKey: getEnv("STATE_HMAC_KEY", "dev-hmac-key"),
-	}, nil
+		StateHMACKey: getEnv("STATE_HMAC_KEY", ""),
+	}
+
+	if cfg.JWT.Secret == "" {
+		return nil, os.ErrInvalid
+	}
+	if cfg.StateHMACKey == "" || cfg.StateHMACKey == "dev-hmac-key" {
+		return nil, os.ErrInvalid
+	}
+	if cfg.JWT.AccessExpiry <= 0 || cfg.JWT.RefreshExpiry <= 0 {
+		return nil, os.ErrInvalid
+	}
+
+	return cfg, nil
 }
 
 func loadEnvFiles(rootDir string) {

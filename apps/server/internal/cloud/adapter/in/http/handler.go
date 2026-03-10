@@ -178,13 +178,11 @@ func (h *CloudHandler) UploadFile(w http.ResponseWriter, r *http.Request) {
 	}
 
 	mimeType := header.Header.Get("Content-Type")
-	if mimeType == "" {
-		mimeType = "application/octet-stream"
-	}
+	mimeType = http.DetectContentType(data)
 
 	file, err := h.cloud.UploadFile(r.Context(), userID, folderIDPtr, header.Filename, mimeType, int64(len(data)), data)
 	if err != nil {
-		response.Error(w, http.StatusBadRequest, "UPLOAD_FAILED", err.Error())
+		response.Error(w, http.StatusBadRequest, "UPLOAD_FAILED", "failed to upload file")
 		return
 	}
 	response.JSON(w, http.StatusCreated, file)

@@ -1,26 +1,26 @@
 import { getApiUrl } from "@/features/shared/infrastructure/api-url";
 
-const TOKEN_KEY = "lifebase_admin_access_token";
-const REFRESH_KEY = "lifebase_admin_refresh_token";
+const SESSION_KEY = "lifebase_admin_session";
+const SESSION_TOKEN = "__cookie_session__";
 
 export function getAdminAccessToken(): string | null {
   if (typeof window === "undefined") return null;
-  return localStorage.getItem(TOKEN_KEY);
+  return localStorage.getItem(SESSION_KEY) === "1" ? SESSION_TOKEN : null;
 }
 
 export function getAdminRefreshToken(): string | null {
   if (typeof window === "undefined") return null;
-  return localStorage.getItem(REFRESH_KEY);
+  return localStorage.getItem(SESSION_KEY) === "1" ? SESSION_TOKEN : null;
 }
 
-export function setAdminTokens(accessToken: string, refreshToken: string) {
-  localStorage.setItem(TOKEN_KEY, accessToken);
-  localStorage.setItem(REFRESH_KEY, refreshToken);
+export function setAdminTokens(_accessToken: string, _refreshToken: string) {
+  void _accessToken;
+  void _refreshToken;
+  localStorage.setItem(SESSION_KEY, "1");
 }
 
 export function clearAdminTokens() {
-  localStorage.removeItem(TOKEN_KEY);
-  localStorage.removeItem(REFRESH_KEY);
+  localStorage.removeItem(SESSION_KEY);
 }
 
 export function isAdminAuthenticated(): boolean {
@@ -28,6 +28,7 @@ export function isAdminAuthenticated(): boolean {
 }
 
 function getTokenExpiry(token: string): number | null {
+  if (token === SESSION_TOKEN) return null;
   try {
     const payload = token.split(".")[1];
     if (!payload) return null;
@@ -41,6 +42,7 @@ function getTokenExpiry(token: string): number | null {
 export function isAdminTokenExpiringSoon(): boolean {
   const token = getAdminAccessToken();
   if (!token) return true;
+  if (token === SESSION_TOKEN) return false;
   const exp = getTokenExpiry(token);
   if (!exp) return true;
   const now = Math.floor(Date.now() / 1000);
@@ -60,22 +62,22 @@ export async function refreshAdminAccessToken(): Promise<string | null> {
 }
 
 async function doRefresh(): Promise<string | null> {
-  const refreshToken = getAdminRefreshToken();
-  if (!refreshToken) return null;
+  if (!getAdminRefreshToken()) return null;
 
   try {
     const res = await fetch(getApiUrl("/auth/refresh"), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ refresh_token: refreshToken }),
+      credentials: "include",
+      body: JSON.stringify({ app: "admin" }),
     });
     if (!res.ok) {
       clearAdminTokens();
       return null;
     }
-    const data = await res.json();
-    setAdminTokens(data.access_token, data.refresh_token);
-    return data.access_token;
+    await res.json().catch(() => null);
+    setAdminTokens("", "");
+    return SESSION_TOKEN;
   } catch {
     return null;
   }
@@ -86,4 +88,19 @@ export async function getValidAdminToken(): Promise<string | null> {
   if (!token) return null;
   if (!isAdminTokenExpiringSoon()) return token;
   return refreshAdminAccessToken();
+}
+
+export async function logoutAdmin(): Promise<void> {
+  try {
+    await fetch(getApiUrl("/auth/logout"), {
+      method: "POST",
+      credentials: "include",
+    });
+  } finally {
+    clearAdminTokens();
+  }
+}
+
+export function isAdminSessionMarkerToken(token?: string | null): boolean {
+  return token === SESSION_TOKEN;
 }

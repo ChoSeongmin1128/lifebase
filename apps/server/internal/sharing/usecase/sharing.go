@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"time"
 
@@ -16,18 +17,32 @@ import (
 
 var shareRandRead = rand.Read
 
+var ErrShareAccessDenied = errors.New("share access denied")
+
 type sharingUseCase struct {
 	shares  portout.ShareRepository
 	invites portout.ShareInviteRepository
+	folders portout.FolderAccessRepository
 }
 
-func NewSharingUseCase(shares portout.ShareRepository, invites portout.ShareInviteRepository) portin.SharingUseCase {
-	return &sharingUseCase{shares: shares, invites: invites}
+func NewSharingUseCase(
+	shares portout.ShareRepository,
+	invites portout.ShareInviteRepository,
+	folders portout.FolderAccessRepository,
+) portin.SharingUseCase {
+	return &sharingUseCase{shares: shares, invites: invites, folders: folders}
 }
 
 func (uc *sharingUseCase) CreateInvite(ctx context.Context, ownerID, folderID, role string) (*portin.InviteLink, error) {
 	if role != "viewer" && role != "editor" {
 		return nil, fmt.Errorf("invalid role: %s", role)
+	}
+	ok, err := uc.folders.IsOwner(ctx, ownerID, folderID)
+	if err != nil {
+		return nil, fmt.Errorf("validate folder owner: %w", err)
+	}
+	if !ok {
+		return nil, ErrShareAccessDenied
 	}
 
 	token, err := generateToken()
@@ -85,18 +100,25 @@ func (uc *sharingUseCase) AcceptInvite(ctx context.Context, userID, token string
 		UpdatedAt:  now,
 	}
 
-	if err := uc.shares.Create(ctx, share); err != nil {
-		return nil, fmt.Errorf("create share: %w", err)
+	ok, err := uc.invites.AcceptWithShare(ctx, invite.ID, share, now)
+	if err != nil {
+		return nil, fmt.Errorf("accept invite: %w", err)
 	}
-
-	if err := uc.invites.MarkAccepted(ctx, invite.ID); err != nil {
-		return nil, fmt.Errorf("mark accepted: %w", err)
+	if !ok {
+		return nil, fmt.Errorf("invite already accepted")
 	}
 
 	return share, nil
 }
 
 func (uc *sharingUseCase) ListShares(ctx context.Context, userID, folderID string) ([]*domain.Share, error) {
+	ok, err := uc.folders.IsOwner(ctx, userID, folderID)
+	if err != nil {
+		return nil, fmt.Errorf("validate folder owner: %w", err)
+	}
+	if !ok {
+		return nil, ErrShareAccessDenied
+	}
 	return uc.shares.ListByFolder(ctx, folderID)
 }
 

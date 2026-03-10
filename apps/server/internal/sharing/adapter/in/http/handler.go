@@ -2,13 +2,15 @@ package http
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
 
-	portin "lifebase/internal/sharing/port/in"
 	"lifebase/internal/shared/middleware"
 	"lifebase/internal/shared/response"
+	portin "lifebase/internal/sharing/port/in"
+	sharingusecase "lifebase/internal/sharing/usecase"
 )
 
 type SharingHandler struct {
@@ -35,7 +37,11 @@ func (h *SharingHandler) CreateInvite(w http.ResponseWriter, r *http.Request) {
 
 	link, err := h.sharing.CreateInvite(r.Context(), userID, req.FolderID, req.Role)
 	if err != nil {
-		response.Error(w, http.StatusBadRequest, "INVITE_FAILED", err.Error())
+		if errors.Is(err, sharingusecase.ErrShareAccessDenied) {
+			response.Error(w, http.StatusForbidden, "FORBIDDEN", "share access denied")
+			return
+		}
+		response.Error(w, http.StatusBadRequest, "INVITE_FAILED", "failed to create invite")
 		return
 	}
 	response.JSON(w, http.StatusCreated, link)
@@ -53,7 +59,7 @@ func (h *SharingHandler) AcceptInvite(w http.ResponseWriter, r *http.Request) {
 
 	share, err := h.sharing.AcceptInvite(r.Context(), userID, req.Token)
 	if err != nil {
-		response.Error(w, http.StatusBadRequest, "ACCEPT_FAILED", err.Error())
+		response.Error(w, http.StatusBadRequest, "ACCEPT_FAILED", "failed to accept invite")
 		return
 	}
 	response.JSON(w, http.StatusOK, share)
@@ -69,7 +75,11 @@ func (h *SharingHandler) ListShares(w http.ResponseWriter, r *http.Request) {
 
 	shares, err := h.sharing.ListShares(r.Context(), userID, folderID)
 	if err != nil {
-		response.Error(w, http.StatusInternalServerError, "LIST_FAILED", err.Error())
+		if errors.Is(err, sharingusecase.ErrShareAccessDenied) {
+			response.Error(w, http.StatusForbidden, "FORBIDDEN", "share access denied")
+			return
+		}
+		response.Error(w, http.StatusInternalServerError, "LIST_FAILED", "failed to list shares")
 		return
 	}
 	response.JSON(w, http.StatusOK, map[string]any{"shares": shares})
@@ -80,7 +90,7 @@ func (h *SharingHandler) ListSharedWithMe(w http.ResponseWriter, r *http.Request
 
 	shares, err := h.sharing.ListSharedWithMe(r.Context(), userID)
 	if err != nil {
-		response.Error(w, http.StatusInternalServerError, "LIST_FAILED", err.Error())
+		response.Error(w, http.StatusInternalServerError, "LIST_FAILED", "failed to list shares")
 		return
 	}
 	response.JSON(w, http.StatusOK, map[string]any{"shares": shares})
@@ -91,7 +101,7 @@ func (h *SharingHandler) RemoveShare(w http.ResponseWriter, r *http.Request) {
 	shareID := chi.URLParam(r, "shareID")
 
 	if err := h.sharing.RemoveShare(r.Context(), userID, shareID); err != nil {
-		response.Error(w, http.StatusBadRequest, "REMOVE_FAILED", err.Error())
+		response.Error(w, http.StatusBadRequest, "REMOVE_FAILED", "failed to remove share")
 		return
 	}
 	response.NoContent(w)

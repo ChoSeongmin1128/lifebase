@@ -85,6 +85,7 @@ Go 서버(`apps/server`)는 아래 우선순위로 환경 변수를 읽는다.
 
 - 로컬 개발 권장: `SERVER_ENV=development` + `.env.development.local`
 - 운영 권장: `SERVER_ENV=production` + `.env.production.local` (또는 프로세스 환경 변수)
+- `JWT_SECRET`과 `STATE_HMAC_KEY`는 필수다. 비어 있거나 개발용 기본값이면 서버가 기동되지 않는다.
 
 ### worktree bootstrap
 
@@ -240,6 +241,17 @@ npx expo start
 ### 공유
 - 10분 만료 초대 토큰
 - ACL: viewer(읽기)/editor(수정)
+- 초대 생성/공유 목록 조회는 폴더 소유자만 가능
+- 초대 수락은 트랜잭션으로 1회만 성공하며, 중복 공유는 DB unique index로 차단
+- 공유 초대 생성/수락 엔드포인트는 별도 저속 레이트리밋(`10 req/min`)을 적용
+
+### 인증/세션
+- OAuth callback과 Google 계정 추가 연결은 서명된 `state`가 반드시 필요
+- Web/Admin 세션은 API 전용 httpOnly 쿠키로 유지하고, 프론트는 민감 토큰을 `localStorage`에 저장하지 않는다
+- Mobile은 기존 Secure Store 기반 토큰 저장을 유지한다
+
+### 파일 업로드 보안
+- 서버는 업로드된 파일의 MIME 타입을 multipart 헤더가 아니라 파일 바이트(`magic bytes`)로 판별한다
 
 ### Settings
 - Web/Desktop Settings는 공통 page shell 안에서 좌측 섹션 레일을 사용하고 `/settings/general`, `/settings/calendar`, `/settings/todo`, `/settings/notifications`, `/settings/cloud` route로 직접 진입한다

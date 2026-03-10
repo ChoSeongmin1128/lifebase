@@ -2,6 +2,7 @@ package out
 
 import (
 	"context"
+	"time"
 
 	"lifebase/internal/sharing/domain"
 )
@@ -17,5 +18,9 @@ type ShareRepository interface {
 type ShareInviteRepository interface {
 	Create(ctx context.Context, invite *domain.ShareInvite) error
 	FindByToken(ctx context.Context, token string) (*domain.ShareInvite, error)
-	MarkAccepted(ctx context.Context, id string) error
+	AcceptWithShare(ctx context.Context, inviteID string, share *domain.Share, acceptedAt time.Time) (bool, error)
+}
+
+type FolderAccessRepository interface {
+	IsOwner(ctx context.Context, userID, folderID string) (bool, error)
 }

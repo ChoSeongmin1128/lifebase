@@ -10,7 +10,7 @@
 
 ## 토큰 구조: OAuth + JWT
 - Google OAuth로 사용자 인증 후, 서버에서 자체 JWT(Access Token + Refresh Token)를 발급한다
-- 클라이언트는 이후 요청에 JWT Access Token을 사용한다
+- Web/Admin은 이후 요청에 API가 심은 httpOnly 쿠키 세션을 사용하고, Mobile은 JWT Access Token 헤더를 사용한다
 - Google OAuth 토큰은 서버에서 Google API 호출(Calendar/Tasks 동기화 등)에 사용한다
 - LifeBase Access Token 유효 기간은 1시간이다. (`JWT_ACCESS_EXPIRY=1h`)
 - LifeBase Refresh Token 유효 기간은 30일이다. (`JWT_REFRESH_EXPIRY=720h`)
@@ -26,11 +26,11 @@
 1. 클라이언트가 API 요청 시 Access Token 만료 감지
 2. 프론트엔드에서 백엔드 리프레시 API 호출
 3. 서버가 Refresh Token 검증 후 기존 Refresh Token을 폐기하고 새로운 Access Token + Refresh Token을 발급
-4. 클라이언트가 저장된 토큰 쌍을 새 값으로 교체
+4. Web/Admin은 새 세션 쿠키를 다시 심고, Mobile은 저장된 토큰 쌍을 새 값으로 교체
 5. 클라이언트가 새 Access Token으로 원래 요청 재시도
 
 ## 클라이언트 갱신 정책
-- Web은 Access Token 만료 임박 시 선제 갱신하고, 401 응답 시 1회 refresh 후 재시도한다
+- Web은 Access Token 만료 임박 시 선제 갱신하고, 401 응답 시 1회 refresh 후 재시도한다. 민감 토큰은 브라우저 JS 저장소에 두지 않는다.
 - Mobile도 401 응답 시 1회 refresh 후 재시도한다
 - Refresh 실패 시 저장된 토큰을 삭제하고 로그인 화면으로 복귀한다
 
@@ -72,6 +72,12 @@
   - `admin` → `${ADMIN_URL}/admin/auth/callback`
 - Google OAuth 콘솔 Authorized redirect URI에 위 두 경로를 모두 등록해야 한다.
 - `app=admin` 콜백은 Google 인증 성공만으로 완료되지 않는다. 서버는 기존 사용자와 `admin_users.is_active=true` 권한을 함께 확인한 뒤에만 admin 토큰을 발급한다.
+- callback과 추가 Google 계정 연결(`POST /auth/google-accounts/link`)은 모두 서명된 `state`가 없으면 실패한다.
+
+## 세션/비밀값 운영 규칙
+- `JWT_SECRET`과 `STATE_HMAC_KEY`는 필수 운영 비밀값이다.
+- 위 값이 비어 있거나 개발용 기본값이면 서버는 시작하지 않는다.
+- Web/Admin 세션 쿠키는 `HttpOnly`, `SameSite=Lax`, `/api/v1` 경로 범위로 설정한다.
 
 ## 사용자 격리 원칙
 - 사용자 간 정보가 완전히 격리되어야 한다

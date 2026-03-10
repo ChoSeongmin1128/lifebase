@@ -2,6 +2,7 @@ import {
   clearAdminTokens,
   getValidAdminToken,
   refreshAdminAccessToken,
+  isAdminSessionMarkerToken,
 } from "@/features/admin/infrastructure/admin-auth";
 import { getApiUrl } from "@/features/shared/infrastructure/api-url";
 
@@ -37,11 +38,14 @@ async function doFetch(path: string, method: string, body: unknown, token?: stri
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
   };
-  if (token) headers["Authorization"] = `Bearer ${token}`;
+  if (token && !isAdminSessionMarkerToken(token)) {
+    headers["Authorization"] = `Bearer ${token}`;
+  }
 
   return fetch(getApiUrl(path), {
     method,
     headers,
+    credentials: "include",
     body: body ? JSON.stringify(body) : undefined,
   });
 }

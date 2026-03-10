@@ -76,8 +76,15 @@ func authReqWithParam(method, target, body, key, value string) *http.Request {
 	return req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rc))
 }
 
+func newTestAuthHandler(uc *mockAuthUC) *AuthHandler {
+	return NewAuthHandler(uc, "test-key", SessionCookieConfig{
+		AccessExpiry:  time.Hour,
+		RefreshExpiry: 24 * time.Hour,
+	})
+}
+
 func TestAuthHandlerGetAuthURL(t *testing.T) {
-	h := NewAuthHandler(&mockAuthUC{}, "test-key")
+	h := newTestAuthHandler(&mockAuthUC{})
 
 	rec := httptest.NewRecorder()
 	h.GetAuthURL(rec, authReq(http.MethodGet, "/auth/url?app=web", ""))
@@ -100,13 +107,18 @@ func TestAuthHandlerGetAuthURL(t *testing.T) {
 
 func TestAuthHandlerHandleCallback(t *testing.T) {
 	uc := &mockAuthUC{callbackResult: &portin.LoginResult{AccessToken: "a", RefreshToken: "r", ExpiresIn: 3600}}
-	h := NewAuthHandler(uc, "test-key")
+	h := newTestAuthHandler(uc)
 	validState, _ := oauthstate.Generate("web", "test-key")
+	validAdminState, _ := oauthstate.Generate("admin", "test-key")
 
 	rec := httptest.NewRecorder()
 	h.HandleCallback(rec, authReq(http.MethodPost, "/auth/callback", `{"code":"ok","state":"`+validState+`"}`))
 	if rec.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d", rec.Code)
+	}
+	cookies := rec.Result().Cookies()
+	if len(cookies) != 2 {
+		t.Fatalf("expected 2 session cookies, got %d", len(cookies))
 	}
 
 	rec = httptest.NewRecorder()
@@ -129,21 +141,21 @@ func TestAuthHandlerHandleCallback(t *testing.T) {
 
 	uc.callbackErr = errors.New("auth failed")
 	rec = httptest.NewRecorder()
-	h.HandleCallback(rec, authReq(http.MethodPost, "/auth/callback", `{"code":"ok","app":"admin"}`))
+	h.HandleCallback(rec, authReq(http.MethodPost, "/auth/callback", `{"code":"ok","state":"`+validAdminState+`"}`))
 	if rec.Code != http.StatusUnauthorized {
 		t.Fatalf("expected 401, got %d", rec.Code)
 	}
 
 	uc.callbackErr = portin.ErrAdminAccessDenied
 	rec = httptest.NewRecorder()
-	h.HandleCallback(rec, authReq(http.MethodPost, "/auth/callback", `{"code":"ok","app":"admin"}`))
+	h.HandleCallback(rec, authReq(http.MethodPost, "/auth/callback", `{"code":"ok","state":"`+validAdminState+`"}`))
 	if rec.Code != http.StatusForbidden {
 		t.Fatalf("expected 403, got %d", rec.Code)
 	}
 
 	uc.callbackErr = portin.ErrAdminAccessCheckFailed
 	rec = httptest.NewRecorder()
-	h.HandleCallback(rec, authReq(http.MethodPost, "/auth/callback", `{"code":"ok","app":"admin"}`))
+	h.HandleCallback(rec, authReq(http.MethodPost, "/auth/callback", `{"code":"ok","state":"`+validAdminState+`"}`))
 	if rec.Code != http.StatusInternalServerError {
 		t.Fatalf("expected 500, got %d", rec.Code)
 	}
@@ -151,7 +163,7 @@ func TestAuthHandlerHandleCallback(t *testing.T) {
 
 func TestAuthHandlerRefreshToken(t *testing.T) {
 	uc := &mockAuthUC{refreshResult: &portin.LoginResult{AccessToken: "a", RefreshToken: "r", ExpiresIn: 3600}}
-	h := NewAuthHandler(uc, "test-key")
+	h := newTestAuthHandler(uc)
 
 	rec := httptest.NewRecorder()
 	h.RefreshToken(rec, authReq(http.MethodPost, "/auth/refresh", `{"refresh_token":"token"}`))
@@ -171,6 +183,17 @@ func TestAuthHandlerRefreshToken(t *testing.T) {
 		t.Fatalf("expected 400, got %d", rec.Code)
 	}
 
+	rec = httptest.NewRecorder()
+	req := authReq(http.MethodPost, "/auth/refresh", `{"app":"web"}`)
+	req.AddCookie(&http.Cookie{Name: "lifebase_refresh_token", Value: "cookie-refresh"})
+	h.RefreshToken(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200 with refresh cookie, got %d", rec.Code)
+	}
+	if len(rec.Result().Cookies()) != 2 {
+		t.Fatalf("expected 2 session cookies on cookie refresh, got %d", len(rec.Result().Cookies()))
+	}
+
 	uc.refreshErr = errors.New("fail")
 	rec = httptest.NewRecorder()
 	h.RefreshToken(rec, authReq(http.MethodPost, "/auth/refresh", `{"refresh_token":"token"}`))
@@ -184,7 +207,7 @@ func TestAuthHandlerGoogleAccountFlows(t *testing.T) {
 	uc := &mockAuthUC{
 		accounts: []portin.GoogleAccountSummary{{ID: "g1", GoogleEmail: "a@b.com", ConnectedAt: now}},
 	}
-	h := NewAuthHandler(uc, "test-key")
+	h := newTestAuthHandler(uc)
 	validState, _ := oauthstate.Generate("admin", "test-key")
 
 	rec := httptest.NewRecorder()
@@ -222,7 +245,7 @@ func TestAuthHandlerGoogleAccountFlows(t *testing.T) {
 	}
 	uc.linkErr = errors.New("fail")
 	rec = httptest.NewRecorder()
-	h.LinkGoogleAccount(rec, authReq(http.MethodPost, "/auth/google-accounts/link", `{"code":"ok","app":"admin"}`))
+	h.LinkGoogleAccount(rec, authReq(http.MethodPost, "/auth/google-accounts/link", `{"code":"ok","state":"`+validState+`"}`))
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400, got %d", rec.Code)
 	}
@@ -230,7 +253,7 @@ func TestAuthHandlerGoogleAccountFlows(t *testing.T) {
 
 func TestAuthHandlerSyncTriggerAndLogout(t *testing.T) {
 	uc := &mockAuthUC{triggerCount: 2}
-	h := NewAuthHandler(uc, "test-key")
+	h := newTestAuthHandler(uc)
 
 	rec := httptest.NewRecorder()
 	req := authReqWithParam(http.MethodPost, "/auth/google-accounts/acc/sync", `{"sync_calendar":true}`, "accountID", "acc")
@@ -279,9 +302,20 @@ func TestAuthHandlerSyncTriggerAndLogout(t *testing.T) {
 	}
 
 	rec = httptest.NewRecorder()
-	h.Logout(rec, authReq(http.MethodPost, "/auth/logout", ""))
+	req = authReq(http.MethodPost, "/auth/logout", "")
+	req = req.WithContext(context.WithValue(req.Context(), middleware.AuthAppKey, "admin"))
+	h.Logout(rec, req)
 	if rec.Code != http.StatusNoContent {
 		t.Fatalf("expected 204, got %d", rec.Code)
+	}
+	foundClearedAdmin := false
+	for _, cookie := range rec.Result().Cookies() {
+		if cookie.Name == "lifebase_admin_access_token" && cookie.MaxAge < 0 {
+			foundClearedAdmin = true
+		}
+	}
+	if !foundClearedAdmin {
+		t.Fatal("expected cleared admin session cookie")
 	}
 	uc.logoutErr = errors.New("fail")
 	rec = httptest.NewRecorder()

@@ -111,10 +111,57 @@ func (r *inviteRepo) FindByToken(ctx context.Context, token string) (*domain.Sha
 	return &inv, err
 }
 
-func (r *inviteRepo) MarkAccepted(ctx context.Context, id string) error {
-	_, err := r.db.Exec(ctx,
-		`UPDATE share_invites SET accepted_at = $2 WHERE id = $1`,
-		id, time.Now(),
+func (r *inviteRepo) AcceptWithShare(ctx context.Context, inviteID string, share *domain.Share, acceptedAt time.Time) (bool, error) {
+	tx, err := r.db.BeginTx(ctx, pgx.TxOptions{})
+	if err != nil {
+		return false, err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	tag, err := tx.Exec(ctx,
+		`UPDATE share_invites
+		 SET accepted_at = $2
+		 WHERE id = $1 AND accepted_at IS NULL AND expires_at > $2`,
+		inviteID, acceptedAt,
 	)
-	return err
+	if err != nil {
+		return false, err
+	}
+	if tag.RowsAffected() == 0 {
+		return false, nil
+	}
+
+	if _, err := tx.Exec(ctx,
+		`INSERT INTO shares (id, folder_id, owner_id, shared_with, role, created_at, updated_at)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+		share.ID, share.FolderID, share.OwnerID, share.SharedWith, share.Role, share.CreatedAt, share.UpdatedAt,
+	); err != nil {
+		return false, err
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+type folderAccessRepo struct {
+	db *pgxpool.Pool
+}
+
+func NewFolderAccessRepo(db *pgxpool.Pool) *folderAccessRepo {
+	return &folderAccessRepo{db: db}
+}
+
+func (r *folderAccessRepo) IsOwner(ctx context.Context, userID, folderID string) (bool, error) {
+	var exists bool
+	err := r.db.QueryRow(ctx,
+		`SELECT EXISTS(
+			SELECT 1
+			FROM folders
+			WHERE id = $1 AND user_id = $2 AND deleted_at IS NULL
+		)`,
+		folderID, userID,
+	).Scan(&exists)
+	return exists, err
 }

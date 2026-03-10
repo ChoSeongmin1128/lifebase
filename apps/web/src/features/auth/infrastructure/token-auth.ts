@@ -1,26 +1,26 @@
 import { getApiUrl } from "@/features/shared/infrastructure/api-url";
 
-const TOKEN_KEY = "lifebase_access_token";
-const REFRESH_KEY = "lifebase_refresh_token";
+const SESSION_KEY = "lifebase_web_session";
+const SESSION_TOKEN = "__cookie_session__";
 
 export function getAccessToken(): string | null {
   if (typeof window === "undefined") return null;
-  return localStorage.getItem(TOKEN_KEY);
+  return localStorage.getItem(SESSION_KEY) === "1" ? SESSION_TOKEN : null;
 }
 
 export function getRefreshToken(): string | null {
   if (typeof window === "undefined") return null;
-  return localStorage.getItem(REFRESH_KEY);
+  return localStorage.getItem(SESSION_KEY) === "1" ? SESSION_TOKEN : null;
 }
 
-export function setTokens(accessToken: string, refreshToken: string) {
-  localStorage.setItem(TOKEN_KEY, accessToken);
-  localStorage.setItem(REFRESH_KEY, refreshToken);
+export function setTokens(_accessToken: string, _refreshToken: string) {
+  void _accessToken;
+  void _refreshToken;
+  localStorage.setItem(SESSION_KEY, "1");
 }
 
 export function clearTokens() {
-  localStorage.removeItem(TOKEN_KEY);
-  localStorage.removeItem(REFRESH_KEY);
+  localStorage.removeItem(SESSION_KEY);
 }
 
 export function isAuthenticated(): boolean {
@@ -29,6 +29,7 @@ export function isAuthenticated(): boolean {
 
 // JWT 만료 시각 추출 (seconds since epoch)
 function getTokenExpiry(token: string): number | null {
+  if (token === SESSION_TOKEN) return null;
   try {
     const payload = token.split(".")[1];
     if (!payload) return null;
@@ -43,6 +44,7 @@ function getTokenExpiry(token: string): number | null {
 export function isTokenExpiringSoon(): boolean {
   const token = getAccessToken();
   if (!token) return true;
+  if (token === SESSION_TOKEN) return false;
   const exp = getTokenExpiry(token);
   if (!exp) return true;
   const now = Math.floor(Date.now() / 1000);
@@ -70,14 +72,14 @@ export async function refreshAccessToken(): Promise<string | null> {
 }
 
 async function doRefresh(): Promise<string | null> {
-  const refreshToken = getRefreshToken();
-  if (!refreshToken) return null;
+  if (!getRefreshToken()) return null;
 
   try {
     const res = await fetch(getApiUrl("/auth/refresh"), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ refresh_token: refreshToken }),
+      credentials: "include",
+      body: JSON.stringify({ app: "web" }),
     });
 
     if (!res.ok) {
@@ -86,9 +88,9 @@ async function doRefresh(): Promise<string | null> {
       return null;
     }
 
-    const data = await res.json();
-    setTokens(data.access_token, data.refresh_token);
-    return data.access_token;
+    await res.json().catch(() => null);
+    setTokens("", "");
+    return SESSION_TOKEN;
   } catch {
     return null;
   }
@@ -104,7 +106,20 @@ export async function getValidToken(): Promise<string | null> {
   if (!token) return null;
 
   if (!isTokenExpiringSoon()) return token;
-
-  // 선제적 갱신
   return refreshAccessToken();
+}
+
+export async function logout(): Promise<void> {
+  try {
+    await fetch(getApiUrl("/auth/logout"), {
+      method: "POST",
+      credentials: "include",
+    });
+  } finally {
+    clearTokens();
+  }
+}
+
+export function isSessionMarkerToken(token?: string | null): boolean {
+  return token === SESSION_TOKEN;
 }

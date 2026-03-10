@@ -95,8 +95,21 @@ func TestInviteRepoIntegration(t *testing.T) {
 		t.Fatalf("accepted_at should be nil before mark accepted: %#v", got.AcceptedAt)
 	}
 
-	if err := repo.MarkAccepted(ctx, invite.ID); err != nil {
-		t.Fatalf("mark accepted: %v", err)
+	share := &domain.Share{
+		ID:         "share-from-invite",
+		FolderID:   invite.FolderID,
+		OwnerID:    invite.OwnerID,
+		SharedWith: "user-3",
+		Role:       invite.Role,
+		CreatedAt:  now,
+		UpdatedAt:  now,
+	}
+	ok, err := repo.AcceptWithShare(ctx, invite.ID, share, now.Add(time.Minute))
+	if err != nil {
+		t.Fatalf("accept with share: %v", err)
+	}
+	if !ok {
+		t.Fatal("expected invite acceptance to succeed")
 	}
 	got, err = repo.FindByToken(ctx, invite.Token)
 	if err != nil {
@@ -104,6 +117,25 @@ func TestInviteRepoIntegration(t *testing.T) {
 	}
 	if got.AcceptedAt == nil {
 		t.Fatal("accepted_at should be set")
+	}
+	if _, err := NewShareRepo(db).FindByID(ctx, share.ID); err != nil {
+		t.Fatalf("expected created share, got %v", err)
+	}
+
+	ok, err = repo.AcceptWithShare(ctx, invite.ID, &domain.Share{
+		ID:         "share-from-invite-2",
+		FolderID:   invite.FolderID,
+		OwnerID:    invite.OwnerID,
+		SharedWith: "user-4",
+		Role:       invite.Role,
+		CreatedAt:  now,
+		UpdatedAt:  now,
+	}, now.Add(2*time.Minute))
+	if err != nil {
+		t.Fatalf("second accept with share: %v", err)
+	}
+	if ok {
+		t.Fatal("expected second acceptance attempt to be ignored")
 	}
 
 	if _, err := repo.FindByToken(ctx, "missing-token"); err == nil || !strings.Contains(err.Error(), "not found") {

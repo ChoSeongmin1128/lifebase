@@ -7,6 +7,7 @@ import {
   isTokenExpiringSoon,
   refreshAccessToken,
   clearTokens,
+  logout,
 } from "@/features/auth/infrastructure/token-auth";
 import { Sidebar } from "@/components/layout/Sidebar";
 import { BottomTabBar } from "@/components/layout/BottomTabBar";
@@ -38,8 +39,9 @@ export default function AuthenticatedLayout({
   }, [router]);
 
   const handleLogout = () => {
-    clearTokens();
-    router.replace("/");
+    void logout().finally(() => {
+      router.replace("/");
+    });
   };
 
   return (

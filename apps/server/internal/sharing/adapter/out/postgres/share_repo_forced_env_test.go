@@ -73,8 +73,20 @@ func TestSharingReposCRUDCoverageWithDBTest(t *testing.T) {
 	if _, err := inviteRepo.FindByToken(ctx, invite.Token); err != nil {
 		t.Fatalf("find invite by token: %v", err)
 	}
-	if err := inviteRepo.MarkAccepted(ctx, invite.ID); err != nil {
-		t.Fatalf("mark accepted: %v", err)
+	ok, err := inviteRepo.AcceptWithShare(ctx, invite.ID, &domain.Share{
+		ID:         "share-coverage-from-invite",
+		FolderID:   invite.FolderID,
+		OwnerID:    invite.OwnerID,
+		SharedWith: "viewer-coverage-2",
+		Role:       invite.Role,
+		CreatedAt:  now,
+		UpdatedAt:  now,
+	}, now.Add(time.Minute))
+	if err != nil {
+		t.Fatalf("accept with share: %v", err)
+	}
+	if !ok {
+		t.Fatal("expected invite acceptance to succeed")
 	}
 }
 

@@ -11,9 +11,10 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	"lifebase/internal/shared/middleware"
 	"lifebase/internal/sharing/domain"
 	portin "lifebase/internal/sharing/port/in"
-	"lifebase/internal/shared/middleware"
+	sharingusecase "lifebase/internal/sharing/usecase"
 )
 
 type mockSharingUC struct {
@@ -83,6 +84,12 @@ func TestSharingHandlers(t *testing.T) {
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400, got %d", rec.Code)
 	}
+	uc.inviteErr = sharingusecase.ErrShareAccessDenied
+	rec = httptest.NewRecorder()
+	h.CreateInvite(rec, sharingReq(http.MethodPost, "/sharing/invite", `{"folder_id":"f1","role":"viewer"}`))
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("expected 403, got %d", rec.Code)
+	}
 	uc.inviteErr = nil
 
 	rec = httptest.NewRecorder()
@@ -119,6 +126,12 @@ func TestSharingHandlers(t *testing.T) {
 	if rec.Code != http.StatusInternalServerError {
 		t.Fatalf("expected 500, got %d", rec.Code)
 	}
+	uc.listErr = sharingusecase.ErrShareAccessDenied
+	rec = httptest.NewRecorder()
+	h.ListShares(rec, sharingReq(http.MethodGet, "/sharing?folder_id=f1", ""))
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("expected 403, got %d", rec.Code)
+	}
 	uc.listErr = nil
 
 	rec = httptest.NewRecorder()
@@ -147,4 +160,3 @@ func TestSharingHandlers(t *testing.T) {
 		t.Fatalf("expected 400, got %d", rec.Code)
 	}
 }
-

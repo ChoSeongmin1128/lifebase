@@ -9,8 +9,6 @@ import (
 	"lifebase/internal/sharing/domain"
 )
 
-// Mock repositories
-
 type mockShareRepo struct {
 	shares map[string]*domain.Share
 }
@@ -59,10 +57,14 @@ func (m *mockShareRepo) Delete(_ context.Context, id string) error {
 
 type mockInviteRepo struct {
 	invites map[string]*domain.ShareInvite
+	shares  map[string]*domain.Share
 }
 
 func newMockInviteRepo() *mockInviteRepo {
-	return &mockInviteRepo{invites: make(map[string]*domain.ShareInvite)}
+	return &mockInviteRepo{
+		invites: make(map[string]*domain.ShareInvite),
+		shares:  make(map[string]*domain.Share),
+	}
 }
 
 func (m *mockInviteRepo) Create(_ context.Context, invite *domain.ShareInvite) error {
@@ -79,22 +81,42 @@ func (m *mockInviteRepo) FindByToken(_ context.Context, token string) (*domain.S
 	return nil, fmt.Errorf("not found")
 }
 
-func (m *mockInviteRepo) MarkAccepted(_ context.Context, id string) error {
+func (m *mockInviteRepo) AcceptWithShare(_ context.Context, id string, share *domain.Share, acceptedAt time.Time) (bool, error) {
 	inv, ok := m.invites[id]
 	if !ok {
-		return fmt.Errorf("not found")
+		return false, fmt.Errorf("not found")
 	}
-	now := time.Now()
-	inv.AcceptedAt = &now
-	return nil
+	if inv.AcceptedAt != nil {
+		return false, nil
+	}
+	inv.AcceptedAt = &acceptedAt
+	m.shares[share.ID] = share
+	return true, nil
 }
 
-// Tests
+type mockFolderAccessRepo struct {
+	owners map[string]string
+}
 
-func TestCreateInvite_InvalidRole(t *testing.T) {
+func newMockFolderAccessRepo() *mockFolderAccessRepo {
+	return &mockFolderAccessRepo{owners: map[string]string{}}
+}
+
+func (m *mockFolderAccessRepo) IsOwner(_ context.Context, userID, folderID string) (bool, error) {
+	return m.owners[folderID] == userID, nil
+}
+
+func newSharingUseCaseForTest() (*mockShareRepo, *mockInviteRepo, *mockFolderAccessRepo, *sharingUseCase) {
 	shareRepo := newMockShareRepo()
 	inviteRepo := newMockInviteRepo()
-	uc := NewSharingUseCase(shareRepo, inviteRepo)
+	folderRepo := newMockFolderAccessRepo()
+	folderRepo.owners["folder1"] = "owner1"
+	uc := NewSharingUseCase(shareRepo, inviteRepo, folderRepo).(*sharingUseCase)
+	return shareRepo, inviteRepo, folderRepo, uc
+}
+
+func TestCreateInvite_InvalidRole(t *testing.T) {
+	_, _, _, uc := newSharingUseCaseForTest()
 
 	_, err := uc.CreateInvite(context.Background(), "owner1", "folder1", "admin")
 	if err == nil {
@@ -102,10 +124,17 @@ func TestCreateInvite_InvalidRole(t *testing.T) {
 	}
 }
 
+func TestCreateInvite_RequiresOwner(t *testing.T) {
+	_, _, _, uc := newSharingUseCaseForTest()
+
+	_, err := uc.CreateInvite(context.Background(), "user2", "folder1", "viewer")
+	if err == nil {
+		t.Fatal("expected access denied for non-owner")
+	}
+}
+
 func TestCreateInvite_ValidRoles(t *testing.T) {
-	shareRepo := newMockShareRepo()
-	inviteRepo := newMockInviteRepo()
-	uc := NewSharingUseCase(shareRepo, inviteRepo)
+	_, _, _, uc := newSharingUseCaseForTest()
 
 	for _, role := range []string{"viewer", "editor"} {
 		link, err := uc.CreateInvite(context.Background(), "owner1", "folder1", role)
@@ -119,9 +148,7 @@ func TestCreateInvite_ValidRoles(t *testing.T) {
 }
 
 func TestAcceptInvite_SelfShare(t *testing.T) {
-	shareRepo := newMockShareRepo()
-	inviteRepo := newMockInviteRepo()
-	uc := NewSharingUseCase(shareRepo, inviteRepo)
+	_, _, _, uc := newSharingUseCaseForTest()
 
 	link, _ := uc.CreateInvite(context.Background(), "owner1", "folder1", "viewer")
 	_, err := uc.AcceptInvite(context.Background(), "owner1", link.Token)
@@ -131,9 +158,7 @@ func TestAcceptInvite_SelfShare(t *testing.T) {
 }
 
 func TestAcceptInvite_Success(t *testing.T) {
-	shareRepo := newMockShareRepo()
-	inviteRepo := newMockInviteRepo()
-	uc := NewSharingUseCase(shareRepo, inviteRepo)
+	_, _, _, uc := newSharingUseCaseForTest()
 
 	link, _ := uc.CreateInvite(context.Background(), "owner1", "folder1", "editor")
 	share, err := uc.AcceptInvite(context.Background(), "user2", link.Token)
@@ -149,12 +174,10 @@ func TestAcceptInvite_Success(t *testing.T) {
 }
 
 func TestAcceptInvite_AlreadyAccepted(t *testing.T) {
-	shareRepo := newMockShareRepo()
-	inviteRepo := newMockInviteRepo()
-	uc := NewSharingUseCase(shareRepo, inviteRepo)
+	_, _, _, uc := newSharingUseCaseForTest()
 
 	link, _ := uc.CreateInvite(context.Background(), "owner1", "folder1", "viewer")
-	uc.AcceptInvite(context.Background(), "user2", link.Token)
+	_, _ = uc.AcceptInvite(context.Background(), "user2", link.Token)
 
 	_, err := uc.AcceptInvite(context.Background(), "user3", link.Token)
 	if err == nil {
@@ -162,13 +185,22 @@ func TestAcceptInvite_AlreadyAccepted(t *testing.T) {
 	}
 }
 
+func TestListShares_RequiresOwner(t *testing.T) {
+	_, _, _, uc := newSharingUseCaseForTest()
+	link, _ := uc.CreateInvite(context.Background(), "owner1", "folder1", "viewer")
+	_, _ = uc.AcceptInvite(context.Background(), "user2", link.Token)
+
+	if _, err := uc.ListShares(context.Background(), "user2", "folder1"); err == nil {
+		t.Fatal("expected access denied for non-owner")
+	}
+}
+
 func TestRemoveShare_NotOwner(t *testing.T) {
-	shareRepo := newMockShareRepo()
-	inviteRepo := newMockInviteRepo()
-	uc := NewSharingUseCase(shareRepo, inviteRepo)
+	shareRepo, _, _, uc := newSharingUseCaseForTest()
 
 	link, _ := uc.CreateInvite(context.Background(), "owner1", "folder1", "viewer")
 	share, _ := uc.AcceptInvite(context.Background(), "user2", link.Token)
+	shareRepo.shares[share.ID] = share
 
 	err := uc.RemoveShare(context.Background(), "user2", share.ID)
 	if err == nil {
