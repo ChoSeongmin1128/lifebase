@@ -7,7 +7,6 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 	"time"
 
@@ -132,8 +131,8 @@ func TestGalleryHandlerGetThumbnail(t *testing.T) {
 	if ct := rec.Header().Get("Content-Type"); ct != "image/webp" {
 		t.Fatalf("expected image/webp, got %s", ct)
 	}
-	if cc := rec.Header().Get("Cache-Control"); !strings.Contains(cc, "immutable") {
-		t.Fatalf("expected immutable cache header, got %s", cc)
+	if cc := rec.Header().Get("Cache-Control"); cc != "private, no-store" {
+		t.Fatalf("expected private no-store cache header, got %s", cc)
 	}
 	if got := rec.Body.String(); got != string(content) {
 		t.Fatalf("unexpected body: %q", got)

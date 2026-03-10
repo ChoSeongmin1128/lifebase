@@ -30,21 +30,23 @@ type Claims struct {
 	ExpiresAt    int64   `json:"exp"`
 }
 
-func GenerateMoveFile(userID, fileID string, parentID *string, hmacKey string) (string, error) {
+func GenerateMoveFile(userID, fileID string, parentID *string, stateVersion int64, hmacKey string) (string, error) {
 	return generate(Claims{
-		Action:   ActionMoveFile,
-		UserID:   userID,
-		ItemID:   fileID,
-		ParentID: parentID,
+		Action:       ActionMoveFile,
+		UserID:       userID,
+		ItemID:       fileID,
+		ParentID:     parentID,
+		StateVersion: stateVersion,
 	}, hmacKey, defaultTTL)
 }
 
-func GenerateMoveFolder(userID, folderID string, parentID *string, hmacKey string) (string, error) {
+func GenerateMoveFolder(userID, folderID string, parentID *string, stateVersion int64, hmacKey string) (string, error) {
 	return generate(Claims{
-		Action:   ActionMoveFolder,
-		UserID:   userID,
-		ItemID:   folderID,
-		ParentID: parentID,
+		Action:       ActionMoveFolder,
+		UserID:       userID,
+		ItemID:       folderID,
+		ParentID:     parentID,
+		StateVersion: stateVersion,
 	}, hmacKey, defaultTTL)
 }
 
@@ -91,9 +93,7 @@ func Verify(token, hmacKey string) (*Claims, error) {
 	}
 
 	switch claims.Action {
-	case ActionMoveFile, ActionMoveFolder:
-		return &claims, nil
-	case ActionCopyFile:
+	case ActionMoveFile, ActionMoveFolder, ActionCopyFile:
 		if claims.StateVersion == 0 {
 			return nil, errInvalidToken
 		}

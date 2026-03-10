@@ -147,7 +147,7 @@ func (uc *cloudUseCase) MoveFolder(ctx context.Context, userID, folderID string,
 		return nil, err
 	}
 
-	undoToken, err := undotoken.GenerateMoveFolder(userID, folderID, previousParentID, uc.undoKey)
+	undoToken, err := undotoken.GenerateMoveFolder(userID, folderID, previousParentID, folder.UpdatedAt.UnixNano(), uc.undoKey)
 	if err != nil {
 		return nil, fmt.Errorf("generate undo token: %w", err)
 	}
@@ -446,7 +446,7 @@ func (uc *cloudUseCase) MoveFile(ctx context.Context, userID, fileID string, new
 		return nil, err
 	}
 
-	undoToken, err := undotoken.GenerateMoveFile(userID, fileID, previousFolderID, uc.undoKey)
+	undoToken, err := undotoken.GenerateMoveFile(userID, fileID, previousFolderID, file.UpdatedAt.UnixNano(), uc.undoKey)
 	if err != nil {
 		return nil, fmt.Errorf("generate undo token: %w", err)
 	}
@@ -484,9 +484,23 @@ func (uc *cloudUseCase) UndoOperation(ctx context.Context, userID, undoToken str
 
 	switch claims.Action {
 	case undotoken.ActionMoveFile:
+		file, err := uc.files.FindByID(ctx, userID, claims.ItemID)
+		if err != nil || file == nil {
+			return fmt.Errorf("file not found")
+		}
+		if file.UpdatedAt.UnixNano() != claims.StateVersion {
+			return fmt.Errorf("invalid undo token")
+		}
 		_, err = uc.MoveFile(ctx, userID, claims.ItemID, claims.ParentID)
 		return err
 	case undotoken.ActionMoveFolder:
+		folder, err := uc.folders.FindByID(ctx, userID, claims.ItemID)
+		if err != nil || folder == nil {
+			return fmt.Errorf("folder not found")
+		}
+		if folder.UpdatedAt.UnixNano() != claims.StateVersion {
+			return fmt.Errorf("invalid undo token")
+		}
 		_, err = uc.MoveFolder(ctx, userID, claims.ItemID, claims.ParentID)
 		return err
 	case undotoken.ActionCopyFile:

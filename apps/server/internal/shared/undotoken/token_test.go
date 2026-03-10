@@ -8,7 +8,7 @@ import (
 )
 
 func TestGenerateAndVerify(t *testing.T) {
-	token, err := GenerateMoveFile("u1", "f1", strPtr("p1"), "secret")
+	token, err := GenerateMoveFile("u1", "f1", strPtr("p1"), time.Now().UnixNano(), "secret")
 	if err != nil {
 		t.Fatalf("generate token: %v", err)
 	}
@@ -22,6 +22,9 @@ func TestGenerateAndVerify(t *testing.T) {
 	}
 	if claims.ParentID == nil || *claims.ParentID != "p1" {
 		t.Fatalf("unexpected parent id: %#v", claims.ParentID)
+	}
+	if claims.StateVersion == 0 {
+		t.Fatal("expected move token state version")
 	}
 }
 

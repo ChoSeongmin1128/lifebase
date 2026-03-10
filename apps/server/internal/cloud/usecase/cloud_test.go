@@ -533,9 +533,22 @@ func TestCloudUseCaseFolderFlows(t *testing.T) {
 	if _, err := uc.MoveFolder(ctx, "u1", child.ID, &parent.ID); err != nil {
 		t.Fatalf("same parent move should be no-op: %v", err)
 	}
+	movedFolder, err := uc.MoveFolder(ctx, "u1", child.ID, nil)
+	if err != nil {
+		t.Fatalf("move folder to root: %v", err)
+	}
+	if movedFolder == nil || movedFolder.UndoToken == "" {
+		t.Fatal("expected folder move undo token")
+	}
+	if err := uc.RenameFolder(ctx, "u1", child.ID, "Child Renamed"); err != nil {
+		t.Fatalf("rename moved folder: %v", err)
+	}
+	if err := uc.UndoOperation(ctx, "u1", movedFolder.UndoToken); err == nil {
+		t.Fatal("expected stale folder move undo token rejection")
+	}
 
 	folders.updateErr = errors.New("update fail")
-	if _, err := uc.MoveFolder(ctx, "u1", child.ID, nil); err == nil {
+	if _, err := uc.MoveFolder(ctx, "u1", child.ID, &parent.ID); err == nil {
 		t.Fatal("expected move folder update error")
 	}
 	folders.updateErr = nil
@@ -704,6 +717,19 @@ func TestCloudUseCaseFileFlows(t *testing.T) {
 	}
 	if moveResult == nil || moveResult.UndoToken == "" {
 		t.Fatal("expected move undo token")
+	}
+	if err := uc.RenameFile(ctx, "u1", utf.ID, "moved-again.txt"); err != nil {
+		t.Fatalf("rename moved file: %v", err)
+	}
+	if err := uc.UndoOperation(ctx, "u1", moveResult.UndoToken); err == nil {
+		t.Fatal("expected stale file move undo token rejection")
+	}
+	moveResult, err = uc.MoveFile(ctx, "u1", utf.ID, &folder.ID)
+	if err != nil {
+		t.Fatalf("move file back for continued flow: %v", err)
+	}
+	if moveResult == nil || moveResult.UndoToken == "" {
+		t.Fatal("expected refreshed move undo token")
 	}
 
 	if _, err := uc.CopyFile(ctx, "u1", "missing", nil); err == nil {
