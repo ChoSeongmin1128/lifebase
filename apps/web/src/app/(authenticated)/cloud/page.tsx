@@ -2321,7 +2321,7 @@ function CloudPageInner() {
       {/* File list */}
       <div
         ref={scrollContainerRef}
-        className="relative flex-1 overflow-auto"
+        className="relative flex-1 overflow-auto select-none"
         onMouseDown={handleSelectionPointerDown}
       >
         <CloudSelectionOverlay rect={selectionRect} />
@@ -2478,7 +2478,7 @@ function CloudPageInner() {
                               if (e.key === "Escape") setRenaming(null);
                             }}
                             onBlur={handleRename}
-                            className="h-6 text-sm"
+                            className="h-6 select-text text-sm"
                           />
                         ) : (
                           <>
