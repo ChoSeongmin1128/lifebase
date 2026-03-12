@@ -25,20 +25,12 @@ export interface AppSubnavItem {
 }
 
 export const APP_NAV_ITEMS: AppNavItem[] = [
-  { href: "/home", label: "Home", icon: House, hasSubnav: true },
+  { href: "/home", label: "Home", icon: House },
   { href: "/cloud", label: "Cloud", icon: Cloud, hasSubnav: true },
   { href: "/calendar", label: "Calendar", icon: Calendar, hasSubnav: true },
   { href: "/todo", label: "Todo", icon: CheckCircle2, hasSubnav: true },
-  { href: "/gallery", label: "Gallery", icon: ImageIcon, hasSubnav: true },
-  { href: "/settings/general", label: "Settings", icon: Settings, hasSubnav: true },
-] as const;
-
-const HOME_FOCUS_ITEMS = [
-  { key: "summary", label: "오늘 요약" },
-  { key: "calendar", label: "일정" },
-  { key: "todo", label: "Todo" },
-  { key: "files", label: "파일" },
-  { key: "storage", label: "저장공간" },
+  { href: "/gallery", label: "Gallery", icon: ImageIcon },
+  { href: "/settings/general", label: "Settings", icon: Settings },
 ] as const;
 
 const TODO_SCOPE_ITEMS = [
@@ -48,28 +40,7 @@ const TODO_SCOPE_ITEMS = [
   { key: "completed", label: "완료" },
 ] as const;
 
-const GALLERY_MEDIA_ITEMS = [
-  { key: "all", label: "전체" },
-  { key: "image", label: "이미지" },
-  { key: "video", label: "동영상" },
-] as const;
-
-const SETTINGS_SECTION_ITEMS = [
-  { key: "general", label: "일반" },
-  { key: "calendar", label: "캘린더" },
-  { key: "todo", label: "Todo" },
-  { key: "notifications", label: "알림" },
-  { key: "cloud", label: "Cloud" },
-] as const;
-
 type CalendarViewMode = "month" | "week" | "3day" | "agenda" | "year-compact" | "year-timeline";
-
-function normalizeSettingsSection(value: string | null | undefined) {
-  if (!value) return "general";
-  if (SETTINGS_SECTION_ITEMS.some((item) => item.key === value)) return value;
-  if (value === "notification") return "notifications";
-  return "general";
-}
 
 function buildSearchHref(pathname: string, searchParams: URLSearchParams) {
   const query = searchParams.toString();
@@ -134,23 +105,6 @@ function buildCalendarHref(view: CalendarViewMode, date: Date): string {
   }
 }
 
-function buildHomeSubnav(searchParams: URLSearchParams): AppSubnavItem[] {
-  const focus = searchParams.get("focus") || "summary";
-  return HOME_FOCUS_ITEMS.map((item) => {
-    const params = new URLSearchParams(searchParams.toString());
-    if (item.key === "summary") {
-      params.delete("focus");
-    } else {
-      params.set("focus", item.key);
-    }
-    return {
-      href: buildSearchHref("/home", params),
-      label: item.label,
-      isActive: focus === item.key || (!searchParams.get("focus") && item.key === "summary"),
-    };
-  });
-}
-
 function buildCloudSubnav(searchParams: URLSearchParams): AppSubnavItem[] {
   const currentSection = parseCloudSection(searchParams.get("section"));
   return CLOUD_SECTION_ITEMS.map((item) => {
@@ -202,44 +156,15 @@ function buildTodoSubnav(searchParams: URLSearchParams): AppSubnavItem[] {
   });
 }
 
-function buildGallerySubnav(searchParams: URLSearchParams): AppSubnavItem[] {
-  const media = searchParams.get("media") || "all";
-  return GALLERY_MEDIA_ITEMS.map((item) => {
-    const params = new URLSearchParams(searchParams.toString());
-    if (item.key === "all") {
-      params.delete("media");
-    } else {
-      params.set("media", item.key);
-    }
-    return {
-      href: buildSearchHref("/gallery", params),
-      label: item.label,
-      isActive: media === item.key || (!searchParams.get("media") && item.key === "all"),
-    };
-  });
-}
-
-function buildSettingsSubnav(pathname: string): AppSubnavItem[] {
-  const section = normalizeSettingsSection(pathname.split("/").filter(Boolean)[1]);
-  return SETTINGS_SECTION_ITEMS.map((item) => ({
-    href: `/settings/${item.key}`,
-    label: item.label,
-    isActive: section === item.key,
-  }));
-}
-
 export function isNavItemActive(pathname: string, href: string) {
   const normalizedHref = href === "/settings/general" ? "/settings" : href;
   return pathname === normalizedHref || pathname.startsWith(`${normalizedHref}/`);
 }
 
 export function getSidebarSubnavItems(pathname: string, searchParams: URLSearchParams): AppSubnavItem[] {
-  if (pathname.startsWith("/home")) return buildHomeSubnav(searchParams);
   if (pathname.startsWith("/cloud")) return buildCloudSubnav(searchParams);
   if (pathname.startsWith("/calendar")) return buildCalendarSubnav(pathname);
   if (pathname.startsWith("/todo")) return buildTodoSubnav(searchParams);
-  if (pathname.startsWith("/gallery")) return buildGallerySubnav(searchParams);
-  if (pathname.startsWith("/settings")) return buildSettingsSubnav(pathname);
   return [];
 }
 

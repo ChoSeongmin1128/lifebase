@@ -166,7 +166,7 @@ npx expo start
 ### Home
 - 오늘 일정/지난 Todo/최근 파일/저장공간 요약
 - 빠른 액션: 일정 추가, Todo 추가, 파일 업로드
-- Web/Desktop Home은 인증 이후 공통 page shell 안에서 동작하고, 사이드바 보조 내비는 `?focus=summary|calendar|todo|files|storage`로 각 섹션에 직접 진입한다
+- Web/Desktop Home은 인증 이후 공통 page shell 안에서 동작하고, `?focus=summary|calendar|todo|files|storage` URL은 직접 링크/새로고침 복원용으로만 유지한다
 
 ### Cloud
 - 파일 업로드/다운로드/삭제/이동/이름변경
@@ -177,7 +177,7 @@ npx expo start
 - Web Cloud 루트 섹션과 경로 시작점은 모두 `내 드라이브`로 통일하고, 현재 폴더명 영역 안에서 경로를 함께 보여줘 상단 용어가 불필요하게 갈라지지 않게 유지한다
 - Web Cloud 로딩 신호는 상단 헤더 한 곳으로만 모으고, 폴더 전환 중에는 지연된 작은 indicator만 보여 일관된 전환감을 유지한다
 - Web Cloud 검색창은 실제 검색이 가능한 `내 드라이브` 섹션에서만 노출하고, 최근/공유됨/중요/휴지통에는 표시하지 않는다
-- Web Cloud 현재 폴더 삭제는 경로 헤더에서 바로 실행할 수 있고, 삭제 직후 상위 폴더로 선이동한 뒤 같은 5초 Undo 토스트로 복구를 지원한다
+- Web Cloud 현재 폴더 삭제는 경로 헤더에서 바로 실행할 수 있고, 삭제 직후 상위 폴더에서 항목을 즉시 숨긴 뒤 같은 5초 Undo 토스트로 상위 폴더에 머문 채 항목 복구를 지원한다
 - Web Cloud `휴지통 비우기`는 실행 전 확인 다이얼로그를 한 번 더 보여주고, 확정 후에도 같은 5초 Undo 토스트를 유지한다
 - Web Cloud는 잘못된 UUID, 삭제된 폴더 링크, 일시적 폴더 조회 실패를 빈 폴더로 위장하지 않고 invalid/not-found/error 상태로 분리해 보여준다
 - Mobile/Desktop Cloud도 같은 정보 구조를 기준으로 후속 정렬한다
@@ -213,7 +213,7 @@ npx expo start
 - 격자/리스트/날짜별 뷰
 - 미디어 타입 필터, 무한 스크롤
 - EXIF 메타데이터 추출 (촬영일/GPS/카메라)
-- Web/Desktop Gallery는 공통 page shell을 사용하고, 뷰/미디어 타입/정렬 상태를 URL에 반영해 새로고침과 딥링크에서 같은 상태를 복원한다
+- Web/Desktop Gallery는 공통 page shell을 사용하고, 뷰/미디어 타입/정렬 상태를 URL에 반영해 새로고침과 딥링크에서 같은 상태를 복원한다. 사이드바에서는 직접 진입만 제공하고 세부 전환은 페이지 툴바에서 처리한다
 
 ### Calendar
 - 캘린더 CRUD + 이벤트 CRUD
@@ -268,8 +268,8 @@ npx expo start
 - 서버는 업로드된 파일의 MIME 타입을 multipart 헤더가 아니라 파일 바이트(`magic bytes`)로 판별한다
 
 ### Settings
-- Web/Desktop Settings는 공통 page shell 안에서 좌측 섹션 레일을 사용하고 `/settings/general`, `/settings/calendar`, `/settings/todo`, `/settings/notifications`, `/settings/cloud` route로 직접 진입한다
-- Mobile Settings는 같은 섹션 구조를 상단 세그먼트 칩으로 번역한다
+- Web/Desktop Settings는 공통 page shell 안에서 페이지 내부 탭을 사용하고 `/settings/general`, `/settings/calendar`, `/settings/todo`, `/settings/notifications`, `/settings/cloud` route로 직접 진입한다
+- Mobile Settings도 같은 섹션 구조를 같은 상단 탭 의미로 유지한다
 - 테마 (라이트/다크/시스템)
 - 방해 금지 시간 설정
 - Google 계정 연결/별칭/색상/동기화 설정

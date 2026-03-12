@@ -14,6 +14,7 @@ import { Textarea } from "@/components/ui/textarea";
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
@@ -88,6 +89,12 @@ interface CloudDragItem {
 interface PendingCloudDeletion {
   cancel: () => void;
   flush: () => Promise<void>;
+  allowedLocationKey?: string | null;
+}
+
+interface CurrentFolderUrlTarget {
+  folderId: string | null;
+  waitForMismatch: boolean;
 }
 
 interface PendingTrashEmpty {
@@ -99,6 +106,31 @@ interface CloudDeleteTarget {
   id: string;
   type: "folder" | "file";
 }
+
+interface QueueCloudDeleteOptions {
+  optimisticApply?: () => void;
+  restoreOptimistic?: () => void;
+  allowedLocationKey?: string | null;
+}
+
+interface CurrentFolderDeleteDraft {
+  sessionId: number;
+  section: CloudSection;
+  originalFolderId: string;
+  parentFolderId: string | null;
+  originalPath: CloudPathEntry[];
+  parentPath: CloudPathEntry[];
+  itemsSnapshot: FolderItem[];
+  searchResultsSnapshot: CloudFile[] | null;
+  selectedIdsSnapshot: Set<string>;
+  hasLoadedItemsSnapshot: boolean;
+  loadingSnapshot: boolean;
+  pathLoadingSnapshot: boolean;
+  folderRouteStateSnapshot: FolderRouteState;
+  timerId: number;
+}
+
+type CurrentFolderDeleteAction = { type: "undo" | "commit"; sessionId: number } | null;
 
 interface CloudSelectionSession {
   startX: number;
@@ -128,6 +160,9 @@ const SELECTION_SCROLL_STEP_PX = 18;
 const cloudPathCache = new Map<string, CloudPathEntry[]>();
 const cloudFolderCache = new Map<string, FolderData>();
 let cloudClipboardCache: CloudClipboard | null = null;
+let currentFolderDeleteDraft: CurrentFolderDeleteDraft | null = null;
+let currentFolderDeleteRequestedAction: CurrentFolderDeleteAction = null;
+const currentFolderDeleteSubscribers = new Set<() => void>();
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 const getCloudLocationKey = (section: CloudSection, folderId: string | null) => `${section}:${folderId || "root"}`;
@@ -166,6 +201,25 @@ const toErrorMessage = (error: unknown, fallback: string) => (
   error instanceof Error && error.message.trim() ? error.message : fallback
 );
 
+const subscribeCurrentFolderDelete = (listener: () => void) => {
+  currentFolderDeleteSubscribers.add(listener);
+  return () => {
+    currentFolderDeleteSubscribers.delete(listener);
+  };
+};
+
+const requestCurrentFolderDeleteAction = (action: CurrentFolderDeleteAction) => {
+  currentFolderDeleteRequestedAction = action;
+  currentFolderDeleteSubscribers.forEach((listener) => listener());
+};
+
+const getCurrentFolderOptimisticHiddenIds = (section: CloudSection) => {
+  if (!currentFolderDeleteDraft || currentFolderDeleteDraft.section !== section) {
+    return [];
+  }
+  return [currentFolderDeleteDraft.originalFolderId];
+};
+
 const isAbortError = (error: unknown) => (
   error instanceof DOMException && error.name === "AbortError"
 );
@@ -195,7 +249,9 @@ function CloudPageInner() {
     }
     return null;
   }, [folderQuery, routeFolderId, section]);
-  const locationKey = useMemo(() => getCloudLocationKey(section, resolvedFolderID), [resolvedFolderID, section]);
+  const [folderOverrideID, setFolderOverrideID] = useState<string | null | undefined>(undefined);
+  const currentFolderID = folderOverrideID !== undefined ? folderOverrideID : resolvedFolderID;
+  const locationKey = useMemo(() => getCloudLocationKey(section, currentFolderID), [currentFolderID, section]);
   const initialRootPathEntry = section === "trash" ? TRASH_ROOT_PATH_ENTRY : ROOT_PATH_ENTRY;
   const initialPath = useMemo(() => {
     const cached = cloudPathCache.get(locationKey);
@@ -204,7 +260,6 @@ function CloudPageInner() {
     }
     return [initialRootPathEntry];
   }, [initialRootPathEntry, locationKey]);
-  const [activeFolderID, setActiveFolderID] = useState<string | null>(resolvedFolderID);
   const [items, setItems] = useState<FolderItem[]>([]);
   const [path, setPath] = useState<CloudPathEntry[]>(initialPath);
   const [pathLoading, setPathLoading] = useState(false);
@@ -217,6 +272,7 @@ function CloudPageInner() {
   const [renaming, setRenaming] = useState<{ id: string; type: "folder" | "file"; name: string } | null>(null);
   const [currentFolderRenameOpen, setCurrentFolderRenameOpen] = useState(false);
   const [currentFolderRenameName, setCurrentFolderRenameName] = useState("");
+  const [emptyTrashConfirmOpen, setEmptyTrashConfirmOpen] = useState(false);
   const [showNewFolder, setShowNewFolder] = useState(false);
   const [newFolderName, setNewFolderName] = useState("");
   const [creatingFolder, setCreatingFolder] = useState(false);
@@ -239,6 +295,7 @@ function CloudPageInner() {
   const [clipboard, setClipboard] = useState<CloudClipboard | null>(() => cloudClipboardCache);
   const [clipboardBusy, setClipboardBusy] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [optimisticDeletedItemIds, setOptimisticDeletedItemIds] = useState<Set<string>>(new Set());
   const [selectionRect, setSelectionRect] = useState<CloudSelectionRect | null>(null);
   const [viewMode, setViewMode] = useState<ViewMode>("list");
   const [starredKeys, setStarredKeys] = useState<Set<string>>(new Set());
@@ -263,8 +320,8 @@ function CloudPageInner() {
   const selectionScrollFrameRef = useRef<number | null>(null);
   const locationKeyRef = useRef(locationKey);
   const previousSectionRef = useRef(section);
+  const currentFolderUrlTargetRef = useRef<CurrentFolderUrlTarget | null>(null);
 
-  const currentFolderID = activeFolderID;
   const hasLegacyFolderQuery = isMyFilesSection && !routeFolderId && !!folderQuery;
   const rootPathEntry = isTrashSection ? TRASH_ROOT_PATH_ENTRY : ROOT_PATH_ENTRY;
   const authed = isAuthenticated();
@@ -312,15 +369,13 @@ function CloudPageInner() {
   }, []);
 
   useEffect(() => {
-    setActiveFolderID(resolvedFolderID);
-  }, [resolvedFolderID]);
-
-  useEffect(() => {
     if (previousSectionRef.current === section) {
       return;
     }
 
     previousSectionRef.current = section;
+    currentFolderUrlTargetRef.current = null;
+    setFolderOverrideID(undefined);
     itemsRequestRef.current += 1;
     pathRequestRef.current += 1;
     folderRouteRequestRef.current += 1;
@@ -421,6 +476,58 @@ function CloudPageInner() {
     },
     [buildCloudHref, router, section],
   );
+
+  useEffect(() => {
+    const pendingTarget = currentFolderUrlTargetRef.current;
+    if (!pendingTarget) {
+      if (folderOverrideID === resolvedFolderID) {
+        setFolderOverrideID(undefined);
+      }
+      return;
+    }
+
+    if (pendingTarget.waitForMismatch) {
+      if (resolvedFolderID === pendingTarget.folderId) {
+        return;
+      }
+      pendingTarget.waitForMismatch = false;
+    }
+
+    if (resolvedFolderID !== pendingTarget.folderId) {
+      syncFolderUrl(pendingTarget.folderId, "replace");
+      return;
+    }
+
+    currentFolderUrlTargetRef.current = null;
+    if (folderOverrideID === resolvedFolderID) {
+      setFolderOverrideID(undefined);
+    }
+  }, [folderOverrideID, resolvedFolderID, syncFolderUrl]);
+
+  const applyCurrentFolderDeleteRestore = useCallback((draft: CurrentFolderDeleteDraft) => {
+    itemsRequestRef.current += 1;
+    pathRequestRef.current += 1;
+    folderRouteRequestRef.current += 1;
+    currentFolderUrlTargetRef.current = {
+      folderId: draft.originalFolderId,
+      waitForMismatch: resolvedFolderID === draft.originalFolderId,
+    };
+    setOptimisticDeletedItemIds((prev) => {
+      const next = new Set(prev);
+      next.delete(draft.originalFolderId);
+      return next;
+    });
+    setItems(draft.itemsSnapshot);
+    setSearchResults(draft.searchResultsSnapshot);
+    setSelectedIds(new Set(draft.selectedIdsSnapshot));
+    setHasLoadedItems(draft.hasLoadedItemsSnapshot);
+    setLoading(draft.loadingSnapshot);
+    setPathLoading(draft.pathLoadingSnapshot);
+    setFolderRouteState(draft.folderRouteStateSnapshot);
+    setFolderOverrideID(draft.originalFolderId);
+    updatePathState(draft.originalPath, draft.originalFolderId);
+    syncFolderUrl(draft.originalFolderId, "replace");
+  }, [resolvedFolderID, syncFolderUrl, updatePathState]);
 
   const toItemMeta = (item: FolderItem): { id: string; type: "folder" | "file" } => {
     if (item.type === "folder") {
@@ -602,7 +709,11 @@ function CloudPageInner() {
   useEffect(() => {
     const nextKey = getCloudLocationKey(section, currentFolderID);
     if (locationKeyRef.current !== nextKey && pendingDeletionRef.current) {
-      void pendingDeletionRef.current.flush();
+      if (pendingDeletionRef.current.allowedLocationKey === nextKey) {
+        pendingDeletionRef.current.allowedLocationKey = null;
+      } else {
+        void pendingDeletionRef.current.flush();
+      }
     }
     if (locationKeyRef.current !== nextKey && pendingTrashEmptyRef.current) {
       void pendingTrashEmptyRef.current.flush();
@@ -652,7 +763,8 @@ function CloudPageInner() {
 
   const navigateToFolder = (folder: FolderData) => {
     if (!isMyFilesSection && !isTrashSection) return;
-    setActiveFolderID(folder.id);
+    currentFolderUrlTargetRef.current = null;
+    setFolderOverrideID(folder.id);
     folderCacheRef.current.set(folder.id, folder);
     cloudFolderCache.set(folder.id, folder);
     setPath((prev) => {
@@ -669,7 +781,8 @@ function CloudPageInner() {
 
   const navigateToHeaderPath = (folderId: string | null) => {
     if (!isMyFilesSection && !isTrashSection) return;
-    setActiveFolderID(folderId);
+    currentFolderUrlTargetRef.current = null;
+    setFolderOverrideID(folderId);
     setPath((prev) => {
       if (folderId === null) {
         const nextPath = [rootPathEntry];
@@ -1063,12 +1176,14 @@ function CloudPageInner() {
     }
   };
 
-  const handleEmptyTrash = async () => {
+  const handleConfirmEmptyTrash = async () => {
     if (!authed || !isTrashSection) return;
     if (currentFolderID !== null || displayItems.length === 0 || loading) return;
     if (pendingTrashEmptyRef.current) {
       await pendingTrashEmptyRef.current.flush();
     }
+
+    setEmptyTrashConfirmOpen(false);
 
     const itemsSnapshot = items;
     const pathSnapshot = path;
@@ -1081,14 +1196,14 @@ function CloudPageInner() {
       setItems(itemsSnapshot);
       setPath(pathSnapshot);
       setSelectedIds(selectedIdsSnapshot);
-      setActiveFolderID(folderSnapshot);
+      setFolderOverrideID(folderSnapshot);
       syncFolderUrl(folderSnapshot, "replace");
     };
 
     setItems([]);
     setPath([TRASH_ROOT_PATH_ENTRY]);
     setSelectedIds(new Set());
-    setActiveFolderID(null);
+    setFolderOverrideID(null);
     syncFolderUrl(null, "replace");
 
     const finalize = async () => {
@@ -1192,9 +1307,93 @@ function CloudPageInner() {
     }
   };
 
+  const processCurrentFolderDeleteAction = useCallback(async () => {
+    const action = currentFolderDeleteRequestedAction;
+    const draft = currentFolderDeleteDraft;
+    if (!action || !draft) return;
+    if (action.sessionId !== draft.sessionId || draft.section !== section) return;
+
+    currentFolderDeleteRequestedAction = null;
+    window.clearTimeout(draft.timerId);
+    currentFolderDeleteDraft = null;
+
+    if (action.type === "undo") {
+      itemsRequestRef.current += 1;
+      pathRequestRef.current += 1;
+      folderRouteRequestRef.current += 1;
+      currentFolderUrlTargetRef.current = {
+        folderId: draft.parentFolderId,
+        waitForMismatch: resolvedFolderID === draft.parentFolderId,
+      };
+      setOptimisticDeletedItemIds((prev) => {
+        const next = new Set(prev);
+        next.delete(draft.originalFolderId);
+        return next;
+      });
+      setSelectedIds(new Set());
+      setSearchResults(null);
+      setFolderRouteState("ready");
+      setPathLoading(false);
+      setFolderOverrideID(draft.parentFolderId);
+      updatePathState(draft.parentPath, draft.parentFolderId);
+      syncFolderUrl(draft.parentFolderId, "replace");
+      await loadItems();
+      toast.success("복원됨");
+      return;
+    }
+
+    try {
+      await cloud.deleteFolder(draft.originalFolderId);
+      setOptimisticDeletedItemIds((prev) => {
+        const next = new Set(prev);
+        next.delete(draft.originalFolderId);
+        return next;
+      });
+      await loadItems();
+      if (authed && isMyFilesSection && searchResults !== null && searchQuery.trim()) {
+        try {
+          const files = await cloud.searchFiles(searchQuery);
+          setSearchResults(files || []);
+        } catch {
+          setSearchResults([]);
+        }
+      }
+    } catch (err) {
+      applyCurrentFolderDeleteRestore(draft);
+      console.error("Current folder delete failed:", err);
+      const message = err instanceof Error ? err.message : "알 수 없는 오류";
+      toast.error("삭제에 실패했습니다", message);
+    }
+  }, [
+    applyCurrentFolderDeleteRestore,
+    authed,
+    cloud,
+    isMyFilesSection,
+    loadItems,
+    resolvedFolderID,
+    searchQuery,
+    searchResults,
+    section,
+    syncFolderUrl,
+    toast,
+    updatePathState,
+  ]);
+
+  useEffect(() => {
+    const unsubscribe = subscribeCurrentFolderDelete(() => {
+      void processCurrentFolderDeleteAction();
+    });
+    void processCurrentFolderDeleteAction();
+    return unsubscribe;
+  }, [processCurrentFolderDeleteAction]);
+
   const refreshVisibleItems = useCallback(async () => {
     if (pendingDeletionRef.current) {
       await pendingDeletionRef.current.flush();
+    }
+    if (currentFolderDeleteDraft) {
+      currentFolderDeleteRequestedAction = { type: "commit", sessionId: currentFolderDeleteDraft.sessionId };
+      await processCurrentFolderDeleteAction();
     }
     if (pendingTrashEmptyRef.current) {
       await pendingTrashEmptyRef.current.flush();
@@ -1209,11 +1408,15 @@ function CloudPageInner() {
     } catch {
       setSearchResults([]);
     }
-  }, [authed, cloud, isMyFilesSection, loadItems, searchQuery, searchResults]);
+  }, [authed, cloud, isMyFilesSection, loadItems, processCurrentFolderDeleteAction, searchQuery, searchResults]);
 
-  const queueCloudDelete = useCallback(async (targets: CloudDeleteTarget[]) => {
+  const queueCloudDelete = useCallback(async (targets: CloudDeleteTarget[], options?: QueueCloudDeleteOptions) => {
     if (!authed || !isMyFilesSection || targets.length === 0) return;
 
+    if (currentFolderDeleteDraft) {
+      currentFolderDeleteRequestedAction = { type: "commit", sessionId: currentFolderDeleteDraft.sessionId };
+      await processCurrentFolderDeleteAction();
+    }
     if (pendingDeletionRef.current) {
       await pendingDeletionRef.current.flush();
     }
@@ -1224,6 +1427,11 @@ function CloudPageInner() {
     const selectedIdsSnapshot = selectedIds;
     let settled = false;
 
+    setOptimisticDeletedItemIds((prev) => {
+      const next = new Set(prev);
+      targets.forEach((target) => next.add(target.id));
+      return next;
+    });
     setItems((prev) =>
       prev.filter((item) => {
         const id = item.type === "folder" ? item.folder!.id : item.file!.id;
@@ -1236,12 +1444,19 @@ function CloudPageInner() {
       targets.forEach((target) => next.delete(target.id));
       return next;
     });
+    options?.optimisticApply?.();
 
     let timerID = 0;
     const restore = () => {
+      setOptimisticDeletedItemIds((prev) => {
+        const next = new Set(prev);
+        targets.forEach((target) => next.delete(target.id));
+        return next;
+      });
       setItems(itemsSnapshot);
       setSearchResults(searchResultsSnapshot);
       setSelectedIds(selectedIdsSnapshot);
+      options?.restoreOptimistic?.();
     };
 
     const finalize = async () => {
@@ -1258,6 +1473,17 @@ function CloudPageInner() {
         );
         const failed = results.filter((result) => result.status === "rejected").length;
 
+        if (failed === targets.length) {
+          restore();
+          toast.error("삭제에 실패했습니다", "항목을 삭제하지 못했습니다.");
+          return;
+        }
+
+        setOptimisticDeletedItemIds((prev) => {
+          const next = new Set(prev);
+          targets.forEach((target) => next.delete(target.id));
+          return next;
+        });
         await refreshVisibleItems();
 
         if (failed !== 0) {
@@ -1280,7 +1506,7 @@ function CloudPageInner() {
       toast.success(targets.length === 1 ? "복원됨" : `항목 ${targets.length}개 복원됨`);
     };
 
-    pendingDeletionRef.current = { cancel, flush: finalize };
+    pendingDeletionRef.current = { cancel, flush: finalize, allowedLocationKey: options?.allowedLocationKey ?? null };
     timerID = window.setTimeout(() => {
       void finalize();
     }, DELETE_UNDO_WINDOW_MS);
@@ -1302,6 +1528,7 @@ function CloudPageInner() {
     cloud,
     isMyFilesSection,
     items,
+    processCurrentFolderDeleteAction,
     refreshVisibleItems,
     searchResults,
     selectedIds,
@@ -1667,11 +1894,20 @@ function CloudPageInner() {
   }, [authed, clipboard, clipboardBusy, cloud, isMyFilesSection, loadItems, toast, undoClipboardApply]);
 
   const getSelectableViewItems = useCallback(() => {
+    const hiddenIds = new Set([
+      ...optimisticDeletedItemIds,
+      ...getCurrentFolderOptimisticHiddenIds(section),
+    ]);
     if (isMyFilesSection && searchResults) {
-      return searchResults.map((f) => ({ type: "file" as const, file: f, path: undefined }));
+      return searchResults
+        .map((f) => ({ type: "file" as const, file: f, path: undefined }))
+        .filter((item) => !hiddenIds.has(item.file!.id));
     }
-    return items;
-  }, [isMyFilesSection, items, searchResults]);
+    return items.filter((item) => {
+      const id = item.type === "folder" ? item.folder!.id : item.file!.id;
+      return !hiddenIds.has(id);
+    });
+  }, [isMyFilesSection, items, optimisticDeletedItemIds, searchResults, section]);
 
   const getSelectedItems = useCallback(() => {
     if (!isMyFilesSection || selectedIds.size === 0) return [];
@@ -2093,6 +2329,94 @@ function CloudPageInner() {
     toast,
   ]);
 
+  const handleDeleteCurrentFolder = useCallback(async () => {
+    if (!authed || !isMyFilesSection || !currentFolderData) return;
+    if (pendingDeletionRef.current) {
+      await pendingDeletionRef.current.flush();
+    }
+    if (currentFolderDeleteDraft) {
+      currentFolderDeleteRequestedAction = { type: "commit", sessionId: currentFolderDeleteDraft.sessionId };
+      await processCurrentFolderDeleteAction();
+    }
+
+    const parentFolderId = currentFolderData.parent_id ?? null;
+    const originalFolderId = currentFolderData.id;
+    const originalPath = displayPath;
+    const parentPath = originalPath.length > 1 ? originalPath.slice(0, -1) : [rootPathEntry];
+    const sessionId = Date.now();
+
+    setCurrentFolderRenameOpen(false);
+
+    const moveToParent = () => {
+      itemsRequestRef.current += 1;
+      pathRequestRef.current += 1;
+      folderRouteRequestRef.current += 1;
+      currentFolderUrlTargetRef.current = {
+        folderId: parentFolderId,
+        waitForMismatch: resolvedFolderID === parentFolderId,
+      };
+      setOptimisticDeletedItemIds((prev) => new Set(prev).add(originalFolderId));
+      setItems([]);
+      setSearchResults(null);
+      setSelectedIds(new Set());
+      setHasLoadedItems(false);
+      setLoading(true);
+      setPathLoading(parentFolderId !== null);
+      setFolderRouteState(parentFolderId ? "checking" : "ready");
+      setFolderOverrideID(parentFolderId);
+      updatePathState(parentPath, parentFolderId);
+      syncFolderUrl(parentFolderId, "replace");
+    };
+
+    moveToParent();
+    const timerId = window.setTimeout(() => {
+      requestCurrentFolderDeleteAction({ type: "commit", sessionId });
+    }, DELETE_UNDO_WINDOW_MS);
+    currentFolderDeleteDraft = {
+      sessionId,
+      section,
+      originalFolderId,
+      parentFolderId,
+      originalPath,
+      parentPath,
+      itemsSnapshot: items,
+      searchResultsSnapshot: searchResults,
+      selectedIdsSnapshot: new Set(selectedIds),
+      hasLoadedItemsSnapshot: hasLoadedItems,
+      loadingSnapshot: loading,
+      pathLoadingSnapshot: pathLoading,
+      folderRouteStateSnapshot: folderRouteState,
+      timerId,
+    };
+
+    toast.show({
+      variant: "warning",
+      title: "폴더 삭제됨",
+      duration: DELETE_UNDO_WINDOW_MS,
+      actionLabel: "실행 취소",
+      onAction: () => requestCurrentFolderDeleteAction({ type: "undo", sessionId }),
+    });
+  }, [
+    authed,
+    currentFolderData,
+    displayPath,
+    hasLoadedItems,
+    isMyFilesSection,
+    items,
+    loading,
+    pathLoading,
+    processCurrentFolderDeleteAction,
+    rootPathEntry,
+    searchResults,
+    section,
+    selectedIds,
+    syncFolderUrl,
+    toast,
+    updatePathState,
+    folderRouteState,
+    resolvedFolderID,
+  ]);
+
   return (
     <div
       className="relative flex h-full flex-col"
@@ -2147,6 +2471,13 @@ function CloudPageInner() {
               <DropdownMenuItem onClick={() => void handleToggleStar({ type: "folder", folder: currentFolderData! })}>
                 <StarIcon size={14} />
                 {starredKeys.has(toStarKey(currentFolderData!.id, "folder")) ? "중요 해제" : "중요 표시"}
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem
+                onClick={() => void handleDeleteCurrentFolder()}
+                className="text-error focus:text-error"
+              >
+                <Trash2 size={14} /> 삭제
               </DropdownMenuItem>
             </>
           ) : undefined}
@@ -2350,7 +2681,7 @@ function CloudPageInner() {
                   variant="ghost"
                   size="sm"
                   disabled={!folderActionsEnabled || !canEmptyTrash}
-                  onClick={handleEmptyTrash}
+                  onClick={() => setEmptyTrashConfirmOpen(true)}
                   className="gap-1.5 text-error hover:text-error"
                 >
                   <Trash2 size={14} />
@@ -2940,6 +3271,27 @@ function CloudPageInner() {
               disabled={!currentFolderRenameName.trim()}
             >
               저장
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={emptyTrashConfirmOpen} onOpenChange={setEmptyTrashConfirmOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>휴지통을 비울까요?</DialogTitle>
+          </DialogHeader>
+          <DialogDescription className="sr-only">휴지통 비우기 확인</DialogDescription>
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setEmptyTrashConfirmOpen(false)}>
+              취소
+            </Button>
+            <Button
+              variant="danger"
+              onClick={() => void handleConfirmEmptyTrash()}
+              disabled={!canEmptyTrash || !folderActionsEnabled}
+            >
+              휴지통 비우기
             </Button>
           </DialogFooter>
         </DialogContent>

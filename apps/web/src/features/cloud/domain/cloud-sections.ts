@@ -3,7 +3,7 @@ export const CLOUD_SECTIONS = ["", "recent", "shared", "starred", "trash"] as co
 export type CloudSection = (typeof CLOUD_SECTIONS)[number];
 
 export const CLOUD_SECTION_LABELS: Record<CloudSection, string> = {
-  "": "내 파일",
+  "": "내 드라이브",
   recent: "최근",
   shared: "공유됨",
   starred: "중요",

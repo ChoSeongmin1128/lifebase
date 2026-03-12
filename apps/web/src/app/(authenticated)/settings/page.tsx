@@ -256,21 +256,23 @@ export default function SettingsPage() {
 
       <div className="flex-1 overflow-auto bg-surface-accent/35">
         <div className="mx-auto w-full max-w-3xl px-4 py-4 md:px-6 lg:px-8">
-          <div className="mb-4 flex gap-2 overflow-x-auto rounded-2xl border border-border/70 bg-background/90 p-1 md:hidden">
-            {SETTINGS_SECTIONS.map((section) => (
-              <button
-                key={section.id}
-                type="button"
-                onClick={() => router.replace(`/settings/${section.id}`)}
-                className={`shrink-0 rounded-xl px-3 py-2 text-sm text-left transition-colors ${
-                  activeSection === section.id
-                    ? "bg-surface-accent text-text-strong font-medium"
-                    : "text-text-secondary hover:bg-surface-accent/70 hover:text-text-strong"
-                }`}
-              >
-                {section.label}
-              </button>
-            ))}
+          <div className="mb-4 overflow-x-auto border-b border-border">
+            <div className="flex min-w-max gap-1 py-1">
+              {SETTINGS_SECTIONS.map((section) => (
+                <button
+                  key={section.id}
+                  type="button"
+                  onClick={() => router.replace(`/settings/${section.id}`)}
+                  className={`shrink-0 rounded-lg px-3 py-2 text-sm transition-colors ${
+                    activeSection === section.id
+                      ? "bg-background text-text-strong"
+                      : "text-text-secondary hover:bg-background/70 hover:text-text-strong"
+                  }`}
+                >
+                  {section.label}
+                </button>
+              ))}
+            </div>
           </div>
 
           <div className="min-w-0">
